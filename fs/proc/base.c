@@ -1110,15 +1110,9 @@ static ssize_t oom_adj_write(struct file *file, const char __user *buf,
 		goto out;
 	}
 
-	task_lock(task);
-	if (!task->mm) {
-		err = -EINVAL;
-		goto err_task_lock;
-	}
-
 	if (!lock_task_sighand(task, &flags)) {
 		err = -ESRCH;
-		goto err_task_lock;
+		goto err_put_task;
 	}
 
 	/*
@@ -1148,8 +1142,7 @@ static ssize_t oom_adj_write(struct file *file, const char __user *buf,
 	trace_oom_score_adj_update(task);
 err_sighand:
 	unlock_task_sighand(task, &flags);
-err_task_lock:
-	task_unlock(task);
+err_put_task:
 	put_task_struct(task);
 out:
 	return err < 0 ? err : count;
@@ -1213,15 +1206,9 @@ static ssize_t oom_score_adj_write(struct file *file, const char __user *buf,
 		goto out;
 	}
 
-	task_lock(task);
-	if (!task->mm) {
-		err = -EINVAL;
-		goto err_task_lock;
-	}
-
 	if (!lock_task_sighand(task, &flags)) {
 		err = -ESRCH;
-		goto err_task_lock;
+		goto err_put_task;
 	}
 
 	if ((short)oom_score_adj < task->signal->oom_score_adj_min &&
@@ -1237,8 +1224,7 @@ static ssize_t oom_score_adj_write(struct file *file, const char __user *buf,
 
 err_sighand:
 	unlock_task_sighand(task, &flags);
-err_task_lock:
-	task_unlock(task);
+err_put_task:
 	put_task_struct(task);
 out:
 	return err < 0 ? err : count;
