@@ -425,12 +425,8 @@ static ssize_t kcal_invert_store(struct device *dev,
 		(lut_data->invert == kcal_invert))
 		return -EINVAL;
 
-	lut_data->invert = kcal_invert;
-
-	if (mdss_mdp_kcal_is_panel_on())
-		mdss_mdp_kcal_update_igc(lut_data);
-	else
-		lut_data->queue_changes = true;
+	//disable
+	lut_data->invert = 0;
 
 	return count;
 }
