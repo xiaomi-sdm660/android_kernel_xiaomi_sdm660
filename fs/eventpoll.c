@@ -1236,8 +1236,11 @@ static int ep_create_wakeup_source(struct epitem *epi)
 	struct name_snapshot n;
 	struct wakeup_source *ws;
 
+	name = epi->ffd.file->f_path.dentry->d_name.name;
 	if (!epi->ep->ws) {
-		epi->ep->ws = wakeup_source_register("eventpoll");
+		char buf[64];
+		snprintf(buf, sizeof(buf), "eventpoll pid:%d file:%s", current->pid, name);
+		epi->ep->ws = wakeup_source_register(buf);
 		if (!epi->ep->ws)
 			return -ENOMEM;
 	}
