@@ -35,6 +35,9 @@ extern unsigned long cpufreq_scale_min_freq_capacity(struct sched_domain *sd, in
 #define arch_scale_cpu_capacity scale_cpu_capacity
 extern unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu);
 
+#define arch_update_cpu_capacity update_cpu_power_capacity
+extern void update_cpu_power_capacity(int cpu);
+
 #include <asm-generic/topology.h>
 
 #endif /* _ASM_ARM_TOPOLOGY_H */
