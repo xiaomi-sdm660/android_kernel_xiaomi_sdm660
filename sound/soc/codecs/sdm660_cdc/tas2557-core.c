@@ -20,7 +20,6 @@
 ** =============================================================================
 */
 
-#define DEBUG
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -442,7 +441,7 @@ int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 	unsigned int nValue;
 	struct TProgram *pProgram;
 
-	dev_dbg(pTAS2557->dev, "Enable: %d\n", bEnable);
+	dev_info(pTAS2557->dev, "Enable: %d\n", bEnable);
 
 	if ((pTAS2557->mpFirmware->mnPrograms == 0)
 		|| (pTAS2557->mpFirmware->mnConfigurations == 0)) {
@@ -547,7 +546,7 @@ int tas2557_set_sampling_rate(struct tas2557_priv *pTAS2557, unsigned int nSampl
 
 	pConfiguration = &(pTAS2557->mpFirmware->mpConfigurations[pTAS2557->mnCurrentConfiguration]);
 	if (pConfiguration->mnSamplingRate == nSamplingRate) {
-		dev_info(pTAS2557->dev, "Sampling rate for current configuration matches: %d\n",
+		dev_dbg(pTAS2557->dev, "Sampling rate for current configuration matches: %d\n",
 			nSamplingRate);
 		nResult = 0;
 		goto end;
@@ -1347,7 +1346,7 @@ static int tas2557_load_data(struct tas2557_priv *pTAS2557, struct TData *pData,
 	unsigned int nBlock;
 	struct TBlock *pBlock;
 
-	dev_dbg(pTAS2557->dev,
+	dev_info(pTAS2557->dev,
 		"TAS2557 load data: %s, Blocks = %d, Block Type = %d\n", pData->mpName, pData->mnBlocks, nType);
 
 	for (nBlock = 0; nBlock < pData->mnBlocks; nBlock++) {
