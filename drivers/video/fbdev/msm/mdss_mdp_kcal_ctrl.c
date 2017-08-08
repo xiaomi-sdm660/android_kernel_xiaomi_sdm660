@@ -574,7 +574,7 @@ static int mdss_mdp_kcal_update_queue(struct device *dev)
 	if (lut_data->queue_changes) {
 		mdss_mdp_kcal_update_pcc(lut_data);
 		mdss_mdp_kcal_update_pa(lut_data);
-		mdss_mdp_kcal_update_igc(lut_data);
+		//mdss_mdp_kcal_update_igc(lut_data);
 		lut_data->queue_changes = false;
 	}
 
