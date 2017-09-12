@@ -19,7 +19,7 @@ bool schedtune_initialized = false;
 unsigned int sysctl_sched_cfs_boost __read_mostly;
 
 extern struct reciprocal_value schedtune_spc_rdiv;
-extern struct target_nrg schedtune_target_nrg;
+struct target_nrg schedtune_target_nrg;
 
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 #define DYNAMIC_BOOST_SLOTS_COUNT 5
