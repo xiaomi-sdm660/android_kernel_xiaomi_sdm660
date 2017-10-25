@@ -204,6 +204,7 @@ static int get_val(struct range_data *range, int hysteresis, int current_index,
 			range[i].high_threshold, threshold)) {
 			*new_index = i;
 			*val = range[i].value;
+			break;
 		}
 
 	/* if nothing was found, return -ENODATA */
