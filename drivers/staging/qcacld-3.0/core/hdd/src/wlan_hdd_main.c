@@ -65,6 +65,7 @@
 #include <linux/ctype.h>
 #include <linux/compat.h>
 #include <linux/reboot.h>
+#include <linux/random.h>
 #ifdef MSM_PLATFORM
 #include <soc/qcom/subsystem_restart.h>
 #endif
@@ -9803,6 +9804,49 @@ void hdd_populate_random_mac_addr(hdd_context_t *hdd_ctx, uint32_t num)
 	}
 }
 
+static int randomize_mac = 1;
+
+static struct ctl_table randomize_mac_table[] =
+{
+       {
+               .procname       = "randomize_mac",
+               .data           = &randomize_mac,
+               .maxlen         = sizeof(int),
+               .mode           = 0600,
+               .proc_handler   = proc_dointvec
+       },
+       { }
+};
+
+static struct ctl_table cnss_table[] =
+{
+       {
+               .procname       = "cnss",
+               .maxlen         = 0,
+               .mode           = 0555,
+               .child          = randomize_mac_table,
+       },
+       { }
+};
+
+static struct ctl_table dev_table[] =
+{
+       {
+               .procname       = "dev",
+               .maxlen         = 0,
+               .mode           = 0555,
+               .child          = cnss_table,
+       },
+       { }
+};
+
+static int __init init_randomize_mac(void)
+{
+	register_sysctl_table(dev_table);
+	return 0;
+}
+late_initcall(init_randomize_mac);
+
 /**
  * hdd_platform_wlan_mac() - API to get mac addresses from platform driver
  * @hdd_ctx: HDD Context
@@ -9817,6 +9861,7 @@ static int hdd_platform_wlan_mac(hdd_context_t *hdd_ctx)
 	uint32_t max_mac_addr = QDF_MAX_CONCURRENCY_PERSONA;
 	uint32_t mac_addr_size = QDF_MAC_ADDR_SIZE;
 	uint8_t *addr, *buf;
+	u8 addr_random[QDF_MAX_CONCURRENCY_PERSONA * QDF_MAC_ADDR_SIZE];
 	struct device *dev = hdd_ctx->parent_dev;
 	tSirMacAddr mac_addr;
 	QDF_STATUS status;
@@ -9827,6 +9872,13 @@ static int hdd_platform_wlan_mac(hdd_context_t *hdd_ctx)
 		return -EINVAL;
 
 	hdd_free_mac_address_lists(hdd_ctx);
+
+	if (randomize_mac) {
+		memcpy(addr_random, addr, no_of_mac_addr * mac_addr_size);
+		for (iter = 0; iter < no_of_mac_addr * mac_addr_size; iter += QDF_MAC_ADDR_SIZE)
+			get_random_bytes(&addr_random[iter + 3], 3);
+		addr = addr_random;
+	}
 
 	if (no_of_mac_addr > max_mac_addr)
 		no_of_mac_addr = max_mac_addr;
