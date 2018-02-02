@@ -52,6 +52,10 @@
 #include <linux/platform_device.h>
 #endif
 
+#ifdef CONFIG_TOUCHSCREEN_COMMON
+#include <linux/input/tp_common.h>
+#endif
+
 #define VER_MAJOR   1
 #define VER_MINOR   2
 #define PATCH_LEVEL 10
@@ -454,6 +458,9 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			break;
 		}
 
+#ifdef CONFIG_TOUCHSCREEN_COMMON
+		if (capacitive_keys_enabled)
+#endif
 		gf_kernel_key_input(gf_dev, &gf_key);
 		break;
 
