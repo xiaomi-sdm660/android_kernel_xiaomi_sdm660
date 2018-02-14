@@ -420,6 +420,10 @@ static ssize_t kcal_invert_store(struct device *dev,
 	int kcal_invert, r;
 	struct kcal_lut_data *lut_data = dev_get_drvdata(dev);
 
+	// AP: don't do anything with KCAL invert as it is broken
+	if (true)
+		return count;
+
 	r = kstrtoint(buf, 10, &kcal_invert);
 	if ((r) || (kcal_invert != 0 && kcal_invert != 1) ||
 		(lut_data->invert == kcal_invert))
