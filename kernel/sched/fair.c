@@ -5536,7 +5536,110 @@ struct energy_env {
 	struct sched_group	*sg;
 };
 
-static int cpu_util_wake(int cpu, struct task_struct *p);
+/*
+ * cpu_util returns the amount of capacity of a CPU that is used by CFS
+ * tasks. The unit of the return value must be the one of capacity so we can
+ * compare the utilization with the capacity of the CPU that is available for
+ * CFS task (ie cpu_capacity).
+ *
+ * cfs_rq.avg.util_avg is the sum of running time of runnable tasks plus the
+ * recent utilization of currently non-runnable tasks on a CPU. It represents
+ * the amount of utilization of a CPU in the range [0..capacity_orig] where
+ * capacity_orig is the cpu_capacity available at the highest frequency,
+ * i.e. arch_scale_cpu_capacity().
+ * The utilization of a CPU converges towards a sum equal to or less than the
+ * current capacity (capacity_curr <= capacity_orig) of the CPU because it is
+ * the running time on this CPU scaled by capacity_curr.
+ *
+ * Nevertheless, cfs_rq.avg.util_avg can be higher than capacity_curr or even
+ * higher than capacity_orig because of unfortunate rounding in
+ * cfs.avg.util_avg or just after migrating tasks and new task wakeups until
+ * the average stabilizes with the new running time. We need to check that the
+ * utilization stays within the range of [0..capacity_orig] and cap it if
+ * necessary. Without utilization capping, a group could be seen as overloaded
+ * (CPU0 utilization at 121% + CPU1 utilization at 80%) whereas CPU1 has 20% of
+ * available capacity. We allow utilization to overshoot capacity_curr (but not
+ * capacity_orig) as it useful for predicting the capacity required after task
+ * migrations (scheduler-driven DVFS).
+ */
+static inline unsigned long cpu_util(int cpu)
+{
+	struct cfs_rq *cfs_rq;
+	unsigned int util;
+
+#ifdef CONFIG_SCHED_WALT
+	if (likely(!walt_disabled && sysctl_sched_use_walt_cpu_util)) {
+		u64 walt_cpu_util = cpu_rq(cpu)->cumulative_runnable_avg;
+
+		walt_cpu_util <<= SCHED_CAPACITY_SHIFT;
+		do_div(walt_cpu_util, walt_ravg_window);
+
+		return min_t(unsigned long, walt_cpu_util,
+			     capacity_orig_of(cpu));
+	}
+#endif
+
+	cfs_rq = &cpu_rq(cpu)->cfs;
+	util = READ_ONCE(cfs_rq->avg.util_avg);
+
+	return min_t(unsigned long, util, capacity_orig_of(cpu));
+}
+
+static inline unsigned long cpu_util_freq(int cpu)
+{
+#ifdef CONFIG_SCHED_WALT
+	u64 walt_cpu_util;
+
+	if (unlikely(walt_disabled || !sysctl_sched_use_walt_cpu_util))
+		return cpu_util(cpu);
+
+	walt_cpu_util = cpu_rq(cpu)->prev_runnable_sum;
+	walt_cpu_util <<= SCHED_CAPACITY_SHIFT;
+	do_div(walt_cpu_util, walt_ravg_window);
+
+	return min_t(unsigned long, walt_cpu_util, capacity_orig_of(cpu));
+#else
+	return cpu_util(cpu);
+#endif
+}
+
+/*
+ * cpu_util_wake: Compute CPU utilization with any contributions from
+ * the waking task p removed.
+ */
+static unsigned long cpu_util_wake(int cpu, struct task_struct *p)
+{
+	struct cfs_rq *cfs_rq;
+	unsigned int util;
+
+#ifdef CONFIG_SCHED_WALT
+	/*
+	 * WALT does not decay idle tasks in the same manner
+	 * as PELT, so it makes little sense to subtract task
+	 * utilization from cpu utilization. Instead just use
+	 * cpu_util for this case.
+	 */
+	if (likely(!walt_disabled && sysctl_sched_use_walt_cpu_util))
+		return cpu_util(cpu);
+#endif
+
+	/* Task has no contribution or is new */
+	if (cpu != task_cpu(p) || !READ_ONCE(p->se.avg.last_update_time))
+		return cpu_util(cpu);
+
+	cfs_rq = &cpu_rq(cpu)->cfs;
+	util = READ_ONCE(cfs_rq->avg.util_avg);
+
+	/* Discount task's blocked util from CPU's util */
+	util -= min_t(unsigned int, util, task_util(p));
+
+	/*
+	 * Utilization (estimated) can exceed the CPU capacity, thus let's
+	 * clamp to the maximum CPU capacity to ensure consistency with
+	 * the cpu_util call.
+	 */
+	return min_t(unsigned long, util, capacity_orig_of(cpu));
+}
 
 /*
  * __cpu_norm_util() returns the cpu util relative to a specific capacity,
@@ -6520,37 +6623,6 @@ done:
 	schedstat_inc(this_rq(), eas_stats.sis_count);
 
 	return target;
-}
-
-/*
- * cpu_util_wake: Compute cpu utilization with any contributions from
- * the waking task p removed.  check_for_migration() looks for a better CPU of
- * rq->curr. For that case we should return cpu util with contributions from
- * currently running task p removed.
- */
-static int cpu_util_wake(int cpu, struct task_struct *p)
-{
-	unsigned long util, capacity;
-
-#ifdef CONFIG_SCHED_WALT
-	/*
-	 * WALT does not decay idle tasks in the same manner
-	 * as PELT, so it makes little sense to subtract task
-	 * utilization from cpu utilization. Instead just use
-	 * cpu_util for this case.
-	 */
-	if (!walt_disabled && sysctl_sched_use_walt_cpu_util &&
-	    p->state == TASK_WAKING)
-		return cpu_util(cpu);
-#endif
-	/* Task has no contribution or is new */
-	if (cpu != task_cpu(p) || !p->se.avg.last_update_time)
-		return cpu_util(cpu);
-
-	capacity = capacity_orig_of(cpu);
-	util = max_t(long, cpu_util(cpu) - task_util(p), 0);
-
-	return (util >= capacity) ? capacity : util;
 }
 
 static int start_cpu(bool boosted)
