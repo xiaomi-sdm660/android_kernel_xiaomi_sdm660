@@ -5039,7 +5039,9 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 	mutex_init(&(rmi4_data->rmi4_irq_enable_mutex));
 	mutex_init(&(rmi4_data->rmi4_cover_mutex));
 
+#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_TEST_REPORTING_FORCE
 	init_completion(&rmi4_data->dump_completion);
+#endif
 
 	platform_set_drvdata(pdev, rmi4_data);
 
@@ -5680,17 +5682,20 @@ static int synaptics_rmi4_fb_notifier_cb(struct notifier_block *self,
 					rmi4_data->wakeup_en = false;
 				}
 
+#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_TEST_REPORTING_FORCE
 				rmi4_data->disable_data_dump = false;
+#endif
 			}
 		} else if (event == FB_EARLY_EVENT_BLANK) {
 			transition = evdata->data;
 			if ((*transition == FB_BLANK_POWERDOWN) || (*transition == FB_BLANK_NORMAL)) {
+#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_TEST_REPORTING_FORCE
 				rmi4_data->disable_data_dump = true;
 				if (rmi4_data->dump_flags) {
 					reinit_completion(&rmi4_data->dump_completion);
 					wait_for_completion_timeout(&rmi4_data->dump_completion, 4 * HZ);
 				}
-
+#endif
 				if (rmi4_data->enable_wakeup_gesture) {
 					rmi4_data->wakeup_en = true;
 					mdss_regulator_ctrl(rmi4_data, DISP_REG_ALL, true);
@@ -5742,7 +5747,9 @@ static int synaptics_rmi4_fb_notifier_cb_tddi(struct notifier_block *self,
 					rmi4_data->fb_ready = true;
 				}
 
+#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_TEST_REPORTING_FORCE
 				rmi4_data->disable_data_dump = false;
+#endif
 			} else if ((*transition == FB_BLANK_POWERDOWN) || (*transition == FB_BLANK_NORMAL)) {
 				if (rmi4_data->wakeup_en) {
 					synaptics_rmi4_suspend(&rmi4_data->pdev->dev);
@@ -5760,12 +5767,13 @@ static int synaptics_rmi4_fb_notifier_cb_tddi(struct notifier_block *self,
 					msleep(30);
 				}
 			} else if ((*transition == FB_BLANK_POWERDOWN) || (*transition == FB_BLANK_NORMAL)) {
+#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_TEST_REPORTING_FORCE
 				rmi4_data->disable_data_dump = true;
 				if (rmi4_data->dump_flags) {
 					reinit_completion(&rmi4_data->dump_completion);
 					wait_for_completion_timeout(&rmi4_data->dump_completion, 4 * HZ);
 				}
-
+#endif
 				if (rmi4_data->enable_wakeup_gesture) {
 					rmi4_data->wakeup_en = true;
 					mdss_panel_reset_skip_enable(true);
