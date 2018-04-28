@@ -70,6 +70,7 @@ config SDIO_UART
 
 config MMC_TEST
 	tristate "MMC host test driver"
+	default n
 	help
 	  Development driver that performs a series of reads and writes
 	  to a memory card in order to expose certain well known bugs
