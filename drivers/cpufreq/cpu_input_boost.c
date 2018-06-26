@@ -9,6 +9,7 @@
 #include <linux/cpufreq.h>
 #include <linux/fb.h>
 #include <linux/input.h>
+#include <linux/moduleparam.h>
 #include <linux/kthread.h>
 
 enum {
@@ -17,6 +18,13 @@ enum {
 	MAX_BOOST
 };
 
+static unsigned int input_boost_freq_lp = CONFIG_INPUT_BOOST_FREQ_LP;
+static unsigned int input_boost_freq_hp = CONFIG_INPUT_BOOST_FREQ_PERF;
+static unsigned short input_boost_duration = CONFIG_INPUT_BOOST_DURATION_MS;
+
+module_param(input_boost_freq_lp, uint, 0644);
+module_param(input_boost_freq_hp, uint, 0644);
+module_param(input_boost_duration, short, 0644);
 struct boost_drv {
 	struct delayed_work input_unboost;
 	struct delayed_work max_unboost;
@@ -43,9 +51,9 @@ static unsigned int get_input_boost_freq(struct cpufreq_policy *policy)
 	unsigned int freq;
 
 	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
-		freq = CONFIG_INPUT_BOOST_FREQ_LP;
+		freq = input_boost_freq_lp;
 	else
-		freq = CONFIG_INPUT_BOOST_FREQ_PERF;
+		freq = input_boost_freq_hp;
 
 	return min(freq, policy->max);
 }
@@ -82,7 +90,7 @@ static void __cpu_input_boost_kick(struct boost_drv *b)
 
 	set_bit(INPUT_BOOST, &b->state);
 	if (!mod_delayed_work(system_unbound_wq, &b->input_unboost,
-			      msecs_to_jiffies(CONFIG_INPUT_BOOST_DURATION_MS)))
+			      msecs_to_jiffies(input_boost_duration)))
 		wake_up(&b->boost_waitq);
 }
 
