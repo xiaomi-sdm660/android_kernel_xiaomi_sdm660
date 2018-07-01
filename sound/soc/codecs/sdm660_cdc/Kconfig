@@ -2,6 +2,9 @@
 config SND_SOC_SDM660_CDC
 	tristate "MSM Internal PMIC based codec"
 
+config SOUND_CONTROL
+	bool "Sound Control for msm89xx"
+
 config SND_SOC_DBMDX
 	bool "DSPG Voice Trigger/Enhancement Chip"
 	default n
