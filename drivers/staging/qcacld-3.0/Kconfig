@@ -156,4 +156,16 @@ config WLAN_FEATURE_PKT_CAPTURE
 	bool "Enable packet capture feature"
 	default n
 
+
+config FEATURE_PKTLOG
+	bool "Packet log"
+	default n
+	depends on SLUB_DEBUG
+	depends on SLUB_DEBUG_ON
+	depends on PAGE_POISONING
+
+config QCA_CLD_DEBUG
+	bool "Debug Qualcomm Atheros CLD WLAN module"
+	default n
+
 endif # QCA_CLD_WLAN
