@@ -282,7 +282,7 @@ static ssize_t nvt_gesture_write(struct file *file, const char __user *buf,
 {
 	uint8_t str;
 	if(copy_from_user(&str, buf, 1)); // ignore
-	enable_gesture_mode = true;
+	enable_gesture_mode = (str == '1');
 	return 1;
 }
 
