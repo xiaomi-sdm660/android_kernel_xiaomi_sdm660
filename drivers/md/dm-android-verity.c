@@ -41,11 +41,6 @@
 #include "dm-verity.h"
 #include "dm-android-verity.h"
 
-static char verifiedbootstate[VERITY_COMMANDLINE_PARAM_LENGTH];
-static char veritymode[VERITY_COMMANDLINE_PARAM_LENGTH];
-static char veritykeyid[VERITY_DEFAULT_KEY_ID_LENGTH];
-static char buildvariant[BUILD_VARIANT];
-
 static bool target_added;
 static bool verity_enabled = true;
 static struct dentry *debug_dir;
@@ -64,134 +59,6 @@ static struct target_type android_verity_target = {
 	.io_hints               = verity_io_hints,
 };
 
-static int __init verified_boot_state_param(char *line)
-{
-	strlcpy(verifiedbootstate, "green", sizeof(verifiedbootstate));
-	return 1;
-}
-
-__setup("androidboot.verifiedbootstate=", verified_boot_state_param);
-
-static int __init verity_mode_param(char *line)
-{
-	strlcpy(veritymode, "enforcing", sizeof(veritymode));
-	return 1;
-}
-
-__setup("androidboot.veritymode=", verity_mode_param);
-
-static int __init verity_keyid_param(char *line)
-{
-	strlcpy(veritykeyid, line, sizeof(veritykeyid));
-	return 1;
-}
-
-__setup("veritykeyid=", verity_keyid_param);
-
-static int __init verity_buildvariant(char *line)
-{
-	strlcpy(buildvariant, line, sizeof(buildvariant));
-	return 1;
-}
-
-__setup("buildvariant=", verity_buildvariant);
-
-inline static inline bool is_eng(void)
-{
-	static const char typeeng[]  = "eng";
-
-	return !strncmp(buildvariant, typeeng, sizeof(typeeng));
-}
-
-static inline bool is_userdebug(void)
-{
-	static const char typeuserdebug[]  = "userdebug";
-
-	return !strncmp(buildvariant, typeuserdebug, sizeof(typeuserdebug));
-}
-
-inline static inline bool is_unlocked(void)
-{
-	return false;
-}
-
-static int read_block_dev(struct bio_read *payload, struct block_device *bdev,
-		sector_t offset, int length)
-{
-	struct bio *bio;
-	int err = 0, i;
-
-	payload->number_of_pages = DIV_ROUND_UP(length, PAGE_SIZE);
-
-	bio = bio_alloc(GFP_KERNEL, payload->number_of_pages);
-	if (!bio) {
-		DMERR("Error while allocating bio");
-		return -ENOMEM;
-	}
-
-	bio->bi_bdev = bdev;
-	bio->bi_iter.bi_sector = offset;
-
-	payload->page_io = kzalloc(sizeof(struct page *) *
-		payload->number_of_pages, GFP_KERNEL);
-	if (!payload->page_io) {
-		DMERR("page_io array alloc failed");
-		err = -ENOMEM;
-		goto free_bio;
-	}
-
-	for (i = 0; i < payload->number_of_pages; i++) {
-		payload->page_io[i] = alloc_page(GFP_KERNEL);
-		if (!payload->page_io[i]) {
-			DMERR("alloc_page failed");
-			err = -ENOMEM;
-			goto free_pages;
-		}
-		if (!bio_add_page(bio, payload->page_io[i], PAGE_SIZE, 0)) {
-			DMERR("bio_add_page error");
-			err = -EIO;
-			goto free_pages;
-		}
-	}
-
-	if (!submit_bio_wait(READ, bio))
-		/* success */
-		goto free_bio;
-	DMERR("bio read failed");
-	err = -EIO;
-
-free_pages:
-	for (i = 0; i < payload->number_of_pages; i++)
-		if (payload->page_io[i])
-			__free_page(payload->page_io[i]);
-	kfree(payload->page_io);
-free_bio:
-	bio_put(bio);
-	return err;
-}
-
-static inline u64 fec_div_round_up(u64 x, u64 y)
-{
-	u64 remainder;
-
-	return div64_u64_rem(x, y, &remainder) +
-		(remainder > 0 ? 1 : 0);
-}
-
-static void find_metadata_offset(struct fec_header *fec,
-		struct block_device *bdev, u64 *metadata_offset)
-{
-	u64 device_size;
-
-	device_size = i_size_read(bdev->bd_inode);
-
-	if (le32_to_cpu(fec->magic) == FEC_MAGIC)
-		*metadata_offset = le64_to_cpu(fec->inp_size) -
-					VERITY_METADATA_SIZE;
-	else
-		*metadata_offset = device_size - VERITY_METADATA_SIZE;
-}
-
 static int find_size(dev_t dev, u64 *device_size)
 {
 	struct block_device *bdev;
@@ -208,14 +75,6 @@ static int find_size(dev_t dev, u64 *device_size)
 	DMINFO("blkdev size in sectors: %llu", *device_size);
 	blkdev_put(bdev, FMODE_READ);
 	return 0;
-}
-
-static inline bool test_mult_overflow(sector_t a, u32 b)
-{
-	sector_t r = (sector_t)~0ULL;
-
-	sector_div(r, b);
-	return a > r;
 }
 
 static int add_as_linear_device(struct dm_target *ti, char *dev)
