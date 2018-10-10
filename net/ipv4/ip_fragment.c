@@ -451,7 +451,8 @@ static int ip_frag_queue(struct ipq *qp, struct sk_buff *skb)
 				       FRAG_CB(skb1)->frag_run_len;
 			if (end <= skb1->ip_defrag_offset)
 				rbn = &parent->rb_left;
-			else if (offset >= skb1_run_end)
+			else if (offset >= skb1->ip_defrag_offset +
+						FRAG_CB(skb1)->frag_run_len)
 				rbn = &parent->rb_right;
 			else if (offset >= skb1->ip_defrag_offset &&
 				 end <= skb1_run_end)
