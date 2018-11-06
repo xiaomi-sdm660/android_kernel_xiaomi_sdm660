@@ -555,6 +555,7 @@ static struct ion_secure_cma_buffer_info *__ion_secure_cma_allocate_non_contig(
 	unsigned long ncelems = 0;
 	struct scatterlist *sg;
 	unsigned long total_allocated = 0;
+	unsigned long total_added_to_pool = 0;
 
 	dev_dbg(sheap->dev, "Request buffer allocation len %ld\n", len);
 
@@ -597,6 +598,7 @@ retry:
 				kfree(nc_info);
 				continue;
 			}
+			total_added_to_pool += alloc_size;
 			ret = ion_secure_cma_alloc_from_pool(sheap,
 						&nc_info->phys, alloc_size);
 			if (ret) {
@@ -645,6 +647,11 @@ err2:
 err1:
 	__ion_secure_cma_free_non_contig(sheap, info);
 	kfree(info->table);
+	/*
+	 * There may be a concurrent case that entering this function
+	 * although remaining heap not enough
+	 */
+	__ion_secure_cma_shrink_pool(sheap, total_added_to_pool);
 err:
 	kfree(info);
 	return ION_CMA_ALLOCATE_FAILED;
@@ -658,6 +665,8 @@ static int ion_secure_cma_allocate(struct ion_heap *heap,
 	unsigned long secure_allocation = flags & ION_FLAG_SECURE;
 	struct ion_secure_cma_buffer_info *buf = NULL;
 	unsigned long allow_non_contig = flags & ION_FLAG_ALLOW_NON_CONTIG;
+	struct ion_cma_secure_heap *sheap =
+			container_of(heap, struct ion_cma_secure_heap, heap);
 
 	if (!secure_allocation &&
 		!ion_heap_allow_secure_allocation(heap->type)) {
@@ -680,7 +689,10 @@ static int ion_secure_cma_allocate(struct ion_heap *heap,
 	trace_ion_secure_cma_allocate_start(heap->name, len, align, flags);
 	if (!allow_non_contig)
 		buf = __ion_secure_cma_allocate(heap, buffer, len, align,
-									flags);
+						flags);
+	else if (len > (sheap->heap_size - atomic_read(&sheap->
+			total_allocated) - atomic_read(&sheap->total_leaked)))
+		return -ENOMEM;
 	else
 		buf = __ion_secure_cma_allocate_non_contig(heap, buffer, len,
 								align, flags);
