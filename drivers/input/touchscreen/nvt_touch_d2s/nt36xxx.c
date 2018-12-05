@@ -1480,11 +1480,9 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 	if (tianma_jdi_flag == 0) {
 		memset(fw_version, 0, sizeof(fw_version));
 		sprintf(fw_version, "[FW]0x%02x,[IC]nvt36672", ts->fw_ver);
-		init_tp_fm_info(0, fw_version, "tianma");
 	} else {
 		memset(fw_version, 0, sizeof(fw_version));
 		sprintf(fw_version, "[FW]0x%02x,[IC]nvt36672", ts->fw_ver);
-		init_tp_fm_info(0, fw_version, "jdi");
 	}
 #if defined(CONFIG_FB)
 	ts->fb_notif.notifier_call = fb_notifier_callback;
