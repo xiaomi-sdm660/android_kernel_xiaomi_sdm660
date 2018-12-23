@@ -766,18 +766,7 @@ uint32_t lim_defer_msg(tpAniSirGlobal pMac, tSirMsgQ *pMsg)
 
 	retCode = lim_write_deferred_msg_q(pMac, pMsg);
 
-	if (retCode == TX_SUCCESS) {
-		MTRACE(mac_trace_msg_rx
-			       (pMac, NO_SESSION,
-			       LIM_TRACE_MAKE_RXMSG(pMsg->type, LIM_MSG_DEFERRED));
-		       )
-	} else {
-		pe_err("Dropped lim message (0x%X) Message %s", pMsg->type, lim_msg_str(pMsg->type));
-		MTRACE(mac_trace_msg_rx
-			       (pMac, NO_SESSION,
-			       LIM_TRACE_MAKE_RXMSG(pMsg->type, LIM_MSG_DROPPED));
-		       )
-	}
+	pe_err("Dropped lim message (0x%X) Message %s", pMsg->type, lim_msg_str(pMsg->type));
 
 	return retCode;
 } /*** end lim_defer_msg() ***/
@@ -1364,30 +1353,6 @@ static void lim_process_messages(tpAniSirGlobal mac_ctx, tpSirMsgQ msg)
 #ifdef WLAN_DEBUG
 	mac_ctx->lim.numTot++;
 #endif
-	/*
-	 * MTRACE logs not captured for events received from SME
-	 * SME enums (eWNI_SME_START_REQ) starts with 0x16xx.
-	 * Compare received SME events with SIR_SME_MODULE_ID
-	 */
-	if ((SIR_SME_MODULE_ID ==
-	    (uint8_t)MAC_TRACE_GET_MODULE_ID(msg->type)) &&
-	    (msg->type != eWNI_SME_REGISTER_MGMT_FRAME_REQ)) {
-		MTRACE(mac_trace(mac_ctx, TRACE_CODE_RX_SME_MSG,
-				 NO_SESSION, msg->type));
-	} else {
-		/*
-		 * Omitting below message types as these are too frequent
-		 * and when crash happens we loose critical trace logs
-		 * if these are also logged
-		 */
-		if (msg->type != SIR_CFG_PARAM_UPDATE_IND &&
-		    msg->type != SIR_BB_XPORT_MGMT_MSG &&
-		    msg->type != WMA_RX_SCAN_EVENT)
-			MTRACE(mac_trace_msg_rx(mac_ctx, NO_SESSION,
-				LIM_TRACE_MAKE_RXMSG(msg->type,
-				LIM_MSG_PROCESSED));)
-	}
-
 	switch (msg->type) {
 
 	case SIR_LIM_UPDATE_BEACON:

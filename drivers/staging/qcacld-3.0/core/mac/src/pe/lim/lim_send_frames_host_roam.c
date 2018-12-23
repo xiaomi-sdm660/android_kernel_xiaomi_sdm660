@@ -330,9 +330,6 @@ void lim_send_reassoc_req_with_ft_ies_mgmt_frame(tpAniSirGlobal mac_ctx,
 				 (void **)&frame, (void **)&packet);
 	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
 		pe_session->limMlmState = pe_session->limPrevMlmState;
-		MTRACE(qdf_trace(QDF_MODULE_ID_PE, TRACE_CODE_MLM_STATE,
-				 pe_session->peSessionId,
-				 pe_session->limMlmState));
 		pe_err("Failed to alloc memory %d", bytes);
 		goto end;
 	}
@@ -436,15 +433,11 @@ void lim_send_reassoc_req_with_ft_ies_mgmt_frame(tpAniSirGlobal mac_ctx,
 	lim_diag_event_report(mac_ctx, WLAN_PE_DIAG_REASSOC_START_EVENT,
 			      pe_session, eSIR_SUCCESS, eSIR_SUCCESS);
 #endif
-	MTRACE(qdf_trace(QDF_MODULE_ID_PE, TRACE_CODE_TX_MGMT,
-			 pe_session->peSessionId, mac_hdr->fc.subType));
 	qdf_status = wma_tx_frame(mac_ctx, packet,
 				(uint16_t) (bytes + ft_ies_length),
 				TXRX_FRM_802_11_MGMT, ANI_TXDIR_TODS, 7,
 				lim_tx_complete, frame, tx_flag, sme_sessionid,
 				0, RATEID_DEFAULT);
-	MTRACE(qdf_trace(QDF_MODULE_ID_PE, TRACE_CODE_TX_COMPLETE,
-		       pe_session->peSessionId, qdf_status));
 	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
 		pe_err("Failed to send Re-Assoc Request: %X!", qdf_status);
 	}
@@ -483,8 +476,6 @@ void lim_send_retry_reassoc_req_frame(tpAniSirGlobal pMac,
 	pMac->lim.limTimers.gLimReassocFailureTimer.sessionId =
 		psessionEntry->peSessionId;
 	/* Start reassociation failure timer */
-	MTRACE(qdf_trace(QDF_MODULE_ID_PE, TRACE_CODE_TIMER_ACTIVATE,
-			 psessionEntry->peSessionId, eLIM_REASSOC_FAIL_TIMER));
 	if (tx_timer_activate(&pMac->lim.limTimers.gLimReassocFailureTimer)
 	    != TX_SUCCESS) {
 		/* Could not start reassoc failure timer. */
@@ -691,9 +682,6 @@ void lim_send_reassoc_req_mgmt_frame(tpAniSirGlobal pMac,
 				      (void **)&pPacket);
 	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
 		psessionEntry->limMlmState = psessionEntry->limPrevMlmState;
-		MTRACE(qdf_trace(QDF_MODULE_ID_PE, TRACE_CODE_MLM_STATE,
-				 psessionEntry->peSessionId,
-				 psessionEntry->limMlmState));
 		pe_err("Failed to alloc %d bytes for a ReAssociation Req",
 			nBytes);
 		goto end;
@@ -757,17 +745,12 @@ void lim_send_reassoc_req_mgmt_frame(tpAniSirGlobal pMac,
 	lim_diag_event_report(pMac, WLAN_PE_DIAG_REASSOC_START_EVENT,
 			      psessionEntry, eSIR_SUCCESS, eSIR_SUCCESS);
 #endif
-	MTRACE(qdf_trace(QDF_MODULE_ID_PE, TRACE_CODE_TX_MGMT,
-			 psessionEntry->peSessionId, pMacHdr->fc.subType));
 	qdf_status =
 		wma_tx_frame(pMac, pPacket,
 			   (uint16_t) (sizeof(tSirMacMgmtHdr) + nPayload),
 			   TXRX_FRM_802_11_MGMT, ANI_TXDIR_TODS, 7,
 			   lim_tx_complete, pFrame, txFlag, smeSessionId, 0,
 			   RATEID_DEFAULT);
-	MTRACE(qdf_trace
-		       (QDF_MODULE_ID_PE, TRACE_CODE_TX_COMPLETE,
-		       psessionEntry->peSessionId, qdf_status));
 	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
 		pe_err("Failed to send Re-Association Request: %X!",
 			qdf_status);

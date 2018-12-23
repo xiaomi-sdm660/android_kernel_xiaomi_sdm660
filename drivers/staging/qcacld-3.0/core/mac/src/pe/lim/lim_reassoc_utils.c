@@ -85,9 +85,6 @@ void lim_update_re_assoc_globals(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 	psessionEntry->limAID = pAssocRsp->aid & 0x3FFF;
 	/** Set the State Back to ReAssoc Rsp*/
 	psessionEntry->limMlmState = eLIM_MLM_WT_REASSOC_RSP_STATE;
-	MTRACE(mac_trace
-		       (pMac, TRACE_CODE_MLM_STATE, psessionEntry->peSessionId,
-		       psessionEntry->limMlmState));
 
 }
 
@@ -249,9 +246,6 @@ void lim_handle_add_bss_in_re_assoc_context(tpAniSirGlobal pMac,
 	/** Skipped the DeleteDPH Hash Entry as we need it for the new BSS*/
 	/** Set the MlmState to IDLE*/
 	psessionEntry->limMlmState = eLIM_MLM_IDLE_STATE;
-	MTRACE(mac_trace
-		       (pMac, TRACE_CODE_MLM_STATE, psessionEntry->peSessionId,
-		       psessionEntry->limMlmState));
 	switch (psessionEntry->limSmeState) {
 	case eLIM_SME_WT_REASSOC_STATE: {
 		tpSirAssocRsp assocRsp;
@@ -406,12 +400,8 @@ tSirRetStatus lim_add_ft_sta_self(tpAniSirGlobal mac_ctx, uint16_t assoc_id,
 	QDF_TRACE(QDF_MODULE_ID_PE, QDF_TRACE_LEVEL_DEBUG,
 			"Sending WMA_ADD_STA_REQ (aid %d)",
 			 add_sta_params->assocId);
-	MTRACE(mac_trace_msg_tx(mac_ctx, session_entry->peSessionId,
-			 msg_q.type));
 
 	session_entry->limPrevMlmState = session_entry->limMlmState;
-	MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE,
-		session_entry->peSessionId, eLIM_MLM_WT_ADD_STA_RSP_STATE));
 	session_entry->limMlmState = eLIM_MLM_WT_ADD_STA_RSP_STATE;
 	ret_code = wma_post_ctrl_msg(mac_ctx, &msg_q);
 	if (eSIR_SUCCESS != ret_code) {
@@ -450,9 +440,6 @@ lim_restore_pre_reassoc_state(tpAniSirGlobal pMac,
 		psessionEntry->smeSessionId, protStatusCode, resultCode);
 
 	psessionEntry->limMlmState = eLIM_MLM_LINK_ESTABLISHED_STATE;
-	MTRACE(mac_trace
-		       (pMac, TRACE_CODE_MLM_STATE, psessionEntry->peSessionId,
-		       eLIM_MLM_LINK_ESTABLISHED_STATE));
 
 	/* 'Change' timer for future activations */
 	lim_deactivate_and_change_timer(pMac, eLIM_REASSOC_FAIL_TIMER);
@@ -489,9 +476,6 @@ void lim_post_reassoc_failure(tpAniSirGlobal pMac,
 	tLimMlmReassocCnf mlmReassocCnf;
 
 	psessionEntry->limMlmState = eLIM_MLM_LINK_ESTABLISHED_STATE;
-	MTRACE(mac_trace
-		       (pMac, TRACE_CODE_MLM_STATE, psessionEntry->peSessionId,
-		       eLIM_MLM_LINK_ESTABLISHED_STATE));
 
 	lim_deactivate_and_change_timer(pMac, eLIM_REASSOC_FAIL_TIMER);
 

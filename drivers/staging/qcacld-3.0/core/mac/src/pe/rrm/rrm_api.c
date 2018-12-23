@@ -166,7 +166,6 @@ rrm_send_set_max_tx_power_req(tpAniSirGlobal pMac, int8_t txPower,
 	pe_debug("Sending WMA_SET_MAX_TX_POWER_REQ with power(%d) to HAL",
 		txPower);
 
-	MTRACE(mac_trace_msg_tx(pMac, pSessionEntry->peSessionId, msgQ.type));
 	retCode = wma_post_ctrl_msg(pMac, &msgQ);
 	if (eSIR_SUCCESS != retCode) {
 		pe_err("Posting WMA_SET_MAX_TX_POWER_REQ to HAL failed, reason=%X",
@@ -413,8 +412,6 @@ rrm_process_neighbor_report_response(tpAniSirGlobal pMac,
 	/* Send request to SME. */
 	mmhMsg.type = pSmeNeighborRpt->messageType;
 	mmhMsg.bodyptr = pSmeNeighborRpt;
-	MTRACE(mac_trace(pMac, TRACE_CODE_TX_SME_MSG,
-			 pSessionEntry->peSessionId, mmhMsg.type));
 	status = lim_sys_process_mmh_msg_api(pMac, &mmhMsg, ePROT);
 
 	return status;
@@ -665,8 +662,6 @@ rrm_process_beacon_report_req(tpAniSirGlobal pMac,
 	/* Send request to SME. */
 	mmhMsg.type = eWNI_SME_BEACON_REPORT_REQ_IND;
 	mmhMsg.bodyptr = pSmeBcnReportReq;
-	MTRACE(mac_trace(pMac, TRACE_CODE_TX_SME_MSG,
-			 pSessionEntry->peSessionId, mmhMsg.type));
 	if (eSIR_SUCCESS != lim_sys_process_mmh_msg_api(pMac, &mmhMsg, ePROT))
 		return eRRM_FAILURE;
 	return eRRM_SUCCESS;

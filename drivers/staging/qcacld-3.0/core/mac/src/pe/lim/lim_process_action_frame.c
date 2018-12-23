@@ -106,9 +106,6 @@ void lim_stop_tx_and_switch_channel(tpAniSirGlobal pMac, uint8_t sessionId)
 		lim_process_channel_switch_timeout(pMac);
 		return;
 	}
-	MTRACE(mac_trace
-		       (pMac, TRACE_CODE_TIMER_ACTIVATE, sessionId,
-		       eLIM_CHANNEL_SWITCH_TIMER));
 
 	if (tx_timer_activate(&pMac->lim.limTimers.gLimChannelSwitchTimer) !=
 	    TX_SUCCESS) {
@@ -144,9 +141,6 @@ tSirRetStatus lim_start_channel_switch(tpAniSirGlobal pMac,
 
 	/* Deactivate and change reconfigure the timeout value */
 	/* lim_deactivate_and_change_timer(pMac, eLIM_CHANNEL_SWITCH_TIMER); */
-	MTRACE(mac_trace
-		       (pMac, TRACE_CODE_TIMER_DEACTIVATE, psessionEntry->peSessionId,
-		       eLIM_CHANNEL_SWITCH_TIMER));
 	if (tx_timer_deactivate(&pMac->lim.limTimers.gLimChannelSwitchTimer) !=
 	    eSIR_SUCCESS) {
 		pe_err("tx_timer_deactivate failed!");
@@ -164,18 +158,12 @@ tSirRetStatus lim_start_channel_switch(tpAniSirGlobal pMac,
 	/* If quiet is running, chance is there to resume tx on its timeout. */
 	/* so stop timer for a safer side. */
 	if (psessionEntry->gLimSpecMgmt.quietState == eLIM_QUIET_BEGIN) {
-		MTRACE(mac_trace
-			       (pMac, TRACE_CODE_TIMER_DEACTIVATE,
-			       psessionEntry->peSessionId, eLIM_QUIET_TIMER));
 		if (tx_timer_deactivate(&pMac->lim.limTimers.gLimQuietTimer) !=
 		    TX_SUCCESS) {
 			pe_err("tx_timer_deactivate failed");
 			return eSIR_FAILURE;
 		}
 	} else if (psessionEntry->gLimSpecMgmt.quietState == eLIM_QUIET_RUNNING) {
-		MTRACE(mac_trace
-			       (pMac, TRACE_CODE_TIMER_DEACTIVATE,
-			       psessionEntry->peSessionId, eLIM_QUIET_BSS_TIMER));
 		if (tx_timer_deactivate(&pMac->lim.limTimers.gLimQuietBssTimer)
 		    != TX_SUCCESS) {
 			pe_err("tx_timer_deactivate failed");

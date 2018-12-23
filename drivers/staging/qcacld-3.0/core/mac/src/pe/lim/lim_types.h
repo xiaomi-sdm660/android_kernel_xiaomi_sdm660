@@ -749,8 +749,6 @@ lim_post_sme_message(tpAniSirGlobal pMac, uint32_t msgType, uint32_t *pMsgBuf)
 	msg.bodyptr = pMsgBuf;
 	msg.bodyval = 0;
 	if (msgType > eWNI_SME_MSG_TYPES_BEGIN) {
-		MTRACE(mac_trace(pMac, TRACE_CODE_TX_SME_MSG, NO_SESSION,
-				 msg.type));
 		lim_process_sme_req_messages(pMac, &msg);
 	} else {
 		lim_process_mlm_rsp_messages(pMac, msgType, pMsgBuf);
@@ -794,7 +792,6 @@ lim_post_mlm_message(tpAniSirGlobal pMac, uint32_t msgType, uint32_t *pMsgBuf)
 	msg.type = (uint16_t) msgType;
 	msg.bodyptr = pMsgBuf;
 	msg.bodyval = 0;
-	MTRACE(mac_trace_msg_rx(pMac, NO_SESSION, msg.type));
 	lim_process_mlm_req_messages(pMac, &msg);
 } /*** end lim_post_mlm_message() ***/
 
