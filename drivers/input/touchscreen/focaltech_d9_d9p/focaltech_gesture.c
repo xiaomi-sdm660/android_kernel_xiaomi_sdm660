@@ -449,7 +449,7 @@ static int fts_gesture_init(struct fts_ts_data *ts_data)
 	__set_bit(KEY_WAKEUP, input_dev->keybit);
 
 	fts_create_gesture_sysfs(client);
-	fts_gesture_data.enabled = false;
+	fts_gesture_data.enabled = true;
 
 	FTS_FUNC_EXIT();
 	return 0;
