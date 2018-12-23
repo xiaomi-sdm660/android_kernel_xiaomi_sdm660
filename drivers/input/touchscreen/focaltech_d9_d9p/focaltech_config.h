@@ -110,7 +110,7 @@
  * Gesture function enable
  * Default: Disable
  */
-#define FTS_GESTURE_EN                          0
+#define FTS_GESTURE_EN                          1
 
 /*
  * ESD check & protection
