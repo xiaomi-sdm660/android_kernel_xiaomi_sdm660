@@ -106,10 +106,6 @@ lim_process_beacon_frame(tpAniSirGlobal mac_ctx, uint8_t *rx_pkt_info,
 			sizeof(uint64_t));
 		session->currentBssBeaconCnt++;
 	}
-	MTRACE(mac_trace(mac_ctx,
-		TRACE_CODE_RX_MGMT_TSF, 0, bcn_ptr->timeStamp[0]);)
-	MTRACE(mac_trace(mac_ctx, TRACE_CODE_RX_MGMT_TSF, 0,
-		bcn_ptr->timeStamp[1]);)
 	lim_check_and_add_bss_description(mac_ctx, bcn_ptr,
 				rx_pkt_info, false, false);
 

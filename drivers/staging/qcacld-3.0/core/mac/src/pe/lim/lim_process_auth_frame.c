@@ -809,9 +809,6 @@ static void lim_process_auth_frame_type2(tpAniSirGlobal mac_ctx,
 				defaultkey, plainbody,
 				encr_auth_frame, key_length);
 		pe_session->limMlmState = eLIM_MLM_WT_AUTH_FRAME4_STATE;
-		MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE,
-					pe_session->peSessionId,
-					pe_session->limMlmState));
 		lim_send_auth_mgmt_frame(mac_ctx,
 				(tpSirMacAuthFrameBody)encr_auth_frame,
 				mac_hdr->sa, rx_auth_frm_body->length,

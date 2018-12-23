@@ -63,6 +63,8 @@
 #include "cds_concurrency.h"
 #include "nan_datapath.h"
 
+#define NO_SESSION 0xFF
+
 static void __lim_init_scan_vars(tpAniSirGlobal pMac)
 {
 	pMac->lim.gLimUseScanModeForLearnMode = 1;
@@ -164,8 +166,6 @@ static void __lim_init_states(tpAniSirGlobal pMac)
 	pMac->lim.gLimPrevSmeState = eLIM_SME_OFFLINE_STATE;
 
 	/* / MLM State visible across all Sirius modules */
-	MTRACE(mac_trace
-		       (pMac, TRACE_CODE_MLM_STATE, NO_SESSION, eLIM_MLM_IDLE_STATE));
 	pMac->lim.gLimMlmState = eLIM_MLM_IDLE_STATE;
 
 	/* / Previous MLM State */
@@ -473,10 +473,6 @@ tSirRetStatus lim_start(tpAniSirGlobal pMac)
 
 	if (pMac->lim.gLimSmeState == eLIM_SME_OFFLINE_STATE) {
 		pMac->lim.gLimSmeState = eLIM_SME_IDLE_STATE;
-
-		MTRACE(mac_trace
-			       (pMac, TRACE_CODE_SME_STATE, NO_SESSION,
-			       pMac->lim.gLimSmeState));
 
 		/* By default do not return after first scan match */
 		pMac->lim.gLimReturnAfterFirstMatch = 0;
@@ -2334,8 +2330,6 @@ tMgmtFrmDropReason lim_is_pkt_candidate_for_drop(tpAniSirGlobal pMac,
 	if ((subType == SIR_MAC_MGMT_BEACON) ||
 	    (subType == SIR_MAC_MGMT_PROBE_RSP)) {
 		if (lim_is_beacon_miss_scenario(pMac, pRxPacketInfo)) {
-			MTRACE(mac_trace(pMac, TRACE_CODE_INFO_LOG, 0,
-					 eLOG_NODROP_MISSED_BEACON_SCENARIO));
 			return eMGMT_DROP_NO_DROP;
 		}
 		if (lim_is_system_in_scan_state(pMac))

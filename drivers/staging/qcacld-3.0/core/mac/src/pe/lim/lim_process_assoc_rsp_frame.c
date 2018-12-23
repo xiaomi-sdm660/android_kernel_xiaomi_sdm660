@@ -1038,9 +1038,6 @@ assocReject:
 			session_entry->peSessionId,
 			assoc_cnf.resultCode, MAC_ADDR_ARRAY(hdr->sa));
 		session_entry->limMlmState = eLIM_MLM_IDLE_STATE;
-		MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE,
-			session_entry->peSessionId,
-			session_entry->limMlmState));
 		if (session_entry->pLimMlmJoinReq) {
 			qdf_mem_free(session_entry->pLimMlmJoinReq);
 			session_entry->pLimMlmJoinReq = NULL;

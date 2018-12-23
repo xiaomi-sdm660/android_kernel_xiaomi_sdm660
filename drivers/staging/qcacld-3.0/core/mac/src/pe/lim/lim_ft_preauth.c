@@ -284,8 +284,6 @@ void lim_perform_ft_pre_auth(tpAniSirGlobal pMac, QDF_STATUS status,
 		pe_err("FT Auth Rsp Timer Start Failed");
 		goto preauth_fail;
 	}
-	MTRACE(mac_trace(pMac, TRACE_CODE_TIMER_ACTIVATE,
-		psessionEntry->peSessionId, eLIM_FT_PREAUTH_RSP_TIMER));
 
 	pe_debug("FT Auth Rsp Timer Started");
 #ifdef FEATURE_WLAN_DIAG_SUPPORT

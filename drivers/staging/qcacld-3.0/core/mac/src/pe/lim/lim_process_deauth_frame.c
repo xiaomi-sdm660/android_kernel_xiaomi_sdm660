@@ -364,10 +364,6 @@ void lim_perform_deauth(tpAniSirGlobal mac_ctx, tpPESession pe_session,
 				mlmDeauthInd.reasonCode = rc;
 
 			pe_session->limMlmState = eLIM_MLM_IDLE_STATE;
-			MTRACE(mac_trace
-				(mac_ctx, TRACE_CODE_MLM_STATE,
-				 pe_session->peSessionId,
-				 pe_session->limMlmState));
 
 			lim_post_sme_message(mac_ctx,
 					LIM_MLM_DEAUTH_IND,
@@ -400,10 +396,6 @@ void lim_perform_deauth(tpAniSirGlobal mac_ctx, tpPESession pe_session,
 
 			pe_session->limMlmState =
 			pe_session->limPrevMlmState;
-			MTRACE(mac_trace
-				(mac_ctx, TRACE_CODE_MLM_STATE,
-				 pe_session->peSessionId,
-				 pe_session->limMlmState));
 
 			/* Deactive Association response timeout */
 			lim_deactivate_and_change_timer(mac_ctx,

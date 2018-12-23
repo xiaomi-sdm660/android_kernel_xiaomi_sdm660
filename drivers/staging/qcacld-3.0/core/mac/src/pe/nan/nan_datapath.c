@@ -575,7 +575,6 @@ static QDF_STATUS lim_process_sme_ndp_initiator_req(tpAniSirGlobal mac_ctx,
 	msg.bodyval = 0;
 
 	pe_debug("sending WDA_NDP_INITIATOR_REQ to WMA");
-	MTRACE(mac_trace_msg_tx(mac_ctx, NO_SESSION, msg.type));
 
 	if (eSIR_SUCCESS != wma_post_ctrl_msg(mac_ctx, &msg))
 		pe_err("wma_post_ctrl_msg failed");
@@ -620,7 +619,6 @@ static QDF_STATUS lim_process_sme_ndp_responder_req(tpAniSirGlobal mac_ctx,
 	msg.bodyval = 0;
 
 	pe_debug("sending SIR_HAL_NDP_RESPONDER_REQ to WMA");
-	MTRACE(mac_trace_msg_tx(mac_ctx, NO_SESSION, msg.type));
 
 	if (eSIR_SUCCESS != wma_post_ctrl_msg(mac_ctx, &msg)) {
 		pe_err("wma_post_ctrl_msg failed");
@@ -675,7 +673,6 @@ QDF_STATUS lim_process_sme_ndp_data_end_req(tpAniSirGlobal mac_ctx,
 	msg.bodyval = 0;
 
 	pe_debug("sending SIR_HAL_NDP_END_REQ to WMA");
-	MTRACE(mac_trace_msg_tx(mac_ctx, NO_SESSION, msg.type));
 
 	if (eSIR_SUCCESS != wma_post_ctrl_msg(mac_ctx, &msg)) {
 		pe_err("wma_post_ctrl_msg failed");
@@ -740,9 +737,6 @@ void lim_process_ndi_mlm_add_bss_rsp(tpAniSirGlobal mac_ctx, tpSirMsgQ lim_msgq,
 	if (QDF_STATUS_SUCCESS == add_bss_params->status) {
 		pe_debug("WDA_ADD_BSS_RSP returned QDF_STATUS_SUCCESS");
 		session_entry->limMlmState = eLIM_MLM_BSS_STARTED_STATE;
-		MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE,
-			session_entry->peSessionId,
-			session_entry->limMlmState));
 		session_entry->bssIdx = (uint8_t) add_bss_params->bssIdx;
 		session_entry->limSystemRole = eLIM_NDI_ROLE;
 		session_entry->statypeForBss = STA_ENTRY_SELF;

@@ -81,6 +81,8 @@
 #define MIN_VENDOR_SPECIFIC_IE_SIZE     5
 #endif
 
+#define NO_SESSION 0xFF
+
 static tSirRetStatus lim_tdls_setup_add_sta(tpAniSirGlobal pMac,
 		tSirTdlsAddStaReq * pAddStaReq, tpPESession psessionEntry);
 

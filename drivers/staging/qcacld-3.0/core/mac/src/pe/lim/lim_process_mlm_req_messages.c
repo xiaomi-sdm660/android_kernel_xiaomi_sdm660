@@ -605,8 +605,6 @@ lim_mlm_add_bss(tpAniSirGlobal mac_ctx,
 
 	/* Set a new state for MLME */
 	session->limMlmState = eLIM_MLM_WT_ADD_BSS_RSP_STATE;
-	MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE, session->peSessionId,
-			 session->limMlmState));
 
 	/* pass on the session persona to hal */
 	addbss_param->halPersona = session->pePersona;
@@ -664,7 +662,6 @@ lim_mlm_add_bss(tpAniSirGlobal mac_ctx,
 	msg_buf.reserved = 0;
 	msg_buf.bodyptr = addbss_param;
 	msg_buf.bodyval = 0;
-	MTRACE(mac_trace_msg_tx(mac_ctx, session->peSessionId, msg_buf.type));
 
 	pe_debug("Sending WMA_ADD_BSS_REQ...");
 	retcode = wma_post_ctrl_msg(mac_ctx, &msg_buf);
@@ -811,8 +808,6 @@ static void lim_post_join_set_link_state_callback(tpAniSirGlobal mac,
 	return;
 
 failure:
-	MTRACE(mac_trace(mac, TRACE_CODE_MLM_STATE, session_entry->peSessionId,
-			 session_entry->limMlmState));
 	session_entry->limMlmState = eLIM_MLM_IDLE_STATE;
 	mlm_join_cnf.resultCode = eSIR_SME_PEER_CREATE_FAILED;
 	mlm_join_cnf.sessionId = session_entry->peSessionId;
@@ -879,8 +874,6 @@ lim_process_mlm_post_join_suspend_link(tpAniSirGlobal mac_ctx,
 			session->pLimMlmJoinReq->bssDescription.bssId, LOGE);
 		mlm_join_cnf.resultCode = eSIR_SME_RESOURCES_UNAVAILABLE;
 		session->limMlmState = eLIM_MLM_IDLE_STATE;
-		MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE,
-				 session->peSessionId, session->limMlmState));
 		qdf_mem_free(pe_session_param);
 		goto error;
 	}
@@ -1260,8 +1253,6 @@ static void lim_process_mlm_auth_req(tpAniSirGlobal mac_ctx, uint32_t *msg)
 	} else
 		session->limMlmState = eLIM_MLM_WT_AUTH_FRAME2_STATE;
 
-	MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE, session->peSessionId,
-		       session->limMlmState));
 
 	/* Mark auth algo as open when auth type is SAE and PMK is cached */
 	if ((mac_ctx->lim.gpLimMlmAuthReq->authType == eSIR_AUTH_TYPE_SAE) &&
@@ -1295,16 +1286,12 @@ static void lim_process_mlm_auth_req(tpAniSirGlobal mac_ctx, uint32_t *msg)
 								  session_id;
 	 lim_deactivate_and_change_timer(mac_ctx, eLIM_AUTH_RETRY_TIMER);
 	/* Activate Auth failure timer */
-	MTRACE(mac_trace(mac_ctx, TRACE_CODE_TIMER_ACTIVATE,
-			 session->peSessionId, eLIM_AUTH_FAIL_TIMER));
 	if (tx_timer_activate(&mac_ctx->lim.limTimers.gLimAuthFailureTimer)
 	    != TX_SUCCESS) {
 		pe_err("could not start Auth failure timer");
 		/* Cleanup as if auth timer expired */
 		lim_process_auth_failure_timeout(mac_ctx);
 	} else {
-		MTRACE(mac_trace(mac_ctx, TRACE_CODE_TIMER_ACTIVATE,
-			   session->peSessionId, eLIM_AUTH_RETRY_TIMER));
 		/* Activate Auth Retry timer */
 		if (tx_timer_activate
 		    (&mac_ctx->lim.limTimers.g_lim_periodic_auth_retry_timer)
@@ -1404,9 +1391,6 @@ static void lim_process_mlm_assoc_req(tpAniSirGlobal mac_ctx, uint32_t *msg_buf)
 
 	session_entry->limPrevMlmState = session_entry->limMlmState;
 	session_entry->limMlmState = eLIM_MLM_WT_ASSOC_RSP_STATE;
-	MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE,
-			 session_entry->peSessionId,
-			 session_entry->limMlmState));
 	pe_debug("SessionId:%d Sending Assoc_Req Frame",
 		session_entry->peSessionId);
 
@@ -1414,8 +1398,6 @@ static void lim_process_mlm_assoc_req(tpAniSirGlobal mac_ctx, uint32_t *msg_buf)
 	lim_send_assoc_req_mgmt_frame(mac_ctx, mlm_assoc_req, session_entry);
 
 	/* Start association failure timer */
-	MTRACE(mac_trace(mac_ctx, TRACE_CODE_TIMER_ACTIVATE,
-			 session_entry->peSessionId, eLIM_ASSOC_FAIL_TIMER));
 	if (tx_timer_activate(&mac_ctx->lim.limTimers.gLimAssocFailureTimer)
 	    != TX_SUCCESS) {
 		pe_warn("SessionId:%d couldn't start Assoc failure timer",
@@ -1892,9 +1874,6 @@ lim_process_mlm_deauth_req_ntf(tpAniSirGlobal mac_ctx,
 				/* Prepare and Send LIM_MLM_DEAUTH_CNF */
 				mlm_deauth_cnf.resultCode = eSIR_SME_SUCCESS;
 				session->limMlmState = eLIM_MLM_IDLE_STATE;
-				MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE,
-						 session->peSessionId,
-						 session->limMlmState));
 				goto end;
 			}
 			break;
@@ -2251,8 +2230,6 @@ lim_process_mlm_set_keys_req(tpAniSirGlobal mac_ctx, uint32_t *msg_buf)
 	if (qdf_is_macaddr_broadcast(&mlm_set_keys_req->peer_macaddr)) {
 		session->limPrevMlmState = session->limMlmState;
 		session->limMlmState = eLIM_MLM_WT_SET_BSS_KEY_STATE;
-		MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE,
-				 session->peSessionId, session->limMlmState));
 		pe_debug("Trying to set Group Keys...%d",
 			session->peSessionId);
 		/* Package WMA_SET_BSSKEY_REQ message parameters */
@@ -2374,8 +2351,6 @@ void lim_process_join_failure_timeout(tpAniSirGlobal mac_ctx)
 		mlm_join_cnf.resultCode = eSIR_SME_JOIN_TIMEOUT_RESULT_CODE;
 		mlm_join_cnf.protStatusCode = eSIR_MAC_UNSPEC_FAILURE_STATUS;
 		session->limMlmState = eLIM_MLM_IDLE_STATE;
-		MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE,
-				 session->peSessionId, session->limMlmState));
 		/* Update PE session Id */
 		mlm_join_cnf.sessionId = session->peSessionId;
 		/* Freeup buffer allocated to join request */
@@ -2688,8 +2663,6 @@ void lim_process_assoc_failure_timeout(tpAniSirGlobal mac_ctx,
 	     && (session->limMlmState == eLIM_MLM_WT_FT_REASSOC_RSP_STATE))) {
 		pe_err("(Re)Assoc Failure Timeout occurred");
 		session->limMlmState = eLIM_MLM_IDLE_STATE;
-		MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE,
-			session->peSessionId, session->limMlmState));
 		/* Change timer for future activations */
 		lim_deactivate_and_change_timer(mac_ctx, eLIM_ASSOC_FAIL_TIMER);
 		/*
@@ -2732,8 +2705,6 @@ void lim_process_assoc_failure_timeout(tpAniSirGlobal mac_ctx,
 		 * Set BSSID to currently associated AP address.
 		 */
 		session->limMlmState = session->limPrevMlmState;
-		MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE,
-				 session->peSessionId, session->limMlmState));
 		lim_restore_pre_reassoc_state(mac_ctx,
 				eSIR_SME_REASSOC_TIMEOUT_RESULT_CODE,
 				eSIR_MAC_UNSPEC_FAILURE_STATUS, session);
@@ -2758,8 +2729,6 @@ void lim_complete_mlm_scan(tpAniSirGlobal mac_ctx, tSirResultCodes ret_code)
 
 	/* Restore previous MLM state */
 	mac_ctx->lim.gLimMlmState = mac_ctx->lim.gLimPrevMlmState;
-	MTRACE(mac_trace(mac_ctx, TRACE_CODE_MLM_STATE, NO_SESSION,
-			 mac_ctx->lim.gLimMlmState));
 	lim_restore_pre_scan_state(mac_ctx);
 	/* Free up mac_ctx->lim.gLimMlmScanReq */
 	if (NULL != mac_ctx->lim.gpLimMlmScanReq) {

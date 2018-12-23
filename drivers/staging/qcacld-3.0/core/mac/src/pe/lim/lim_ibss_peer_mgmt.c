@@ -1337,10 +1337,6 @@ void lim_ibss_del_bss_rsp(tpAniSirGlobal pMac, void *msg, tpPESession psessionEn
 
 	psessionEntry->limMlmState = eLIM_MLM_IDLE_STATE;
 
-	MTRACE(mac_trace
-		       (pMac, TRACE_CODE_MLM_STATE, psessionEntry->peSessionId,
-		       psessionEntry->limMlmState));
-
 	psessionEntry->limSystemRole = eLIM_STA_ROLE;
 
 	/* Change the short slot operating mode to Default (which is 1 for now) so that when IBSS starts next time with Libra
