@@ -169,18 +169,6 @@ struct fts_ts_data {
 extern struct fts_ts_data *fts_data;
 extern u8 fts_chipid;
 
-/* Gesture functions */
-#if FTS_GESTURE_EN
-int fts_gesture_init(struct fts_ts_data *ts_data);
-int fts_gesture_exit(struct i2c_client *client);
-void fts_gesture_recovery(struct i2c_client *client);
-int fts_gesture_readdata(struct fts_ts_data *ts_data);
-int fts_gesture_suspend(struct i2c_client *i2c_client);
-int fts_gesture_resume(struct i2c_client *client);
-int fts_input_event(struct input_dev *dev, unsigned int type, unsigned int code, int value);
-
-#endif
-
 /* Apk and functions */
 #if FTS_APK_NODE_EN
 int fts_create_apk_debug_channel(struct fts_ts_data *);
