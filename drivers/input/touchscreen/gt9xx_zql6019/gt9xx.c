@@ -34,9 +34,6 @@
 #define GTP_PEN_BUTTON1		BTN_STYLUS
 #define GTP_PEN_BUTTON2		BTN_STYLUS2
 
-#define WAKEUP_OFF 4
-#define WAKEUP_ON 5
-
 #if GTP_CHARGER_SWITCH
 u8 config_charger[GTP_CONFIG_MAX_LENGTH + GTP_ADDR_LENGTH]
 			    = {GTP_REG_CONFIG_DATA >> 8, GTP_REG_CONFIG_DATA & 0xff};
@@ -86,6 +83,25 @@ static void gtp_esd_check_func(struct work_struct *);
 static int gtp_init_ext_watchdog(struct i2c_client *client);
 static int gtp_power_on(struct goodix_ts_data *ts);
 static int gtp_power_off(struct goodix_ts_data *ts);
+
+#define WAKEUP_OFF 4
+#define WAKEUP_ON 5
+bool GTP_gesture_func_on = false;
+
+int gtp_gesture_switch(struct input_dev *dev, unsigned int type, unsigned int code, int value)
+{
+	unsigned int input ;
+	if (type == EV_SYN && code == SYN_CONFIG) {
+		if (value == WAKEUP_OFF) {
+			GTP_gesture_func_on = false;
+			input = 0;
+		} else if (value == WAKEUP_ON) {
+			GTP_gesture_func_on  = true;
+			input = 1;
+		}
+	}
+	return 0;
+}
 
 /*
  * return: 2 - ok, < 0 - i2c transfer error
@@ -1372,6 +1388,30 @@ static ssize_t gtp_reset_store(struct device *dev,
 }
 static DEVICE_ATTR(reset, 0220, NULL, gtp_reset_store);
 
+static ssize_t gt9xx_enable_dt2w_show(struct device *dev,
+        struct device_attribute *attr, char *buf)
+{
+        const char c = GTP_gesture_func_on  ? '1' : '0';
+        return sprintf(buf, "%c\n", c);
+}
+
+static ssize_t gt9xx_enable_dt2w_store(struct device *dev,
+        struct device_attribute *attr, const char *buf, size_t count)
+{
+        int i;
+
+        if (sscanf(buf, "%u", &i) == 1 && i < 2) {
+                GTP_gesture_func_on = (i == 1);
+                return count;
+        } else {
+                dev_dbg(dev, "enable_dt2w write error\n");
+                return -EINVAL;
+        }
+}
+
+static DEVICE_ATTR(enable_dt2w, (S_IRUGO | S_IWUSR | S_IWGRP), gt9xx_enable_dt2w_show,
+                   gt9xx_enable_dt2w_store);
+
 static struct attribute *gtp_attrs[] = {
 	&dev_attr_workmode.attr,
 	&dev_attr_productinfo.attr,
@@ -1382,6 +1422,7 @@ static struct attribute *gtp_attrs[] = {
 
 	&dev_attr_drv_irq.attr,
 	&dev_attr_reset.attr,
+	&dev_attr_enable_dt2w.attr,
 	NULL
 };
 
@@ -1750,23 +1791,6 @@ static int gtp_request_irq(struct goodix_ts_data *ts)
 	return ret;
 }
 
-static int gtp_input_event(struct input_dev *dev, unsigned int type, unsigned int code, int value)
-{
-	struct goodix_ts_data *ts = i2c_get_clientdata(i2c_connect_client);
-	dev_info(&ts->client->dev,"get event\n");
-	if (type == EV_SYN && code == SYN_CONFIG)
-	{
-		if (value == WAKEUP_OFF){
-			ts->pdata->slide_wakeup = false;
-
-		}else if (value == WAKEUP_ON){
-			ts->pdata->slide_wakeup  = true;
-
-		}
-	}
-	return 0;
-}
-
 static s8 gtp_request_input_dev(struct goodix_ts_data *ts)
 {
 	s8 ret = -1;
@@ -1827,7 +1851,7 @@ static s8 gtp_request_input_dev(struct goodix_ts_data *ts)
 	ts->input_dev->id.vendor = 0xDEAD;
 	ts->input_dev->id.product = 0xBEEF;
 	ts->input_dev->id.version = 10427;
-	ts->input_dev->event = gtp_input_event;
+	ts->input_dev->event = gtp_gesture_switch;
 
 	ret = input_register_device(ts->input_dev);
 	if (ret) {
@@ -2278,7 +2302,7 @@ static int gtp_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		if (ret < 0)
 			dev_err(&client->dev, "Failed set irq wake\n");
 	}
-	pdata->slide_wakeup = false;
+
 	gtp_register_powermanager(ts);
 
 	ret = gtp_create_file(ts);
@@ -2449,7 +2473,8 @@ static void gtp_suspend(struct goodix_ts_data *ts)
 	gtp_charger_off(ts);
 #endif
 	gtp_work_control_enable(ts, false);
-	if (ts->pdata->slide_wakeup) {
+	if ((ts->pdata->slide_wakeup) && GTP_gesture_func_on) {
+		dev_info(&ts->client->dev,"gesture func on\n");
 		ret = gtp_enter_doze(ts);
 		gtp_work_control_enable(ts, true);
 		enable_irq(ts->client->irq);
