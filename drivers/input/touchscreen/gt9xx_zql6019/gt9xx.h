@@ -363,7 +363,7 @@ config your key info here */
 #define GT91XX_CONFIG_PROC_FILE	"gt9xx_config"
 
 #define GT9XX_LOCKDOWN_PROC_FILE	"tp_lockdown_info"
-
+#define GT9XX_WAKEUP_GESTURE_PROC	"tp_wakeup_gesture"
 #define GTP_POLL_TIME		10
 #define GTP_CONFIG_MIN_LENGTH	186
 #define GTP_ESD_CHECK_VALUE	0xAA
