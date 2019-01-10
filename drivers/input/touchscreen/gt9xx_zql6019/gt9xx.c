@@ -21,6 +21,7 @@
 
 #include <linux/irq.h>
 #include <linux/platform_device.h>
+#include <linux/proc_fs.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/input/mt.h>
 #include "gt9xx.h"
@@ -1459,6 +1460,40 @@ exit_free_config_proc:
 	return -ENODEV;
 }
 
+static int gtp_proc_init(struct kobject *sysfs_node_parent) {
+	int ret = 0;
+	char *driver_path;
+
+	struct proc_dir_entry *proc_entry_ts;
+
+	// allocate memory for input device path
+	driver_path = kzalloc(PATH_MAX, GFP_KERNEL);
+	if(!driver_path) {
+		ret = -ENOMEM;
+		pr_err("%s: failed to allocate memory\n", __func__);
+		goto exit;
+	}
+
+	// store input device path
+	sprintf(driver_path, "/sys%s",
+			kobject_get_path(sysfs_node_parent, GFP_KERNEL));
+
+	pr_debug("%s: driver_path:%s\n", __func__, driver_path);
+
+	// symlink /proc/touchscreen to input device
+	proc_entry_ts = proc_symlink("touchscreen", NULL, driver_path);
+	if (!proc_entry_ts) {
+		ret = -ENOMEM;
+		pr_err("%s: failed to symlink to touchscreen\n", __func__);
+		goto free_driver_path;
+	}
+
+free_driver_path:
+	kfree(driver_path);
+exit:
+	return ret;
+}
+
 s32 gtp_get_fw_info(struct i2c_client *client, struct goodix_fw_info *fw_info)
 {
 	s32 ret = -1;
@@ -2309,6 +2344,11 @@ static int gtp_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	if (ret) {
 		dev_info(&client->dev, "Failed create attributes file");
 		goto exit_powermanager;
+	}
+
+	ret = gtp_proc_init(&client->dev.kobj);
+	if (ret) {
+		dev_info(&client->dev, "symlink sysfs node fail");
 	}
 
 #ifdef CONFIG_TOUCHSCREEN_GT9XX_TOOL
