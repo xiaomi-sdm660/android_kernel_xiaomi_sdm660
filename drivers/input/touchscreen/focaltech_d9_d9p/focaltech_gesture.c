@@ -75,13 +75,13 @@ static ssize_t fts_gesture_buf_store(struct device *dev, struct device_attribute
  *   write example:echo 01 > fts_gesture_mode   ---write gesture mode to 01
  *
  */
-static DEVICE_ATTR(fts_gesture_mode, S_IRUGO | S_IWUSR, fts_gesture_show, fts_gesture_store);
+static DEVICE_ATTR(enable_dt2w, S_IRUGO | S_IWUSR, fts_gesture_show, fts_gesture_store);
 /*
  *   read example: cat fts_gesture_buf        ---read gesture buf
  */
 static DEVICE_ATTR(fts_gesture_buf, S_IRUGO | S_IWUSR, fts_gesture_buf_show, fts_gesture_buf_store);
 static struct attribute *fts_gesture_mode_attrs[] = {
-	&dev_attr_fts_gesture_mode.attr,
+	&dev_attr_enable_dt2w.attr,
 	&dev_attr_fts_gesture_buf.attr,
 	NULL,
 };
