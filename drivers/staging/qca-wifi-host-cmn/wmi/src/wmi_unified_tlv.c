@@ -12389,7 +12389,7 @@ QDF_STATUS send_set_arp_stats_req_cmd_tlv(wmi_unified_t wmi_handle,
 		goto error;
 	}
 
-	WMI_LOGI(FL("set arp stats flag=%d, vdev=%d"),
+	WMI_LOGD(FL("set arp stats flag=%d, vdev=%d"),
 		 req_buf->flag, req_buf->vdev_id);
 	return QDF_STATUS_SUCCESS;
 error:
