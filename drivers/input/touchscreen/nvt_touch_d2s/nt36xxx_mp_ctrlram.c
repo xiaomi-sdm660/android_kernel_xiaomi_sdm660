@@ -25,7 +25,6 @@
 
 #include "nt36xxx.h"
 #include "nt36xxx_mp_ctrlram.h"
-#include "../lct_ctp_selftest.h"
 #if NVT_TOUCH_MP
 
 #define NORMAL_MODE 0x00
