@@ -179,6 +179,7 @@
 		qcom,mdss-dsi-panel-status-read-length = <1>;
 		qcom,mdss-dsi-panel-status-value = <0x9c>;
 		qcom,mdss-dsi-panel-max-error-count = <3>;
+    qcom,ulps-enabled;
 
 	};
 };
