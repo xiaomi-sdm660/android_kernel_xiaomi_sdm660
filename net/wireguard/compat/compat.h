@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+ * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
  */
 
 #ifndef _WG_COMPAT_H
@@ -647,7 +647,7 @@ struct _____dummy_container { char dev; };
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0)
 #define timespec64 timespec
-#define getnstimeofday64 getnstimeofday
+#define ktime_get_real_ts64 ktime_get_real_ts
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0)
@@ -746,6 +746,24 @@ static inline void crypto_xor_cpy(u8 *dst, const u8 *src1, const u8 *src2,
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0)
 #define hlist_add_behind(a, b) hlist_add_after(b, a)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)
+#define totalram_pages() totalram_pages
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
+struct __kernel_timespec {
+	int64_t tv_sec, tv_nsec;
+};
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(5, 1, 0)
+#include <linux/time64.h>
+#ifdef __kernel_timespec
+#undef __kernel_timespec
+struct __kernel_timespec {
+	int64_t tv_sec, tv_nsec;
+};
+#endif
 #endif
 
 /* https://github.com/ClangBuiltLinux/linux/issues/7 */

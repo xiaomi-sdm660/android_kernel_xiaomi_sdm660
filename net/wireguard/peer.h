@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+ * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
  */
 
 #ifndef _WG_PEER_H
@@ -56,7 +56,7 @@ struct wg_peer {
 	u16 persistent_keepalive_interval;
 	bool timer_need_another_keepalive;
 	bool sent_lastminute_handshake;
-	struct timespec walltime_last_handshake;
+	struct timespec64 walltime_last_handshake;
 	struct kref refcount;
 	struct rcu_head rcu;
 	struct list_head peer_list;

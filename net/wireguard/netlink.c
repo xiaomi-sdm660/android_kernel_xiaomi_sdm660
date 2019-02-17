@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+ * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
  */
 
 #include "netlink.h"
@@ -33,7 +33,7 @@ static const struct nla_policy peer_policy[WGPEER_A_MAX + 1] = {
 	[WGPEER_A_FLAGS]				= { .type = NLA_U32 },
 	[WGPEER_A_ENDPOINT]				= { .len = sizeof(struct sockaddr) },
 	[WGPEER_A_PERSISTENT_KEEPALIVE_INTERVAL]	= { .type = NLA_U16 },
-	[WGPEER_A_LAST_HANDSHAKE_TIME]			= { .len = sizeof(struct timespec) },
+	[WGPEER_A_LAST_HANDSHAKE_TIME]			= { .len = sizeof(struct __kernel_timespec) },
 	[WGPEER_A_RX_BYTES]				= { .type = NLA_U64 },
 	[WGPEER_A_TX_BYTES]				= { .type = NLA_U64 },
 	[WGPEER_A_ALLOWEDIPS]				= { .type = NLA_NESTED },
@@ -107,6 +107,11 @@ static int get_peer(struct wg_peer *peer, struct allowedips_cursor *rt_cursor,
 		goto err;
 
 	if (!rt_cursor->seq) {
+		const struct __kernel_timespec last_handshake = {
+			.tv_sec = peer->walltime_last_handshake.tv_sec,
+			.tv_nsec = peer->walltime_last_handshake.tv_nsec
+		};
+
 		down_read(&peer->handshake.lock);
 		fail = nla_put(skb, WGPEER_A_PRESHARED_KEY,
 			       NOISE_SYMMETRIC_KEY_LEN,
@@ -116,8 +121,7 @@ static int get_peer(struct wg_peer *peer, struct allowedips_cursor *rt_cursor,
 			goto err;
 
 		if (nla_put(skb, WGPEER_A_LAST_HANDSHAKE_TIME,
-			    sizeof(peer->walltime_last_handshake),
-			    &peer->walltime_last_handshake) ||
+			    sizeof(last_handshake), &last_handshake) ||
 		    nla_put_u16(skb, WGPEER_A_PERSISTENT_KEEPALIVE_INTERVAL,
 				peer->persistent_keepalive_interval) ||
 		    nla_put_u64_64bit(skb, WGPEER_A_TX_BYTES, peer->tx_bytes,
@@ -480,6 +484,13 @@ static int wg_set_device(struct sk_buff *skb, struct genl_info *info)
 
 	rtnl_lock();
 	mutex_lock(&wg->device_update_lock);
+
+	ret = -EPERM;
+	if ((info->attrs[WGDEVICE_A_LISTEN_PORT] ||
+	     info->attrs[WGDEVICE_A_FWMARK]) &&
+	    !ns_capable(wg->creating_net->user_ns, CAP_NET_ADMIN))
+		goto out;
+
 	++wg->device_update_gen;
 
 	if (info->attrs[WGDEVICE_A_FWMARK]) {
