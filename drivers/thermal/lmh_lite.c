@@ -1300,7 +1300,7 @@ static int lmh_probe(struct platform_device *pdev)
 	}
 	lmh_data->dev = &pdev->dev;
 
-	lmh_data->poll_wq = alloc_workqueue("lmh_poll_wq", WQ_HIGHPRI, 0);
+	lmh_data->poll_wq = alloc_workqueue("lmh_poll_wq", WQ_UNBOUND, 1);
 	if (!lmh_data->poll_wq) {
 		pr_err("Error allocating workqueue\n");
 		ret = -ENOMEM;
