@@ -687,9 +687,7 @@
 		touchscreen-size-y = <1920>;
 		touchscreen-max-w = <512>;
 		touchscreen-max-p = <512>;
-		touchscreen-key-map = <172>, <158>;
 		goodix,slide-wakeup = <1>;
-		goodix,type-a-report = <0>;
 		goodix,driver-send-cfg = <1>;
 		goodix,resume-in-workqueue = <0>;
 		goodix,int-sync = <1>;
