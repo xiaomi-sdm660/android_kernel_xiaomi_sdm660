@@ -23,7 +23,7 @@ int wg_packet_queue_init(struct crypt_queue *queue, work_func_t function,
 			 bool multicore, unsigned int len);
 void wg_packet_queue_free(struct crypt_queue *queue, bool multicore);
 struct multicore_worker __percpu *
-wg_packet_alloc_percpu_multicore_worker(work_func_t function, void *ptr);
+wg_packet_percpu_multicore_worker_alloc(work_func_t function, void *ptr);
 
 /* receive.c APIs: */
 void wg_packet_receive(struct wg_device *wg, struct sk_buff *skb);
@@ -102,7 +102,8 @@ static inline void wg_reset_packet(struct sk_buff *skb)
 	skb->hdr_len = skb_headroom(skb);
 	skb_reset_mac_header(skb);
 	skb_reset_network_header(skb);
-	skb_probe_transport_header(skb, 0);
+	skb_reset_transport_header(skb);
+	skb_probe_transport_header(skb);
 	skb_reset_inner_headers(skb);
 }
 
