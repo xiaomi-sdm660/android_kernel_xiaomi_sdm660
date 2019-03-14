@@ -14,6 +14,8 @@
 #include "sdm660-pinctrl.dtsi"
 #include "sdm660-camera-sensor-mtp.dtsi"
 #include "sdm660-novatek-i2c_d2s.dtsi"
+#include "synaptics-dsx-i2c.dtsi"
+
 / {
 	mtp_batterydata: qcom,battery-data {
 		qcom,batt-id-range-pct = <15>;
