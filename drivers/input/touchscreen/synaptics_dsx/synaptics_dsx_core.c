@@ -124,7 +124,7 @@
 static struct synaptics_rmi4_data *rmi4_data;
 
 #if 1
-bool synaptics_gesture_func_on = false;
+bool synaptics_gesture_enable_flag = false;
 bool gesture_delay = false;
 #define WAKEUP_OFF 4
 #define WAKEUP_ON 5
@@ -137,17 +137,17 @@ int synaptics_gesture_switch(struct input_dev *dev, unsigned int type, unsigned 
 	{
 		if (rmi4_data->suspend)
 		{
-			if ((value != WAKEUP_OFF) || synaptics_gesture_func_on)
+			if ((value != WAKEUP_OFF) || synaptics_gesture_enable_flag)
 			{
 				gesture_delay = true;
 			}
 		}
 		if (value == WAKEUP_OFF){
-			synaptics_gesture_func_on = false;
+			synaptics_gesture_enable_flag = false;
 			printk("close double-click resume\n");
 			input = 0;
 		}else if (value == WAKEUP_ON) {
-			synaptics_gesture_func_on  = true;
+			synaptics_gesture_enable_flag  = true;
 			printk("open double-click resume\n");
 			input = 1;
 		}
@@ -929,7 +929,7 @@ static ssize_t synaptics_rmi4_wake_gesture_store(struct device *dev,
 
 	input_event(rmi4_data->input_dev, EV_SYN, SYN_CONFIG, input ? WAKEUP_ON : WAKEUP_OFF);
 
-	if (synaptics_gesture_func_on)
+	if (synaptics_gesture_enable_flag)
 		input = input > 0 ? 1 : 0;
 	else
 		input = 0;
