@@ -11,7 +11,7 @@ menuconfig INPUT_TOUCHSCREEN
 
 if INPUT_TOUCHSCREEN
 
-#source "drivers/input/touchscreen/synaptics_dsx/Kconfig"
+source "drivers/input/touchscreen/synaptics_dsx/Kconfig"
 source "drivers/input/touchscreen/synaptics_tcm/Kconfig"
 source "drivers/input/touchscreen/nvt_touch_a/Kconfig"
 source "drivers/input/touchscreen/focal_ft8719/Kconfig"
