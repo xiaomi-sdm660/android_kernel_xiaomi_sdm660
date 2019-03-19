@@ -54,6 +54,7 @@
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile0>;
 			qcom,lmh-dcvs = <&lmh_dcvs0>;
+      #cooling-cells = <2>;
 			qcom,ea = <&ea0>;
 			efficiency = <1024>;
 			next-level-cache = <&L2_0>;
@@ -83,6 +84,7 @@
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile0>;
 			qcom,lmh-dcvs = <&lmh_dcvs0>;
+      #cooling-cells = <2>;
 			qcom,ea = <&ea1>;
 			efficiency = <1024>;
 			next-level-cache = <&L2_0>;
@@ -106,6 +108,7 @@
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile0>;
 			qcom,lmh-dcvs = <&lmh_dcvs0>;
+      #cooling-cells = <2>;
 			qcom,ea = <&ea2>;
 			efficiency = <1024>;
 			next-level-cache = <&L2_0>;
@@ -129,6 +132,7 @@
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile0>;
 			qcom,lmh-dcvs = <&lmh_dcvs0>;
+      #cooling-cells = <2>;
 			qcom,ea = <&ea3>;
 			efficiency = <1024>;
 			next-level-cache = <&L2_0>;
@@ -152,6 +156,7 @@
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile1>;
 			qcom,lmh-dcvs = <&lmh_dcvs1>;
+      #cooling-cells = <2>;
 			qcom,ea = <&ea4>;
 			efficiency = <1638>;
 			next-level-cache = <&L2_1>;
@@ -179,6 +184,7 @@
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile2>;
 			qcom,lmh-dcvs = <&lmh_dcvs1>;
+      #cooling-cells = <2>;
 			qcom,ea = <&ea5>;
 			efficiency = <1638>;
 			next-level-cache = <&L2_1>;
@@ -202,6 +208,7 @@
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile3>;
 			qcom,lmh-dcvs = <&lmh_dcvs1>;
+      #cooling-cells = <2>;
 			qcom,ea = <&ea6>;
 			efficiency = <1638>;
 			next-level-cache = <&L2_1>;
@@ -225,6 +232,7 @@
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile4>;
 			qcom,lmh-dcvs = <&lmh_dcvs1>;
+      #cooling-cells = <2>;
 			qcom,ea = <&ea7>;
 			efficiency = <1638>;
 			next-level-cache = <&L2_1>;
@@ -413,7 +421,7 @@
 		       reg = <0 0x9f8ff000 0 0x00001000>;
 		       label = "dfps_data_mem";
     };
-    
+
 		pstore_reserve_mem: pstore_reserve_mem_region@0 {
 			linux,reserve-contiguous-region;
 			linux,reserve-region;
