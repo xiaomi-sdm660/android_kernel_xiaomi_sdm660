@@ -1080,7 +1080,7 @@ static int mpq_map_buffer_to_kernel(
 		return -EINVAL;
 	}
 
-	ion_handle = ion_import_dma_buf(client, handle);
+	ion_handle = ion_import_dma_buf_fd(client, handle);
 	if (IS_ERR_OR_NULL(ion_handle)) {
 		ret = PTR_ERR(ion_handle);
 		MPQ_DVB_ERR_PRINT("%s: ion_import_dma_buf failed %d\n",

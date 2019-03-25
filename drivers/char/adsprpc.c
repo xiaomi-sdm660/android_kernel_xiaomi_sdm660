@@ -687,7 +687,7 @@ static int fastrpc_mmap_create(struct fastrpc_file *fl, int fd, unsigned attr,
 		map->va = (uintptr_t)region_vaddr;
 	} else {
 		VERIFY(err, !IS_ERR_OR_NULL(map->handle =
-				ion_import_dma_buf(fl->apps->client, fd)));
+				ion_import_dma_buf_fd(fl->apps->client, fd)));
 		if (err)
 			goto bail;
 		VERIFY(err, !ion_handle_get_flags(fl->apps->client, map->handle,

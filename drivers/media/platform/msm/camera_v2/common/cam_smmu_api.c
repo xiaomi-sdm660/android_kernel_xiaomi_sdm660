@@ -1990,7 +1990,7 @@ static int cam_smmu_map_stage2_buffer_and_add_to_list(int idx, int ion_fd,
 		return -EINVAL;
 	}
 
-	i_handle = ion_import_dma_buf(client, ion_fd);
+	i_handle = ion_import_dma_buf_fd(client, ion_fd);
 	if (IS_ERR_OR_NULL((void *)(i_handle))) {
 		pr_err("%s: ion import dma buffer failed\n", __func__);
 		return -EINVAL;
