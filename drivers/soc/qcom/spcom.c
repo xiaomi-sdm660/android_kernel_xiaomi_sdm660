@@ -1665,7 +1665,7 @@ static int modify_ion_addr(void *buf,
 	}
 
 	/* Get ION handle from fd */
-	handle = ion_import_dma_buf(spcom_dev->ion_client, fd);
+	handle = ion_import_dma_buf_fd(spcom_dev->ion_client, fd);
 	if (IS_ERR_OR_NULL(handle)) {
 		pr_err("fail to get ion handle.\n");
 		return -EINVAL;
@@ -1826,7 +1826,7 @@ static int spcom_handle_lock_ion_buf_command(struct spcom_channel *ch,
 	}
 
 	/* Get ION handle from fd - this increments the ref count */
-	ion_handle = ion_import_dma_buf(spcom_dev->ion_client, fd);
+	ion_handle = ion_import_dma_buf_fd(spcom_dev->ion_client, fd);
 	if (IS_ERR_OR_NULL(ion_handle)) {
 		pr_err("fail to get ion handle.\n");
 		return -EINVAL;

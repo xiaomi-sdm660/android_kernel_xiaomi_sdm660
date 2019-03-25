@@ -544,7 +544,7 @@ static void *sde_rotator_get_userptr(void *alloc_ctx,
 	buf->rot_dev = rot_dev;
 	if (ctx->secure_camera) {
 		buf->buffer = NULL;
-		buf->handle = ion_import_dma_buf(iclient,
+		buf->handle = ion_import_dma_buf_fd(iclient,
 				buf->fd);
 		if (IS_ERR_OR_NULL(buf->handle)) {
 			SDEDEV_ERR(rot_dev->dev,

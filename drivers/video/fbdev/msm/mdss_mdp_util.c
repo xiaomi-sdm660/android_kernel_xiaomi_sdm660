@@ -1058,7 +1058,7 @@ static int mdss_mdp_get_img(struct msmfb_data *img,
 		} else {
 			struct sg_table *sg_ptr = NULL;
 
-			data->ihandle = ion_import_dma_buf(iclient,
+			data->ihandle = ion_import_dma_buf_fd(iclient,
 					img->memory_id);
 			if (IS_ERR_OR_NULL(data->ihandle)) {
 				ret = -EINVAL;

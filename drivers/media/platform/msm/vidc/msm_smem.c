@@ -212,7 +212,7 @@ static int ion_user_to_kernel(struct smem_client *client, int fd, u32 size,
 	unsigned long align = SZ_4K;
 	unsigned long ion_flags = 0;
 
-	hndl = ion_import_dma_buf(client->clnt, fd);
+	hndl = ion_import_dma_buf_fd(client->clnt, fd);
 	dprintk(VIDC_DBG, "%s ion handle: %pK\n", __func__, hndl);
 	if (IS_ERR_OR_NULL(hndl)) {
 		dprintk(VIDC_ERR, "Failed to get handle: %pK, %d, %d, %pK\n",
@@ -483,7 +483,7 @@ bool msm_smem_compare_buffers(void *clt, int fd, void *priv)
 			clt, priv);
 		return false;
 	}
-	handle = ion_import_dma_buf(client->clnt, fd);
+	handle = ion_import_dma_buf_fd(client->clnt, fd);
 	ret = handle == priv;
 	(!IS_ERR_OR_NULL(handle)) ? ion_free(client->clnt, handle) : 0;
 	return ret;

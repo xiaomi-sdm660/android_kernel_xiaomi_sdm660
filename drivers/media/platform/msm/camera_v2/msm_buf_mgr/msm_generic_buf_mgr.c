@@ -376,7 +376,7 @@ static int msm_buf_mngr_handle_cont_cmd(struct msm_buf_mngr_device *dev,
 				}
 			}
 		}
-		ion_handle = ion_import_dma_buf(dev->ion_client,
+		ion_handle = ion_import_dma_buf_fd(dev->ion_client,
 				cont_cmd->cont_fd);
 		if (IS_ERR_OR_NULL(ion_handle)) {
 			pr_err("Failed to create ion handle for fd %d\n",

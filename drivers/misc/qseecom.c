@@ -1111,7 +1111,7 @@ static int __qseecom_set_sb_memory(struct qseecom_registered_listener_list *svc,
 	size_t cmd_len;
 
 	/* Get the handle of the shared fd */
-	svc->ihandle = ion_import_dma_buf(qseecom.ion_clnt,
+	svc->ihandle = ion_import_dma_buf_fd(qseecom.ion_clnt,
 					listener->ifd_data_fd);
 	if (IS_ERR_OR_NULL(svc->ihandle)) {
 		pr_err("Ion client could not retrieve the handle\n");
@@ -1567,7 +1567,7 @@ static int qseecom_set_client_mem_param(struct qseecom_dev_handle *data,
 		return -EFAULT;
 
 	/* Get the handle of the shared fd */
-	data->client.ihandle = ion_import_dma_buf(qseecom.ion_clnt,
+	data->client.ihandle = ion_import_dma_buf_fd(qseecom.ion_clnt,
 						req.ifd_data_fd);
 	if (IS_ERR_OR_NULL(data->client.ihandle)) {
 		pr_err("Ion client could not retrieve the handle\n");
@@ -2348,7 +2348,7 @@ static int qseecom_load_app(struct qseecom_dev_handle *data, void __user *argp)
 		pr_warn("App (%s) does'nt exist, loading apps for first time\n",
 			(char *)(load_img_req.img_name));
 		/* Get the handle of the shared fd */
-		ihandle = ion_import_dma_buf(qseecom.ion_clnt,
+		ihandle = ion_import_dma_buf_fd(qseecom.ion_clnt,
 					load_img_req.ifd_data_fd);
 		if (IS_ERR_OR_NULL(ihandle)) {
 			pr_err("Ion client could not retrieve the handle\n");
@@ -3302,7 +3302,7 @@ static int __qseecom_update_cmd_buf(void *msg, bool cleanup,
 	for (i = 0; i < MAX_ION_FD; i++) {
 		if ((data->type != QSEECOM_LISTENER_SERVICE) &&
 						(req->ifd_data[i].fd > 0)) {
-			ihandle = ion_import_dma_buf(qseecom.ion_clnt,
+			ihandle = ion_import_dma_buf_fd(qseecom.ion_clnt,
 					req->ifd_data[i].fd);
 			if (IS_ERR_OR_NULL(ihandle)) {
 				pr_err("Ion client can't retrieve the handle\n");
@@ -3312,7 +3312,7 @@ static int __qseecom_update_cmd_buf(void *msg, bool cleanup,
 				req->ifd_data[i].cmd_buf_offset;
 		} else if ((data->type == QSEECOM_LISTENER_SERVICE) &&
 				(lstnr_resp->ifd_data[i].fd > 0)) {
-			ihandle = ion_import_dma_buf(qseecom.ion_clnt,
+			ihandle = ion_import_dma_buf_fd(qseecom.ion_clnt,
 						lstnr_resp->ifd_data[i].fd);
 			if (IS_ERR_OR_NULL(ihandle)) {
 				pr_err("Ion client can't retrieve the handle\n");
@@ -3565,7 +3565,7 @@ static int __qseecom_update_cmd_buf_64(void *msg, bool cleanup,
 	for (i = 0; i < MAX_ION_FD; i++) {
 		if ((data->type != QSEECOM_LISTENER_SERVICE) &&
 						(req->ifd_data[i].fd > 0)) {
-			ihandle = ion_import_dma_buf(qseecom.ion_clnt,
+			ihandle = ion_import_dma_buf_fd(qseecom.ion_clnt,
 					req->ifd_data[i].fd);
 			if (IS_ERR_OR_NULL(ihandle)) {
 				pr_err("Ion client can't retrieve the handle\n");
@@ -3575,7 +3575,7 @@ static int __qseecom_update_cmd_buf_64(void *msg, bool cleanup,
 				req->ifd_data[i].cmd_buf_offset;
 		} else if ((data->type == QSEECOM_LISTENER_SERVICE) &&
 				(lstnr_resp->ifd_data[i].fd > 0)) {
-			ihandle = ion_import_dma_buf(qseecom.ion_clnt,
+			ihandle = ion_import_dma_buf_fd(qseecom.ion_clnt,
 						lstnr_resp->ifd_data[i].fd);
 			if (IS_ERR_OR_NULL(ihandle)) {
 				pr_err("Ion client can't retrieve the handle\n");
@@ -5189,7 +5189,7 @@ static int qseecom_load_external_elf(struct qseecom_dev_handle *data,
 	}
 
 	/* Get the handle of the shared fd */
-	ihandle = ion_import_dma_buf(qseecom.ion_clnt,
+	ihandle = ion_import_dma_buf_fd(qseecom.ion_clnt,
 				load_img_req.ifd_data_fd);
 	if (IS_ERR_OR_NULL(ihandle)) {
 		pr_err("Ion client could not retrieve the handle\n");
@@ -6416,7 +6416,7 @@ static int __qseecom_update_qteec_req_buf(struct qseecom_qteec_modfd_req *req,
 	}
 	for (i = 0; i < MAX_ION_FD; i++) {
 		if (req->ifd_data[i].fd > 0) {
-			ihandle = ion_import_dma_buf(qseecom.ion_clnt,
+			ihandle = ion_import_dma_buf_fd(qseecom.ion_clnt,
 					req->ifd_data[i].fd);
 			if (IS_ERR_OR_NULL(ihandle)) {
 				pr_err("Ion client can't retrieve the handle\n");
