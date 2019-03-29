@@ -230,6 +230,12 @@ config A_ONLY_DEVICE
   help
   A-Only Device Support.
 
+config MDSS_HIGH_BRIGHTNESS_LEVEL
+    default n
+       bool "High max brightness level"
+     help
+             High Brightness Level Support.
+
 if ARM64_DMA_USE_IOMMU
 
 config ARM64_DMA_IOMMU_ALIGNMENT
