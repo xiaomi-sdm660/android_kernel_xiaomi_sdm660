@@ -1398,13 +1398,7 @@ static int32_t nvt_ts_suspend(struct device *dev)
 
 		buf[0] = EVENT_MAP_HOST_CMD;
 		buf[1] = 0x13;
-#if 0
-		buf[2] = 0xFF;
-		buf[3] = 0xFF;
-		CTP_I2C_WRITE(ts->client, I2C_FW_Address, buf, 4);
-#else
 		CTP_I2C_WRITE(ts->client, I2C_FW_Address, buf, 2);
-#endif
 
 		enable_irq_wake(ts->client->irq);
 
@@ -1528,13 +1522,6 @@ static void nvt_ts_late_resume(struct early_suspend *h)
 }
 #endif
 
-#if 0
-static const struct dev_pm_ops nvt_ts_dev_pm_ops = {
-	.suspend = nvt_ts_suspend,
-	.resume  = nvt_ts_resume,
-};
-#endif
-
 static const struct i2c_device_id nvt_ts_id[] = {
 	{ NVT_I2C_NAME, 0 },
 	{ }
@@ -1563,11 +1550,6 @@ static struct i2c_driver nvt_i2c_driver = {
 	.driver = {
 		.name	= NVT_I2C_NAME,
 		.owner	= THIS_MODULE,
-#if 0
-#ifdef CONFIG_PM
-		.pm = &nvt_ts_dev_pm_ops,
-#endif
-#endif
 #ifdef CONFIG_OF
 		.of_match_table = nvt_match_table,
 #endif
