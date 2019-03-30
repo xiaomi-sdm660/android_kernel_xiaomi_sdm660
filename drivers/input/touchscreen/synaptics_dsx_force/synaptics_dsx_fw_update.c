@@ -5448,27 +5448,6 @@ static void synaptics_rmi4_fwu_reset(struct synaptics_rmi4_data *rmi4_data)
 	return;
 }
 
-#if 0
-static void synaptics_rmi4_fwu_resume(struct synaptics_rmi4_data *rmi4_data)
-{
-	int retval;
-
-	if (!fwu)
-		return;
-
-	retval = fwu_scan_pdt();
-	if (retval < 0)
-		return;
-
-	pr_err("%s: fwu->in_ub_mode = %d\n", __func__, fwu->in_ub_mode);
-
-	if (!fwu->in_ub_mode)
-		fwu_read_f34_queries();
-
-	return;
-}
-#endif
-
 static struct synaptics_rmi4_exp_fn fwu_module = {
 	.fn_type = RMI_FW_UPDATER,
 	.init = synaptics_rmi4_fwu_init,
