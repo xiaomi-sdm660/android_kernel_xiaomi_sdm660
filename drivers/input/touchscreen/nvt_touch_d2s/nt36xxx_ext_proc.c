@@ -375,10 +375,6 @@ static int32_t nvt_fw_version_open(struct inode *inode, struct file *file)
 
 	NVT_LOG("++\n");
 
-#if NVT_TOUCH_ESD_PROTECT
-	nvt_esd_check_enable(false);
-#endif /* #if NVT_TOUCH_ESD_PROTECT */
-
 	if (nvt_get_fw_info()) {
 		mutex_unlock(&ts->lock);
 		return -EAGAIN;
@@ -413,10 +409,6 @@ static int32_t nvt_baseline_open(struct inode *inode, struct file *file)
 	}
 
 	NVT_LOG("++\n");
-
-#if NVT_TOUCH_ESD_PROTECT
-	nvt_esd_check_enable(false);
-#endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 	if (nvt_clear_fw_status()) {
 		mutex_unlock(&ts->lock);
@@ -473,10 +465,6 @@ static int32_t nvt_raw_open(struct inode *inode, struct file *file)
 	}
 
 	NVT_LOG("++\n");
-
-#if NVT_TOUCH_ESD_PROTECT
-	nvt_esd_check_enable(false);
-#endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 	if (nvt_clear_fw_status()) {
 		mutex_unlock(&ts->lock);
@@ -540,10 +528,6 @@ static int32_t nvt_diff_open(struct inode *inode, struct file *file)
 	}
 
 	NVT_LOG("++\n");
-
-#if NVT_TOUCH_ESD_PROTECT
-	nvt_esd_check_enable(false);
-#endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 	if (nvt_clear_fw_status()) {
 		mutex_unlock(&ts->lock);
@@ -762,10 +746,6 @@ static int32_t nvt_xiaomi_lockdown_info_open(struct inode *inode, struct file *f
 	}
 
 	NVT_LOG("++\n");
-
-#if NVT_TOUCH_ESD_PROTECT
-	nvt_esd_check_enable(false);
-#endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 	if (nvt_get_xiaomi_lockdown_info()) {
 		mutex_unlock(&ts->lock);
