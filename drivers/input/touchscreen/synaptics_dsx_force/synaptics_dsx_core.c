@@ -66,8 +66,6 @@
 
 #define VIRTUAL_KEY_MAP_FILE_NAME "virtualkeys." PLATFORM_DRIVER_NAME
 
-#define TYPE_B_PROTOCOL
-
 #define WAKEUP_GESTURE false
 
 
@@ -1429,11 +1427,9 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 		 * 10 = finger present but data may be inaccurate
 		 * 11 = reserved
 		 */
-#ifdef TYPE_B_PROTOCOL
 		input_mt_slot(rmi4_data->input_dev, finger);
 		input_mt_report_slot_state(rmi4_data->input_dev,
 				MT_TOOL_FINGER, finger_status);
-#endif
 
 		if (finger_status) {
 			data_offset = data_addr +
@@ -1481,9 +1477,6 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			input_report_abs(rmi4_data->input_dev,
 					ABS_MT_TOUCH_MINOR, min(wx, wy));
 #endif
-#ifndef TYPE_B_PROTOCOL
-			input_mt_sync(rmi4_data->input_dev);
-#endif
 
 			dev_dbg(rmi4_data->pdev->dev.parent,
 					"%s: Finger %d: "
@@ -1505,9 +1498,6 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 				BTN_TOUCH, 0);
 		input_report_key(rmi4_data->input_dev,
 				BTN_TOOL_FINGER, 0);
-#ifndef TYPE_B_PROTOCOL
-		input_mt_sync(rmi4_data->input_dev);
-#endif
 	}
 
 	input_sync(rmi4_data->input_dev);
@@ -1687,11 +1677,9 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 		case F12_GLOVED_FINGER_STATUS:
 			if (stylus_presence) /* Stylus has priority over fingers */
 				break;
-#ifdef TYPE_B_PROTOCOL
 			input_mt_slot(rmi4_data->input_dev, finger);
 			input_mt_report_slot_state(rmi4_data->input_dev,
 					MT_TOOL_FINGER, 1);
-#endif
 
 			input_report_key(rmi4_data->input_dev,
 					BTN_TOUCH, 1);
@@ -1748,9 +1736,6 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			}
 			input_report_abs(rmi4_data->input_dev,
 					ABS_MT_PRESSURE, pressure);
-#endif
-#ifndef TYPE_B_PROTOCOL
-			input_mt_sync(rmi4_data->input_dev);
 #endif
 
 			dev_dbg(rmi4_data->pdev->dev.parent,
@@ -1809,11 +1794,9 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			touch_count++;
 			break;
 		default:
-#ifdef TYPE_B_PROTOCOL
 			input_mt_slot(rmi4_data->input_dev, finger);
 			input_mt_report_slot_state(rmi4_data->input_dev,
 					MT_TOOL_FINGER, 0);
-#endif
 			rmi4_data->touchs &= ~BIT(finger);
 			touchs &= ~BIT(finger);
 			break;
@@ -1837,9 +1820,6 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 				BTN_TOUCH, 0);
 		input_report_key(rmi4_data->input_dev,
 				BTN_TOOL_FINGER, 0);
-#ifndef TYPE_B_PROTOCOL
-		input_mt_sync(rmi4_data->input_dev);
-#endif
 
 		if (rmi4_data->stylus_enable) {
 			stylus_presence = 0;
@@ -3837,10 +3817,8 @@ static void synaptics_rmi4_set_params(struct synaptics_rmi4_data *rmi4_data)
 			FORCE_LEVEL_MAX, 0, 0);
 #endif
 
-#ifdef TYPE_B_PROTOCOL
 	input_mt_init_slots(rmi4_data->input_dev,
 			rmi4_data->num_of_fingers, INPUT_MT_DIRECT);
-#endif
 
 	f1a = NULL;
 	if (!list_empty(&rmi->support_fn_list)) {
@@ -4449,20 +4427,15 @@ static int synaptics_rmi4_free_fingers(struct synaptics_rmi4_data *rmi4_data)
 
 	rmi = &(rmi4_data->rmi4_mod_info);
 
-#ifdef TYPE_B_PROTOCOL
 	for (ii = 0; ii < rmi4_data->num_of_fingers; ii++) {
 		input_mt_slot(rmi4_data->input_dev, ii);
 		input_mt_report_slot_state(rmi4_data->input_dev,
 				MT_TOOL_FINGER, 0);
 	}
-#endif
 	input_report_key(rmi4_data->input_dev,
 			BTN_TOUCH, 0);
 	input_report_key(rmi4_data->input_dev,
 			BTN_TOOL_FINGER, 0);
-#ifndef TYPE_B_PROTOCOL
-	input_mt_sync(rmi4_data->input_dev);
-#endif
 	input_sync(rmi4_data->input_dev);
 
 	if (rmi4_data->stylus_enable) {
