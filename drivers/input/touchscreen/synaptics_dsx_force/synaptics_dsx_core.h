@@ -55,20 +55,7 @@
 #endif
 #include <linux/input/synaptics_dsx.h>
 
-
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 38))
-#define KERNEL_ABOVE_2_6_38
-#endif
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
-#define KERNEL_ABOVE_3_6
-#endif
-
-#ifdef KERNEL_ABOVE_2_6_38
 #define sstrtoul(...) kstrtoul(__VA_ARGS__)
-#else
-#define sstrtoul(...) strict_strtoul(__VA_ARGS__)
-#endif
 
 #define PDT_PROPS (0X00EF)
 #define PDT_START (0x00E9)
