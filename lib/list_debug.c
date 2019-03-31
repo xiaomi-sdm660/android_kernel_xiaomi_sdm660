@@ -2,8 +2,7 @@
  * Copyright 2006, Red Hat, Inc., Dave Jones
  * Released under the General Public License (GPL).
  *
- * This file contains the linked list implementations for
- * DEBUG_LIST.
+ * This file contains the linked list validation for DEBUG_LIST.
  */
 
 #include <linux/export.h>
@@ -14,15 +13,13 @@
 #include <linux/bug.h>
 
 /*
- * Insert a new entry between two known consecutive entries.
- *
- * This is only for internal list manipulation where we know
- * the prev/next entries already!
+ * Check that the data structures for the list manipulations are reasonably
+ * valid. Failures here indicate memory corruption (and possibly an exploit
+ * attempt).
  */
 
-void __list_add(struct list_head *new,
-			      struct list_head *prev,
-			      struct list_head *next)
+bool __list_add_valid(struct list_head *new, struct list_head *prev,
+		      struct list_head *next)
 {
 	WARN(next->prev != prev,
 		"list_add corruption. next->prev should be "
@@ -44,9 +41,9 @@ void __list_add(struct list_head *new,
 	new->prev = prev;
 	prev->next = new;
 }
-EXPORT_SYMBOL(__list_add);
+EXPORT_SYMBOL(__list_add_valid);
 
-void __list_del_entry(struct list_head *entry)
+bool __list_del_entry_valid(struct list_head *entry)
 {
 	struct list_head *prev, *next;
 
@@ -87,21 +84,5 @@ void list_del(struct list_head *entry)
 }
 EXPORT_SYMBOL(list_del);
 
-/*
- * RCU variants.
- */
-void __list_add_rcu(struct list_head *new,
-		    struct list_head *prev, struct list_head *next)
-{
-	WARN(next->prev != prev,
-		"list_add_rcu corruption. next->prev should be prev (%p), but was %p. (next=%p).\n",
-		prev, next->prev, next);
-	WARN(prev->next != next,
-		"list_add_rcu corruption. prev->next should be next (%p), but was %p. (prev=%p).\n",
-		next, prev->next, prev);
-	new->next = next;
-	new->prev = prev;
-	rcu_assign_pointer(list_next_rcu(prev), new);
-	next->prev = new;
 }
-EXPORT_SYMBOL(__list_add_rcu);
+EXPORT_SYMBOL(__list_del_entry_valid);

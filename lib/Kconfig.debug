@@ -1218,7 +1218,7 @@ config DEBUG_KOBJECT
 	depends on DEBUG_KERNEL
 	help
 	  If you say Y here, some extra kobject debugging messages will be sent
-	  to the syslog. 
+	  to the syslog.
 
 config DEBUG_KOBJECT_RELEASE
 	bool "kobject release debugging"
@@ -2009,10 +2009,18 @@ config CC_WERROR
 	 the codebase.
 
 	 If unsure, say N.
+config BUG_ON_DATA_CORRUPTION
+	bool "Trigger a BUG when data corruption is detected"
+	select CONFIG_DEBUG_LIST
+	help
+	  Select this option if the kernel should BUG when it encounters
+	  data corruption in kernel memory structures when they get checked
+	  for validity.
+
+	  If unsure, say N.
 
 source "samples/Kconfig"
 
 source "lib/Kconfig.kgdb"
 
 source "lib/Kconfig.ubsan"
-
