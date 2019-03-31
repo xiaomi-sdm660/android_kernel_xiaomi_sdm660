@@ -59,17 +59,6 @@ config TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_FORCE
 	  To compile this driver as a module, choose M here: the
 	  module will be called synaptics_dsx_fw_update.
 
-config TOUCHSCREEN_SYNAPTICS_DSX_TEST_REPORTING_FORCE
-	tristate "Synaptics DSX test reporting module"
-	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE_FORCE
-	help
-	  Say Y here to enable support for retrieving production test reports.
-
-	  If unsure, say N.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called synaptics_dsx_test_reporting.
-
 config TOUCHSCREEN_SYNAPTICS_DSX_PROXIMITY_FORCE
 	tristate "Synaptics DSX proximity module"
 	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE_FORCE
