@@ -580,7 +580,10 @@ disable_vreg:
 				continue;
 		} else
 			j = i;
-		regulator_disable(reg_ptr[j]);
+
+		if (reg_ptr[j] != NULL) {
+			regulator_disable(reg_ptr[j]);
+		}
 		if (cam_vreg[j].delay > 20)
 			msleep(cam_vreg[j].delay);
 		else if (cam_vreg[j].delay)
