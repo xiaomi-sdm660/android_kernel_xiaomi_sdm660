@@ -13,10 +13,10 @@
 
 #define SERIAL_NUM		(0x000)
 
-static uint32_t sn;
-static uint32_t fuse_state1;
-static uint32_t fuse_state2;
-static uint32_t fuse_state3;
+static uint32_t sn = 0;
+static uint32_t fuse_state1 = 0;
+static uint32_t fuse_state2 = 0;
+static uint32_t fuse_state3 = 0;
 
 
 
