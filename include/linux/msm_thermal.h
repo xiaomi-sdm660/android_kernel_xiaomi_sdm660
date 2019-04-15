@@ -256,15 +256,6 @@ extern int devmgr_client_request_mitigation(struct device_clnt_data *clnt,
 extern void devmgr_unregister_mitigation_client(
 					struct device *dev,
 					struct device_clnt_data *clnt);
-#ifdef CONFIG_QCOM_THERMAL_LIMITS_DCVS
-extern int msm_lmh_dcvsh_sw_notify(int cpu);
-#else
-static inline int msm_lmh_dcvsh_sw_notify(int cpu)
-{
-	return -ENODEV;
-}
-#endif
-
 #else
 static inline int msm_thermal_init(struct msm_thermal_data *pdata)
 {
@@ -340,6 +331,11 @@ static inline void devmgr_unregister_mitigation_client(
 					struct device_clnt_data *clnt)
 {
 }
+#endif
+
+#ifdef CONFIG_QCOM_THERMAL_LIMITS_DCVS
+extern int msm_lmh_dcvsh_sw_notify(int cpu);
+#else
 static inline int msm_lmh_dcvsh_sw_notify(int cpu)
 {
 	return -ENODEV;
