@@ -2661,6 +2661,12 @@ static inline void update_cfs_shares(struct sched_entity *se)
 }
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
+int core_ctl_set_boost(bool boost)
+{
+	return 0;
+}
+EXPORT_SYMBOL(core_ctl_set_boost);
+
 #ifdef CONFIG_SMP
 u32 sched_get_wake_up_idle(struct task_struct *p)
 {
