@@ -67,9 +67,10 @@
 				qcom,pon-type = <3>;
 				qcom,pull-up = <1>;
 				qcom,support-reset = <1>;
-				qcom,s1-timer = <4480>;
-				qcom,s2-timer = <1000>;
+				qcom,s1-timer = <3072>;
+				qcom,s2-timer = <2000>;
 				qcom,s2-type = <1>;
+				qcom,use-bark;
 			};
 		};
 
@@ -368,7 +369,7 @@
 
 
 			qcom,thermal-mitigation
-					= <2900000 2000000 1800000 1500000 1000000 500000 100000>;
+					= <2900000 2400000 2000000 1500000 800000 500000 100000>;
 
 			qcom,chgr@1000 {
 				reg = <0x1000 0x100>;
@@ -594,6 +595,7 @@
 			qcom,cycle-counter-en;
 			qcom,fg-jeita-thresholds = <0 15 45 60>;
 			qcom,fg-jeita-hyst-temp = <0>;
+			qcom,battery-thermal-coefficients = [d2 50 ff];
 			status = "okay";
 
 			qcom,fg-batt-soc@4000 {
@@ -677,25 +679,20 @@
 			qcom,pmic-revid = <&pm660_revid>;
 			qcom,pmic-misc = <&pm660_misc>;
 			qcom,misc-clk-trim-error-reg = <0xf3>;
-			qcom,actuator-type = "lra";
-			qcom,play-mode = "buffer";
-			qcom,vmax-mv = <2204>;
+			qcom,actuator-type = "erm";
+			qcom,play-mode = "direct";
+			qcom,vmax-mv = <3200>;
 			qcom,ilim-ma = <800>;
-			qcom,wave-shape = "sine";
-			qcom,wave-play-rate-us = <4878>;
-			qcom,int-pwm-freq-khz = <253>;
+			qcom,wave-shape = "square";
+			qcom,wave-play-rate-us = <6667>;
+			qcom,int-pwm-freq-khz = <505>;
 			qcom,sc-deb-cycles = <8>;
 			qcom,en-brake;
-			qcom,brake-pattern = [02 02 01 00];
-			qcom,wave-samples = [3e 3e 3e 00 00 00 00 00];
-			qcom,wave-samples-two = [3e 3e 3e 3e 00 00 00 00];
-			qcom,wave-samples-three = [3e 3e 3e 3e 3e 00 00 00];
-			qcom,wave-rep-cnt = <1>;
-			qcom,wave-samp-rep-cnt = <1>;
-			qcom,lra-high-z = "opt1";
-			qcom,lra-auto-res-mode = "none";
+			qcom,brake-pattern = [03 03 00 00];
+			qcom,lra-high-z = "opt0";
+			qcom,lra-auto-res-mode = "qwd";
 			qcom,lra-calibrate-at-eop = <0>;
-			qcom,lra-hw-auto-resonance;
+			qcom,correct-lra-drive-freq;
 		};
 	};
 };
