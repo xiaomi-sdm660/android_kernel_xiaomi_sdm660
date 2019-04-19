@@ -80,7 +80,7 @@ struct vreg_config {
 	int ua_load;
 };
 
-static const struct vreg_config const vreg_conf[] = {
+static const struct vreg_config vreg_conf[] = {
 	{ "vdd_ana", 1800000UL, 1800000UL, 6000, },
 #ifndef CONFIG_MACH_MI
 	{ "vcc_spi", 1800000UL, 1800000UL, 10, },
