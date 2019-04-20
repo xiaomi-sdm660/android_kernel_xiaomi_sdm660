@@ -218,6 +218,12 @@ config ARM64_DMA_USE_IOMMU
 	select ARM_HAS_SG_CHAIN
 	select NEED_SG_DMA_LENGTH
 
+config THERMAL_SWITCH
+  default n
+  bool "Support thermal config switch"
+  help
+  Support thermal config switch.
+  
 if ARM64_DMA_USE_IOMMU
 
 config ARM64_DMA_IOMMU_ALIGNMENT
