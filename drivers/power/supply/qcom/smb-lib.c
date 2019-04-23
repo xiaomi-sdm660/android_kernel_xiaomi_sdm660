@@ -2354,8 +2354,6 @@ int smblib_get_prop_dc_online(struct smb_charger *chg,
 			rc);
 		return rc;
 	}
-	smblib_dbg(chg, PR_REGISTER, "POWER_PATH_STATUS = 0x%02x\n",
-		   stat);
 
 	val->intval = (stat & USE_DCIN_BIT) &&
 		      (stat & VALID_INPUT_POWER_SOURCE_STS_BIT);
@@ -2420,8 +2418,6 @@ int smblib_get_prop_usb_online(struct smb_charger *chg,
 			rc);
 		return rc;
 	}
-	smblib_dbg(chg, PR_REGISTER, "POWER_PATH_STATUS = 0x%02x\n",
-		   stat);
 
 	val->intval = (stat & USE_USBIN_BIT) &&
 		      (stat & VALID_INPUT_POWER_SOURCE_STS_BIT);
