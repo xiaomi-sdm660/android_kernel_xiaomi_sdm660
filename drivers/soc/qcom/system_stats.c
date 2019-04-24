@@ -377,7 +377,7 @@ static int msm_rpmstats_probe(struct platform_device *pdev)
 			pr_err("%s:Failed to get memory\n", __func__);
 			return -ENOMEM;
 		}
-		strlcpy(ss.master[i], master_name,
+		strscpy(ss.master[i], master_name,
 					strlen(ss.master[i]) + 1);
 	}
 
