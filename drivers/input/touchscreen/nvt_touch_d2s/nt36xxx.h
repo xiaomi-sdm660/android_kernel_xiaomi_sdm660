@@ -119,6 +119,8 @@ struct nvt_ts_data {
 	int8_t phys[32];
 #if defined(CONFIG_FB)
 	struct notifier_block fb_notif;
+	struct work_struct pm_work;
+	bool screen_off;
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 	struct early_suspend early_suspend;
 #endif

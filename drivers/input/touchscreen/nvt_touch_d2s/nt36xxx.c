@@ -68,6 +68,7 @@ extern void Boot_Update_Firmware(struct work_struct *work);
 #endif
 extern bool ESD_TE_status;
 #if defined(CONFIG_FB)
+static void touch_pm_worker(struct work_struct *work);
 static int fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data);
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 static void nvt_ts_early_suspend(struct early_suspend *h);
@@ -1453,6 +1454,7 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 	}
 #if defined(CONFIG_FB)
 	ts->fb_notif.notifier_call = fb_notifier_callback;
+	INIT_WORK(&ts->pm_work, touch_pm_worker);
 	ret = fb_register_client(&ts->fb_notif);
 	if (ret) {
 		NVT_ERR("register fb_notifier failed. ret=%d\n", ret);
@@ -1661,6 +1663,16 @@ static int32_t nvt_ts_resume(struct device *dev)
 
 
 #if defined(CONFIG_FB)
+static void touch_pm_worker(struct work_struct *work)
+{
+	struct nvt_ts_data *ts = container_of(work, typeof(*ts), pm_work);
+	
+	if (ts->screen_off)
+		nvt_ts_suspend(&ts->client->dev);
+	else
+		nvt_ts_resume(&ts->client->dev);
+}
+
 static int fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data)
 {
 	struct fb_event *evdata = data;
@@ -1677,9 +1689,12 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
 		}
 	} else if (evdata && evdata->data && event == FB_EVENT_BLANK) {
 		blank = evdata->data;
-		if (*blank == FB_BLANK_UNBLANK) {
-			nvt_ts_resume(&ts->client->dev);
-		}
+		// if (*blank == FB_BLANK_UNBLANK) {
+		// 	// nvt_ts_resume(&ts->client->dev);
+		// }
+		flush_work(&ts->pm_work);
+		ts->screen_off = *blank != FB_BLANK_UNBLANK;
+		schedule_work(&ts->pm_work);
 	}
 
 	return 0;
