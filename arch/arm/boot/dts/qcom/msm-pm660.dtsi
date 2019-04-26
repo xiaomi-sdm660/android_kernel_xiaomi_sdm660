@@ -642,8 +642,8 @@
 			qcom,play-mode = "direct";
 			qcom,vmax-mv = <3200>;
 			qcom,ilim-ma = <800>;
-			qcom,wave-shape = "square";
-			qcom,wave-play-rate-us = <6667>;
+			qcom,wave-shape = "sine";
+			qcom,wave-play-rate-us = <6000>;
 			qcom,int-pwm-freq-khz = <505>;
 			qcom,sc-deb-cycles = <8>;
 			qcom,en-brake;
