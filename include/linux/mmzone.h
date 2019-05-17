@@ -63,14 +63,6 @@ enum {
 	MIGRATE_TYPES
 };
 
-/*
- * Returns a list which contains the migrate types on to which
- * an allocation falls back when the free list for the migrate
- * type mtype is depleted.
- * The end of the list is delimited by the type MIGRATE_TYPES.
- */
-extern int *get_migratetype_fallbacks(int mtype);
-
 /* In mm/page_alloc.c; keep in sync also with show_migration_types() there */
 extern char * const migratetype_names[MIGRATE_TYPES];
 
@@ -175,7 +167,6 @@ enum zone_stat_item {
 	WORKINGSET_NODERECLAIM,
 	NR_ANON_TRANSPARENT_HUGEPAGES,
 	NR_FREE_CMA_PAGES,
-	NR_SWAPCACHE,
 	NR_INDIRECTLY_RECLAIMABLE_BYTES, /* measured in bytes */
 	NR_VM_ZONE_STAT_ITEMS };
 

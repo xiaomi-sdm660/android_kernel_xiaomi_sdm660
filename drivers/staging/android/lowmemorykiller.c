@@ -18,7 +18,6 @@
  * and processes may not get killed until the normal oom killer is triggered.
  *
  * Copyright (C) 2007-2008 Google, Inc.
- * Copyright (C) 2018 XiaoMi, Inc.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -43,19 +42,20 @@
 #include <linux/rcupdate.h>
 #include <linux/profile.h>
 #include <linux/notifier.h>
-#include <linux/vmpressure.h>
+#include <linux/circ_buf.h>
+#include <linux/proc_fs.h>
+#include <linux/slab.h>
 
+#define CREATE_TRACE_POINTS
+#include "trace/lowmemorykiller.h"
 
-#define CONFIG_CONVERT_ADJ_TO_SCORE_ADJ
-
-static u32 lowmem_debug_level = 1;
+static uint32_t lowmem_debug_level = 1;
 static short lowmem_adj[6] = {
 	0,
 	1,
 	6,
 	12,
 };
-
 static int lowmem_adj_size = 4;
 static int lowmem_minfree[6] = {
 	3 * 512,	/* 6MB */
@@ -63,12 +63,9 @@ static int lowmem_minfree[6] = {
 	4 * 1024,	/* 16MB */
 	16 * 1024,	/* 64MB */
 };
-
 static int lowmem_minfree_size = 4;
 
 static unsigned long lowmem_deathpending_timeout;
-
-static bool kill_one_more;
 
 #define lowmem_print(level, x...)			\
 	do {						\
@@ -77,20 +74,154 @@ static bool kill_one_more;
 	} while (0)
 
 
-static bool test_tsk_lmk_waiting(struct task_struct *p)
-{
-	struct task_struct *t;
+static DECLARE_WAIT_QUEUE_HEAD(event_wait);
+static DEFINE_SPINLOCK(lmk_event_lock);
+static struct circ_buf event_buffer;
+#define MAX_BUFFERED_EVENTS 8
+#define MAX_TASKNAME 128
 
-	for_each_thread(p, t) {
-		task_lock(t);
-		if (unlikely(task_lmk_waiting(t))) {
-			task_unlock(t);
-			return true;
-		}
-		task_unlock(t);
+struct lmk_event {
+	char taskname[MAX_TASKNAME];
+	pid_t pid;
+	uid_t uid;
+	pid_t group_leader_pid;
+	unsigned long min_flt;
+	unsigned long maj_flt;
+	unsigned long rss_in_pages;
+	short oom_score_adj;
+	short min_score_adj;
+	unsigned long long start_time;
+	struct list_head list;
+};
+
+void handle_lmk_event(struct task_struct *selected, short min_score_adj)
+{
+	int head;
+	int tail;
+	struct lmk_event *events;
+	struct lmk_event *event;
+	int res;
+	long rss_in_pages = -1;
+	struct mm_struct *mm = get_task_mm(selected);
+
+	if (mm) {
+		rss_in_pages = get_mm_rss(mm);
+		mmput(mm);
 	}
 
-	return false;
+	spin_lock(&lmk_event_lock);
+
+	head = event_buffer.head;
+	tail = READ_ONCE(event_buffer.tail);
+
+	/* Do not continue to log if no space remains in the buffer. */
+	if (CIRC_SPACE(head, tail, MAX_BUFFERED_EVENTS) < 1) {
+		spin_unlock(&lmk_event_lock);
+		return;
+	}
+
+	events = (struct lmk_event *) event_buffer.buf;
+	event = &events[head];
+
+	res = get_cmdline(selected, event->taskname, MAX_TASKNAME - 1);
+
+	/* No valid process name means this is definitely not associated with a
+	 * userspace activity.
+	 */
+
+	if (res <= 0 || res >= MAX_TASKNAME) {
+		spin_unlock(&lmk_event_lock);
+		return;
+	}
+
+	event->taskname[res] = '\0';
+	event->pid = selected->pid;
+	event->uid = from_kuid_munged(current_user_ns(), task_uid(selected));
+	if (selected->group_leader)
+		event->group_leader_pid = selected->group_leader->pid;
+	else
+		event->group_leader_pid = -1;
+	event->min_flt = selected->min_flt;
+	event->maj_flt = selected->maj_flt;
+	event->oom_score_adj = selected->signal->oom_score_adj;
+	event->start_time = nsec_to_clock_t(selected->real_start_time);
+	event->rss_in_pages = rss_in_pages;
+	event->min_score_adj = min_score_adj;
+
+	event_buffer.head = (head + 1) & (MAX_BUFFERED_EVENTS - 1);
+
+	spin_unlock(&lmk_event_lock);
+
+	wake_up_interruptible(&event_wait);
+}
+
+static int lmk_event_show(struct seq_file *s, void *unused)
+{
+	struct lmk_event *events = (struct lmk_event *) event_buffer.buf;
+	int head;
+	int tail;
+	struct lmk_event *event;
+
+	spin_lock(&lmk_event_lock);
+
+	head = event_buffer.head;
+	tail = event_buffer.tail;
+
+	if (head == tail) {
+		spin_unlock(&lmk_event_lock);
+		return -EAGAIN;
+	}
+
+	event = &events[tail];
+
+	seq_printf(s, "%lu %lu %lu %lu %lu %lu %hd %hd %llu\n%s\n",
+		(unsigned long) event->pid, (unsigned long) event->uid,
+		(unsigned long) event->group_leader_pid, event->min_flt,
+		event->maj_flt, event->rss_in_pages, event->oom_score_adj,
+		event->min_score_adj, event->start_time, event->taskname);
+
+	event_buffer.tail = (tail + 1) & (MAX_BUFFERED_EVENTS - 1);
+
+	spin_unlock(&lmk_event_lock);
+	return 0;
+}
+
+static unsigned int lmk_event_poll(struct file *file, poll_table *wait)
+{
+	int ret = 0;
+
+	poll_wait(file, &event_wait, wait);
+	spin_lock(&lmk_event_lock);
+	if (event_buffer.head != event_buffer.tail)
+		ret = POLLIN;
+	spin_unlock(&lmk_event_lock);
+	return ret;
+}
+
+static int lmk_event_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, lmk_event_show, inode->i_private);
+}
+
+static const struct file_operations event_file_ops = {
+	.open = lmk_event_open,
+	.poll = lmk_event_poll,
+	.read = seq_read
+};
+
+static void lmk_event_init(void)
+{
+	struct proc_dir_entry *entry;
+
+	event_buffer.head = 0;
+	event_buffer.tail = 0;
+	event_buffer.buf = kmalloc(
+		sizeof(struct lmk_event) * MAX_BUFFERED_EVENTS, GFP_KERNEL);
+	if (!event_buffer.buf)
+		return;
+	entry = proc_create("lowmemorykiller", 0, NULL, &event_file_ops);
+	if (!entry)
+		pr_err("error creating kernel lmk event file\n");
 }
 
 static unsigned long lowmem_count(struct shrinker *s,
@@ -126,15 +257,15 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		array_size = lowmem_minfree_size;
 	for (i = 0; i < array_size; i++) {
 		minfree = lowmem_minfree[i];
-		if (other_free < minfree && other_file < (minfree + minfree / 4)) {
+		if (other_free < minfree && other_file < minfree) {
 			min_score_adj = lowmem_adj[i];
 			break;
 		}
 	}
 
 	lowmem_print(3, "lowmem_scan %lu, %x, ofree %d %d, ma %hd\n",
-		     sc->nr_to_scan, sc->gfp_mask, other_free,
-		     other_file, min_score_adj);
+			sc->nr_to_scan, sc->gfp_mask, other_free,
+			other_file, min_score_adj);
 
 	if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
 		lowmem_print(5, "lowmem_scan %lu, %x, return 0\n",
@@ -145,7 +276,6 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	selected_oom_score_adj = min_score_adj;
 
 	rcu_read_lock();
-again:
 	for_each_process(tsk) {
 		struct task_struct *p;
 		short oom_score_adj;
@@ -153,25 +283,22 @@ again:
 		if (tsk->flags & PF_KTHREAD)
 			continue;
 
-		if (test_tsk_lmk_waiting(tsk)) {
-			lowmem_print(2, "%s (%d) is already killed, skip\n",
-				tsk->comm, tsk->pid);
-			continue;
-		}
-
 		p = find_lock_task_mm(tsk);
 		if (!p)
 			continue;
 
+		if (test_tsk_thread_flag(p, TIF_MEMDIE) &&
+		    time_before_eq(jiffies, lowmem_deathpending_timeout)) {
+			task_unlock(p);
+			rcu_read_unlock();
+			return 0;
+		}
 		oom_score_adj = p->signal->oom_score_adj;
 		if (oom_score_adj < min_score_adj) {
 			task_unlock(p);
 			continue;
 		}
 		tasksize = get_mm_rss(p->mm);
-#ifdef CONFIG_ZRAM
-		tasksize += (get_mm_counter(p->mm, MM_SWAPENTS) / 3);
-#endif
 		task_unlock(p);
 		if (tasksize <= 0)
 			continue;
@@ -185,91 +312,63 @@ again:
 		selected = p;
 		selected_tasksize = tasksize;
 		selected_oom_score_adj = oom_score_adj;
-		lowmem_print(2, "select '%s' (%d, %d), adj %hd, size %d, to kill\n",
-			     p->comm, p->pid, p->tgid, oom_score_adj, tasksize);
+		lowmem_print(2, "select '%s' (%d), adj %hd, size %d, to kill\n",
+			     p->comm, p->pid, oom_score_adj, tasksize);
 	}
 	if (selected) {
+		long cache_size = other_file * (long)(PAGE_SIZE / 1024);
+		long cache_limit = minfree * (long)(PAGE_SIZE / 1024);
+		long free = other_free * (long)(PAGE_SIZE / 1024);
+
 		task_lock(selected);
 		send_sig(SIGKILL, selected, 0);
+		/*
+		 * FIXME: lowmemorykiller shouldn't abuse global OOM killer
+		 * infrastructure. There is no real reason why the selected
+		 * task should have access to the memory reserves.
+		 */
 		if (selected->mm)
-			task_set_lmk_waiting(selected);
+			mark_oom_victim(selected);
 		task_unlock(selected);
-		lowmem_print(1, "Killing '%s' (%d), adj %hd,\n"
-				 "   to free %ldkB on behalf of '%s' (%d) because\n"
-				 "   cache %ldkB is below limit %ldkB for oom_score_adj %hd\n"
-				 "   Free memory is %ldkB above reserved\n",
-			     selected->comm, selected->pid,
+		trace_lowmemory_kill(selected, cache_size, cache_limit, free);
+		lowmem_print(1, "Killing '%s' (%d) (tgid %d), adj %hd,\n" \
+			        "   to free %ldkB on behalf of '%s' (%d) because\n" \
+			        "   cache %ldkB is below limit %ldkB for oom_score_adj %hd\n" \
+			        "   Free memory is %ldkB above reserved\n",
+			     selected->comm, selected->pid, selected->tgid,
 			     selected_oom_score_adj,
 			     selected_tasksize * (long)(PAGE_SIZE / 1024),
 			     current->comm, current->pid,
-			     other_file * (long)(PAGE_SIZE / 1024),
-			     minfree * (long)(PAGE_SIZE / 1024),
+			     cache_size, cache_limit,
 			     min_score_adj,
-			     other_free * (long)(PAGE_SIZE / 1024));
+			     free);
 		lowmem_deathpending_timeout = jiffies + HZ;
 		rem += selected_tasksize;
-	}
 
-	if (kill_one_more) {
-		selected = NULL;
-		kill_one_more = false;
-		lowmem_print(1, "lowmem_scan kill one more process\n");
-		goto again;
+		handle_lmk_event(selected, min_score_adj);
 	}
 
 	lowmem_print(4, "lowmem_scan %lu, %x, return %lu\n",
 		     sc->nr_to_scan, sc->gfp_mask, rem);
 	rcu_read_unlock();
-
 	return rem;
 }
 
 static struct shrinker lowmem_shrinker = {
 	.scan_objects = lowmem_scan,
 	.count_objects = lowmem_count,
-	.seeks = DEFAULT_SEEKS * 16,
-	.flags = SHRINKER_LMK
-};
-
-
-/*
- * when vmpressure >= vmpressure_level_critical(95), we will kill one more process
- */
-static int lmk_vmpressure_notifier(struct notifier_block *nb,
-			unsigned long action, void *data)
-{
-	unsigned long pressure = action;
-
-	if (pressure >= 95) {
-		if (!kill_one_more) {
-			kill_one_more = true;
-			lowmem_print(2, "vmpressure %ld, set kill_one_more true\n",
-				pressure);
-		}
-	} else {
-		if (kill_one_more) {
-			kill_one_more = false;
-			lowmem_print(2, "vmpressure %ld, set kill_one_more false\n",
-				pressure);
-		}
-	}
-
-	return 0;
-}
-
-static struct notifier_block lmk_vmpr_nb = {
-	.notifier_call = lmk_vmpressure_notifier,
+	.seeks = DEFAULT_SEEKS * 16
 };
 
 static int __init lowmem_init(void)
 {
 	register_shrinker(&lowmem_shrinker);
-	vmpressure_notifier_register(&lmk_vmpr_nb);
+	lmk_event_init();
 	return 0;
 }
 device_initcall(lowmem_init);
 
-#ifdef CONFIG_CONVERT_ADJ_TO_SCORE_ADJ
+#ifdef CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
 static short lowmem_oom_adj_to_oom_score_adj(short oom_adj)
 {
 	if (oom_adj == OOM_ADJUST_MAX)
@@ -351,11 +450,11 @@ static const struct kparam_array __param_arr_adj = {
  * bootargs behaviour is to continue using module_param here.
  */
 module_param_named(cost, lowmem_shrinker.seeks, int, S_IRUGO | S_IWUSR);
-#ifdef CONFIG_CONVERT_ADJ_TO_SCORE_ADJ
+#ifdef CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
 module_param_cb(adj, &lowmem_adj_array_ops,
-		.arr = &__param_arr_adj, S_IRUGO | S_IWUSR);
+		.arr = &__param_arr_adj,
+		S_IRUGO | S_IWUSR);
 __MODULE_PARM_TYPE(adj, "array of short");
-
 #else
 module_param_array_named(adj, lowmem_adj, short, &lowmem_adj_size,
 			 S_IRUGO | S_IWUSR);
@@ -363,4 +462,3 @@ module_param_array_named(adj, lowmem_adj, short, &lowmem_adj_size,
 module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
 			 S_IRUGO | S_IWUSR);
 module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);
-
