@@ -291,7 +291,7 @@
 
 			chan@4f {
 				label = "pa_therm0";
-				reg = <0x4f>;
+				reg = <0x4c>;
 				qcom,decimation = <2>;
 				qcom,pre-div-channel-scaling = <0>;
 				qcom,calibration-type = "ratiometric";
