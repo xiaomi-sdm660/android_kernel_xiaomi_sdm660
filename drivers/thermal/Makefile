@@ -55,3 +55,10 @@ obj-$(CONFIG_THERMAL_MONITOR)	+= msm_thermal.o msm_thermal-dev.o
 obj-$(CONFIG_LIMITS_MONITOR)	+= lmh_interface.o
 obj-$(CONFIG_LIMITS_LITE_HW)	+= lmh_lite.o
 obj-$(CONFIG_QCOM_THERMAL_LIMITS_DCVS)	+= msm_lmh_dcvs.o
+
+CFLAGS_msm_thermal.o += $(call cc-disable-warning,strlcpy-strlcat-size)
+
+#TODO: remove me b/62058353
+subdir-ccflags-y += \
+	-Wno-parentheses-equality \
+	-Wno-enum-conversion
