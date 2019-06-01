@@ -20,7 +20,6 @@
 
 #if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
 extern bool enable_gesture_mode;
-extern bool synaptics_gesture_enable_flag;
 #endif
 
 #define MAX_I2C_CMDS  16
@@ -227,7 +226,7 @@ int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg, int enable)
 		for (i = 0; i < num_vreg; i++) {
 #if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
 			/* vddio lab ibb continus supply */
-			if (enable_gesture_mode || synaptics_gesture_enable_flag) {
+			if (enable_gesture_mode) {
 				if ((strcmp(in_vreg[i].vreg_name, "lab") == 0) ||
 						(strcmp(in_vreg[i].vreg_name, "ibb") == 0) ||
 						(strcmp(in_vreg[i].vreg_name, "wqhd-vddio") == 0)) {
@@ -277,7 +276,7 @@ int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg, int enable)
 			}
 #if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
 			/* vddio lab ibb continus supply */
-			if (enable_gesture_mode || synaptics_gesture_enable_flag) {
+			if (enable_gesture_mode) {
 				if ((strcmp(in_vreg[i].vreg_name, "lab") == 0) ||
 						(strcmp(in_vreg[i].vreg_name, "ibb") == 0) ||
 						(strcmp(in_vreg[i].vreg_name, "wqhd-vddio") == 0)) {

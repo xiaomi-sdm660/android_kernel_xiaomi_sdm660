@@ -42,7 +42,6 @@ EXPORT_SYMBOL(g_lcd_id);
 #if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
 #define TP_RESET_GPIO 66
 extern bool enable_gesture_mode;
-extern bool synaptics_gesture_enable_flag;
 #endif
 
 bool ESD_TE_status = false;
@@ -500,7 +499,7 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			usleep_range(12 * 1000, 12 * 1000);
 
 #if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
-			if (!enable_gesture_mode && !synaptics_gesture_enable_flag) {
+			if (!enable_gesture_mode) {
 				if (gpio_direction_output(TP_RESET_GPIO, 1)) {
 					pr_err("%s: unable to set dir for touch reset gpio\n", __func__);
 				}
@@ -579,7 +578,7 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			gpio_free(ctrl_pdata->disp_en_gpio);
 		}
 #if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
-		if (enable_gesture_mode || synaptics_gesture_enable_flag) {
+		if (enable_gesture_mode) {
 			printk(KERN_ERR "[lcd][tp][gesture] keep lcd_reset and tp_reset gpio to high.\n");
 			goto keep_lcd_and_tp_reset;
 		}
