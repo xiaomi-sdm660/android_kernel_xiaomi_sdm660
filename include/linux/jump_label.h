@@ -193,13 +193,11 @@ static __always_inline bool static_key_true(struct static_key *key)
 
 static inline void static_key_slow_inc(struct static_key *key)
 {
-	STATIC_KEY_CHECK_USE();
 	atomic_inc(&key->enabled);
 }
 
 static inline void static_key_slow_dec(struct static_key *key)
 {
-	STATIC_KEY_CHECK_USE();
 	atomic_dec(&key->enabled);
 }
 
