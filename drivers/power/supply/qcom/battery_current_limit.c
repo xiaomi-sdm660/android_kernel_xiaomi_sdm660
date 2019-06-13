@@ -1745,7 +1745,7 @@ static int bcl_probe(struct platform_device *pdev)
 	}
 	INIT_WORK(&bcl->soc_mitig_work, soc_mitigate);
 	bcl->psy_nb.notifier_call = power_supply_callback;
-	bcl->bcl_hotplug_wq = alloc_workqueue("bcl_hotplug_wq",  WQ_HIGHPRI, 0);
+	bcl->bcl_hotplug_wq = alloc_workqueue("bcl_hotplug_wq", WQ_UNBOUND, 0);
 	if (!bcl->bcl_hotplug_wq) {
 		pr_err("Workqueue alloc failed\n");
 		return -ENOMEM;
