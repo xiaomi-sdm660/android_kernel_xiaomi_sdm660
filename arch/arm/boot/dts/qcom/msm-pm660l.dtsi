@@ -273,7 +273,6 @@
 			qcom,cons-sync-write-delay-us = <1000>;
 			qcom,led-strings-list = [00 01 02];
 			qcom,loop-auto-gm-en;
-			qcom,en-cabc;
 			qcom,pmic-revid = <&pm660l_revid>;
 			status = "ok";
 		};
