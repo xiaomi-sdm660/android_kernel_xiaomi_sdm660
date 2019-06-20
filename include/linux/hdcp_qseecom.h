@@ -150,6 +150,7 @@ struct hdcp_register_data {
 	bool tethered;
 };
 
+#ifdef CONFIG_HDCP_QSEECOM
 int hdcp_library_register(struct hdcp_register_data *data);
 void hdcp_library_deregister(void *phdcpcontext);
 bool hdcp1_check_if_supported_load_app(void);
@@ -162,5 +163,44 @@ void hdcp1_notify_topology(void);
 void hdcp1_client_register(void *client_ctx,
 struct hdcp_client_ops *ops);
 void hdcp1_client_unregister(void);
+#else
+static inline int hdcp_library_register(struct hdcp_register_data *data)
+{
+	return 0;
+}
+static inline void hdcp_library_deregister(void *phdcpcontext)
+{
+}
+static inline bool hdcp1_check_if_supported_load_app(void)
+{
+	return true;
+}
+static inline int hdcp1_set_keys(uint32_t *aksv_msb, uint32_t *aksv_lsb)
+{
+	return 0;
+}
+static inline int hdcp1_set_enc(bool enable)
+{
+	return 0;
+}
+static inline int hdcp1_validate_receiver_ids(struct hdcp_srm_device_id_t *device_ids,
+uint32_t device_id_cnt)
+{
+	return 0;
+}
+static inline void hdcp1_cache_repeater_topology(void *hdcp1_cached_tp)
+{
+}
+static inline void hdcp1_notify_topology(void)
+{
+}
+static inline void hdcp1_client_register(void *client_ctx,
+struct hdcp_client_ops *ops)
+{
+}
+static inline void hdcp1_client_unregister(void)
+{
+}
+#endif
 
 #endif /* __HDCP_QSEECOM_H */
