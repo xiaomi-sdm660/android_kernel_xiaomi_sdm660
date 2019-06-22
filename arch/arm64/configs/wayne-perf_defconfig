@@ -3021,6 +3021,7 @@ CONFIG_QCOM_ADRENO_DEFAULT_GOVERNOR="msm-adreno-tz"
 CONFIG_QCOM_KGSL_IOMMU=y
 # CONFIG_DRM is not set
 # CONFIG_MSM_BA_V4L2 is not set
+CONFIG_ADRENO_IDLER=y
 
 #
 # Frame buffer Devices
