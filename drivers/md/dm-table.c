@@ -1542,6 +1542,9 @@ void dm_table_set_restrictions(struct dm_table *t, struct request_queue *q,
 	smp_mb();
 	if (dm_table_request_based(t))
 		queue_flag_set_unlocked(QUEUE_FLAG_STACKABLE, q);
+
+	/* io_pages is used for readahead */
+	q->backing_dev_info->io_pages = limits->max_sectors >> (PAGE_SHIFT - 9);
 }
 
 unsigned int dm_table_get_num_targets(struct dm_table *t)
@@ -1702,4 +1705,3 @@ void dm_table_run_md_queue_async(struct dm_table *t)
 	}
 }
 EXPORT_SYMBOL(dm_table_run_md_queue_async);
-
