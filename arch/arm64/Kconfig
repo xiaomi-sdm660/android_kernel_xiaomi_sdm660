@@ -1253,3 +1253,26 @@ source "arch/arm64/crypto/Kconfig"
 endif
 
 source "lib/Kconfig"
+
+# Xiaomi configuration options
+
+config MACH_XIAOMI
+	bool "Xiaomi device"
+	depends on ARCH_QCOM
+	help
+	  Support for Xiaomi products
+
+config MACH_XIAOMI_SDM660
+	bool "Xiaomi SDM660"
+	depends on MACH_XIAOMI
+	help
+	  Support for SDM660 Xiaomi variants
+
+menu "Xiaomi board selection"
+
+	config MACH_XIAOMI_JASMINE
+		bool "Xiaomi Jasmine board"
+		depends on MACH_XIAOMI_SDM660
+		help
+		  Support for Xiaomi MI A2
+endmenu
