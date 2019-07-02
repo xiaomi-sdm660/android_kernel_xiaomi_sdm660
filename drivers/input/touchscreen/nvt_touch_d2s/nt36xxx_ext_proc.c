@@ -197,6 +197,25 @@ void nvt_read_mdata(uint32_t xdata_addr, uint32_t xdata_btn_addr)
 		xdata[i] = (int16_t)(xdata_tmp[dummy_len + i * 2] + 256 * xdata_tmp[dummy_len + i * 2 + 1]);
 	}
 
+#if TOUCH_KEY_NUM > 0
+
+
+	buf[0] = 0xFF;
+	buf[1] = (xdata_btn_addr >> 16) & 0xFF;
+	buf[2] = ((xdata_btn_addr >> 8) & 0xFF);
+	CTP_I2C_WRITE(ts->client, I2C_FW_Address, buf, 3);
+
+
+	buf[0] = (xdata_btn_addr & 0xFF);
+	CTP_I2C_READ(ts->client, I2C_FW_Address, buf, (TOUCH_KEY_NUM * 2 + 1));
+
+
+	for (i = 0; i < TOUCH_KEY_NUM; i++) {
+		xdata[ts->x_num * ts->y_num + i] = (int16_t)(buf[1 + i * 2] + 256 * buf[1 + i * 2 + 1]);
+	}
+#endif
+
+
 	buf[0] = 0xFF;
 	buf[1] = (ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
 	buf[2] = (ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
@@ -215,12 +234,12 @@ void nvt_read_mdata_rss(uint32_t xdata_i_addr, uint32_t xdata_q_addr, uint32_t x
 	int i = 0;
 
 	nvt_read_mdata(xdata_i_addr, xdata_btn_i_addr);
-	memcpy(xdata_i, xdata, ((ts->x_num * ts->y_num) * sizeof(int32_t)));
+	memcpy(xdata_i, xdata, ((ts->x_num * ts->y_num + TOUCH_KEY_NUM) * sizeof(int32_t)));
 
 	nvt_read_mdata(xdata_q_addr, xdata_btn_q_addr);
-	memcpy(xdata_q, xdata, ((ts->x_num * ts->y_num) * sizeof(int32_t)));
+	memcpy(xdata_q, xdata, ((ts->x_num * ts->y_num + TOUCH_KEY_NUM) * sizeof(int32_t)));
 
-	for (i = 0; i < (ts->x_num * ts->y_num); i++) {
+	for (i = 0; i < (ts->x_num * ts->y_num + TOUCH_KEY_NUM); i++) {
 		xdata[i] = (int32_t)int_sqrt((unsigned long)(xdata_i[i] * xdata_i[i]) + (unsigned long)(xdata_q[i] * xdata_q[i]));
 	}
 }
@@ -236,7 +255,7 @@ void nvt_get_mdata(int32_t *buf, uint8_t *m_x_num, uint8_t *m_y_num)
 {
     *m_x_num = ts->x_num;
     *m_y_num = ts->y_num;
-    memcpy(buf, xdata, ((ts->x_num * ts->y_num) * sizeof(int32_t)));
+    memcpy(buf, xdata, ((ts->x_num * ts->y_num + TOUCH_KEY_NUM) * sizeof(int32_t)));
 }
 
 /*******************************************************
@@ -248,7 +267,7 @@ return:
 *******************************************************/
 static int32_t c_fw_version_show(struct seq_file *m, void *v)
 {
-	seq_printf(m, "fw_ver=%d, x_num=%d, y_num=%d\n", ts->fw_ver, ts->x_num, ts->y_num);
+	seq_printf(m, "fw_ver=%d, x_num=%d, y_num=%d, button_num=%d\n", ts->fw_ver, ts->x_num, ts->y_num, ts->max_button_num);
 	return 0;
 }
 
@@ -271,6 +290,13 @@ static int32_t c_show(struct seq_file *m, void *v)
 		}
 		seq_puts(m, "\n");
 	}
+
+#if TOUCH_KEY_NUM > 0
+	for (i = 0; i < TOUCH_KEY_NUM; i++) {
+		seq_printf(m, "%5d, ", xdata[ts->x_num * ts->y_num + i]);
+	}
+	seq_puts(m, "\n");
+#endif
 
 	seq_printf(m, "\n\n");
 	return 0;
@@ -349,6 +375,10 @@ static int32_t nvt_fw_version_open(struct inode *inode, struct file *file)
 
 	NVT_LOG("++\n");
 
+#if NVT_TOUCH_ESD_PROTECT
+	nvt_esd_check_enable(false);
+#endif /* #if NVT_TOUCH_ESD_PROTECT */
+
 	if (nvt_get_fw_info()) {
 		mutex_unlock(&ts->lock);
 		return -EAGAIN;
@@ -383,6 +413,10 @@ static int32_t nvt_baseline_open(struct inode *inode, struct file *file)
 	}
 
 	NVT_LOG("++\n");
+
+#if NVT_TOUCH_ESD_PROTECT
+	nvt_esd_check_enable(false);
+#endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 	if (nvt_clear_fw_status()) {
 		mutex_unlock(&ts->lock);
@@ -439,6 +473,10 @@ static int32_t nvt_raw_open(struct inode *inode, struct file *file)
 	}
 
 	NVT_LOG("++\n");
+
+#if NVT_TOUCH_ESD_PROTECT
+	nvt_esd_check_enable(false);
+#endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 	if (nvt_clear_fw_status()) {
 		mutex_unlock(&ts->lock);
@@ -502,6 +540,10 @@ static int32_t nvt_diff_open(struct inode *inode, struct file *file)
 	}
 
 	NVT_LOG("++\n");
+
+#if NVT_TOUCH_ESD_PROTECT
+	nvt_esd_check_enable(false);
+#endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 	if (nvt_clear_fw_status()) {
 		mutex_unlock(&ts->lock);
@@ -720,6 +762,10 @@ static int32_t nvt_xiaomi_lockdown_info_open(struct inode *inode, struct file *f
 	}
 
 	NVT_LOG("++\n");
+
+#if NVT_TOUCH_ESD_PROTECT
+	nvt_esd_check_enable(false);
+#endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 	if (nvt_get_xiaomi_lockdown_info()) {
 		mutex_unlock(&ts->lock);

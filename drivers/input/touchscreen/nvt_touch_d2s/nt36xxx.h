@@ -22,11 +22,12 @@
 #include <linux/i2c.h>
 #include <linux/input.h>
 #include <linux/regulator/consumer.h>
+#include "../lct_tp_fm_info.h"
+#include "../lct_ctp_upgrade.h"
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
 
-#define tianma_jdi_flag 0
 #define NVT_DEBUG 1
 
 
@@ -60,19 +61,28 @@
 #define TOUCH_DEFAULT_MAX_WIDTH 1080
 #define TOUCH_DEFAULT_MAX_HEIGHT 2160
 #define TOUCH_MAX_FINGER_NUM 10
+#define TOUCH_KEY_NUM 0
+#if TOUCH_KEY_NUM > 0
+extern const uint16_t touch_key_array[TOUCH_KEY_NUM];
+#endif
 #define TOUCH_FORCE_NUM 1000
 
 
 #define NVT_TOUCH_PROC 1
 #define NVT_TOUCH_EXT_PROC 1
+#define NVT_TOUCH_MP 1
+#define MT_PROTOCOL_B 1
 #define WAKEUP_GESTURE 1
 #if WAKEUP_GESTURE
 extern const uint16_t gesture_key_array[];
 #endif
-#define BOOT_UPDATE_FIRMWARE 0
+#define BOOT_UPDATE_FIRMWARE 1
 #define BOOT_UPDATE_FIRMWARE_NAME_TIANMA "novatek/tianma_nt36672_miui_d2s.bin"
 #define BOOT_UPDATE_FIRMWARE_NAME_JDI "novatek/jdi_nt36672_miui_d2s.bin"
 
+
+#define NVT_TOUCH_ESD_PROTECT 1
+#define NVT_TOUCH_ESD_CHECK_PERIOD 1500	/* ms */
 
 struct nvt_ts_mem_map {
 	uint32_t EVENT_BUF_ADDR;
@@ -119,6 +129,7 @@ struct nvt_ts_data {
 	uint16_t abs_x_max;
 	uint16_t abs_y_max;
 	uint8_t max_touch_num;
+	uint8_t max_button_num;
 	uint32_t int_trigger_type;
 	int32_t irq_gpio;
 	uint32_t irq_flags;
@@ -165,5 +176,8 @@ extern int32_t nvt_check_fw_reset_state(RST_COMPLETE_STATE check_reset_state);
 extern int32_t nvt_get_fw_info(void);
 extern int32_t nvt_clear_fw_status(void);
 extern int32_t nvt_check_fw_status(void);
+#if NVT_TOUCH_ESD_PROTECT
+extern void nvt_esd_check_enable(uint8_t enable);
+#endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 #endif /* _LINUX_NVT_TOUCH_H */

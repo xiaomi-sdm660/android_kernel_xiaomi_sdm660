@@ -872,6 +872,7 @@ int32_t Update_Firmware(void)
 	nvt_get_fw_info();
 	memset(update_version, 0, sizeof(update_version));
 	sprintf(update_version, "[FW]0x%02x,[IC]nvt36672", ts->fw_ver);
+	update_tp_fm_info(update_version);
 	return ret;
 }
 
@@ -1002,6 +1003,10 @@ void Boot_Update_Firmware(struct work_struct *work)
 	}
 
 	mutex_lock(&ts->lock);
+
+#if NVT_TOUCH_ESD_PROTECT
+	nvt_esd_check_enable(false);
+#endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 	nvt_sw_reset_idle();
 
