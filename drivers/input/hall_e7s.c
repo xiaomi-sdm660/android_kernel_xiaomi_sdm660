@@ -16,6 +16,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/jiffies.h>
 #include <linux/fb.h>
+#include <linux/moduleparam.h>
 
 /*add by Wenke Ma, for hall switch key code*/
 #define KEY_HALL_OPEN                0x284
@@ -26,7 +27,10 @@
 
 static struct delayed_work hall_irq_event_work;
 static struct workqueue_struct *hall_irq_event_wq;
+static bool hall_toggle = true;
 static void hall_irq_event_workfunc(struct work_struct *work);
+
+module_param(hall_toggle, bool, 0644);
 
 struct hall_switch_info
 {
@@ -49,18 +53,19 @@ static void hall_irq_event_workfunc(struct work_struct *work)
 	pr_err("Macle hall gpio state = %d\n",global_hall_info->hall_switch_state);
 	hall_gpio = gpio_get_value_cansleep(global_hall_info->irq_gpio);
 	pr_err("Macle hall irq interrupt gpio = %d\n", hall_gpio);
-	if (hall_gpio == global_hall_info->hall_switch_state) {
+
+	if (hall_gpio == global_hall_info->hall_switch_state && hall_toggle) {
 		enable_irq(global_hall_info->irq);
 		return;
-	} else {
+	} else if (hall_toggle){
 		global_hall_info->hall_switch_state = hall_gpio;
 		pr_err("Macle hall report key s ");
 	}
 
-	if (hall_gpio) {
+	if (hall_gpio && hall_toggle) {
 		input_report_switch(global_hall_info->ipdev, SW_LID, 0);
 		input_sync(global_hall_info->ipdev);
-	} else {
+	} else if (hall_toggle){
 		input_report_switch(global_hall_info->ipdev, SW_LID, 1);
 		input_sync(global_hall_info->ipdev);
 	}
