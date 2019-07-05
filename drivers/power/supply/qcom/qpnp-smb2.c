@@ -1072,9 +1072,6 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		rc = smblib_get_prop_batt_capacity(chg, val);
-		#ifdef XIAOMI_CHARGER_RUNIN
-		pr_err("lct battery_capacity =%d\n", val->intval);
-		#endif
 		#ifdef CONFIG_CHARGER_RUNIN
 		runin_work(chg, val);
 		#endif
