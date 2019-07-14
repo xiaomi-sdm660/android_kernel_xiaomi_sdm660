@@ -177,3 +177,4 @@ obj-$(CONFIG_IP_SET) += ipset/
 
 # IPVS
 obj-$(CONFIG_IP_VS) += ipvs/
+obj-$(CONFIG_IP_NF_TARGET_TTL) += xt_HL.o
