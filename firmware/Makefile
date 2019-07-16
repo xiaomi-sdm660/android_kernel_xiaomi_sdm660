@@ -136,6 +136,9 @@ fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 
+fw-shipped-$(CONFIG_TOUCHSCREEN_NVT_D2S) += novatek/tianma_nt36672_miui_d2s.bin
+fw-shipped-$(CONFIG_TOUCHSCREEN_NVT_D2S) += novatek/jdi_nt36672_miui_d2s.bin
+
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 
 quiet_cmd_ihex  = IHEX    $@
