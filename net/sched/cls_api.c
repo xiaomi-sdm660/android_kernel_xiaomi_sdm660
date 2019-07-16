@@ -340,6 +340,7 @@ replay:
 			rcu_assign_pointer(*back, tp);
 		}
 		tfilter_notify(net, skb, n, tp, fh, RTM_NEWTFILTER);
+		q->flags &= ~TCQ_F_CAN_BYPASS;
 	} else {
 		if (tp_created)
 			tcf_destroy(tp, true);
