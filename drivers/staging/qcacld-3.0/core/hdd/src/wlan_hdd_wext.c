@@ -3682,7 +3682,7 @@ int wlan_hdd_update_phymode(struct net_device *net, mac_handle_t mac_handle,
 #endif
 	bool band_24 = false, band_5g = false;
 	bool ch_bond24 = false, ch_bond5g = false;
-	tSmeConfigParams *sme_config;
+	tSmeConfigParams *sme_config = NULL;
 	uint32_t chwidth = WNI_CFG_CHANNEL_BONDING_MODE_DISABLE;
 	uint32_t vhtchanwidth;
 	eCsrPhyMode phymode = -EIO, old_phymode;
