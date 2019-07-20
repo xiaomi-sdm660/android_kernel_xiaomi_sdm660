@@ -2090,7 +2090,7 @@ bool csr_is_phy_mode_match(tpAniSirGlobal pMac, uint32_t phyMode,
 			   tDot11fBeaconIEs *pIes)
 {
 	bool fMatch = false;
-	eCsrPhyMode phyModeInBssDesc = eCSR_DOT11_MODE_AUTO, phyMode2;
+	eCsrPhyMode phyModeInBssDesc = eCSR_DOT11_MODE_AUTO, phyMode2 = 0;
 	enum csr_cfgdot11mode cfgDot11ModeToUse = eCSR_CFG_DOT11_MODE_AUTO;
 	uint32_t bitMask, loopCount;
 
@@ -2117,14 +2117,10 @@ bool csr_is_phy_mode_match(tpAniSirGlobal pMac, uint32_t phyMode,
 	}
 
 	if ((0 == phyMode) || (eCSR_DOT11_MODE_AUTO & phyMode)) {
-		if (0 != phyMode) {
-			if (eCSR_DOT11_MODE_AUTO & phyMode) {
+		if (0 != phyMode)
+			if (eCSR_DOT11_MODE_AUTO & phyMode)
 				phyMode2 =
 					eCSR_DOT11_MODE_AUTO & phyMode;
-			}
-		} else {
-			phyMode2 = phyMode;
-		}
 		fMatch = csr_get_phy_mode_in_use(pMac, phyMode2,
 						 phyModeInBssDesc,
 						 WLAN_REG_IS_5GHZ_CH(
