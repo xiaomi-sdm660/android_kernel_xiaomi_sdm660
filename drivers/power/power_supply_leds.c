@@ -19,6 +19,9 @@
 
 /* Battery specific LEDs triggers. */
 
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
+int tp_flag;
+#endif
 static void power_supply_update_bat_leds(struct power_supply *psy)
 {
 	union power_supply_propval status;
@@ -32,6 +35,9 @@ static void power_supply_update_bat_leds(struct power_supply *psy)
 
 	switch (status.intval) {
 	case POWER_SUPPLY_STATUS_FULL:
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
+		tp_flag = 1;
+#endif
 		led_trigger_event(psy->charging_full_trig, LED_FULL);
 		led_trigger_event(psy->charging_trig, LED_OFF);
 		led_trigger_event(psy->full_trig, LED_FULL);
@@ -39,6 +45,9 @@ static void power_supply_update_bat_leds(struct power_supply *psy)
 			LED_FULL);
 		break;
 	case POWER_SUPPLY_STATUS_CHARGING:
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
+		tp_flag = 2;
+#endif
 		led_trigger_event(psy->charging_full_trig, LED_FULL);
 		led_trigger_event(psy->charging_trig, LED_FULL);
 		led_trigger_event(psy->full_trig, LED_OFF);
@@ -46,6 +55,9 @@ static void power_supply_update_bat_leds(struct power_supply *psy)
 			&delay_on, &delay_off);
 		break;
 	default:
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
+		tp_flag = 0;
+#endif
 		led_trigger_event(psy->charging_full_trig, LED_OFF);
 		led_trigger_event(psy->charging_trig, LED_OFF);
 		led_trigger_event(psy->full_trig, LED_OFF);
