@@ -26,6 +26,7 @@ source "drivers/input/touchscreen/synaptics_dsx_e7s/Kconfig"
 
 source "drivers/input/touchscreen/nvt_touch_f7a/Kconfig"
 source "drivers/input/touchscreen/synaptics_tcm/Kconfig"
+source "drivers/input/touchscreen/focaltech_d9_d9p/Kconfig"
 
 config OF_TOUCHSCREEN
 	def_tristate INPUT
@@ -1288,6 +1289,26 @@ config TOUCHSCREEN_FOCAL_FT8719
 	default n
 	help
 	  Say Y here if you have Focaltech touch panel.
+
+config TOUCHSCREEN_FOCALTECH_D9_D9P
+	bool "FocalTech FOCALTECH I2C Touchscreen support"
+	depends on I2C
+	help
+	  Say Y here if you have an touchscreen based
+	  on the FocalTech FT5436 family of controllers connected to
+	  your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called focaltech.
+
+config TOUCHSCREEN_GT9XX_ZQL6019
+	bool "Goodix touchpanel GT9XX series"
+	depends on I2C
+	help
+	  Say Y here if you have a Goodix GT9xx touchscreen controller
+
 	  If unsure, say N.
 
 source "drivers/input/touchscreen/st/Kconfig"
