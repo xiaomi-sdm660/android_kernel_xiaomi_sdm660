@@ -109,3 +109,5 @@ obj-$(CONFIG_TOUCHSCREEN_COMMON)	+= tp_common.o
 # HMI_L6653_A01
 obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_E7S)	+= synaptics_dsx_e7s/
 obj-$(CONFIG_TOUCHSCREEN_NVT_E7S) 	+= nvt_touch_e7s/
+obj-$(CONFIG_TOUCHSCREEN_FOCALTECH_D9_D9P)		+= focaltech_d9_d9p/
+obj-$(CONFIG_TOUCHSCREEN_GT9XX_ZQL6019)		+= gt9xx_zql6019/
