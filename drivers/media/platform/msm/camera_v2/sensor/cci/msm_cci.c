@@ -31,7 +31,7 @@
 #define CCI_I2C_Q1_SIZE_32W 32
 #define CYCLES_PER_MICRO_SEC_DEFAULT 4915
 #define CCI_MAX_DELAY 1000000
-#ifdef CONFIG_MACH_LONGCHEER
+#if defined(CONFIG_MACH_LONGCHEER) || defined(CONFIG_XIAOMI_CLOVER)
 #define CCI_TIMEOUT msecs_to_jiffies(800)
 #else
 #define CCI_TIMEOUT msecs_to_jiffies(100)

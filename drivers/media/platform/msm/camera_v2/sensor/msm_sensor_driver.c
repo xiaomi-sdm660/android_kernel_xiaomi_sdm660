@@ -22,6 +22,9 @@
 #include <soc/qcom/camera2.h>
 extern struct vendor_eeprom s_vendor_eeprom[CAMERA_VENDOR_EEPROM_COUNT_MAX];
 #endif
+#ifdef CONFIG_XIAOMI_CLOVER
+#include <linux/hardware_info.h>
+#endif
 /* Logging macro */
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
@@ -1265,7 +1268,7 @@ void msm_sensor_set_sensor_id(struct msm_sensor_ctrl_t *s_ctrl)
 		}
 	if ((!strcmp("whyred_s5k5e8_ofilm_i", s_ctrl->sensordata->sensor_name))||(!strcmp("whyred_s5k5e8_qtech_ii", s_ctrl->sensordata->sensor_name))
 #ifdef CONFIG_MACH_XIAOMI_TULIP
-	   || (!strcmp("tulip_s5k5e8_ofilm_i", s_ctrl->sensordata->sensor_name)) 
+	   || (!strcmp("tulip_s5k5e8_ofilm_i", s_ctrl->sensordata->sensor_name))
 	   || (!strcmp("tulip_s5k5e8_qtech_ii", s_ctrl->sensordata->sensor_name))
 #endif
 	  ) {
@@ -1519,9 +1522,9 @@ int32_t msm_sensor_driver_probe(void *setting,
 						(s_vendor_eeprom[j].module_id == MID_OFILM))
 						|| ((strcmp(slave_info->eeprom_name,"tulip_s5k5e8_qtech_ii") == 0) &&
 						(s_vendor_eeprom[j].module_id == MID_QTECH))
-						|| ((strcmp(slave_info->eeprom_name,"tulip_ov02a10_ofilm_ii") == 0) && 
+						|| ((strcmp(slave_info->eeprom_name,"tulip_ov02a10_ofilm_ii") == 0) &&
 						(s_vendor_eeprom[j].module_id == MID_OFILM))
-						|| ((strcmp(slave_info->eeprom_name,"tulip_ov02a10_sunny_i") == 0) && 
+						|| ((strcmp(slave_info->eeprom_name,"tulip_ov02a10_sunny_i") == 0) &&
 						(s_vendor_eeprom[j].module_id == MID_SUNNY))) {
 							printk("Lc module found!probe continue!\n");
 						break;
@@ -1840,6 +1843,14 @@ CSID_TG:
 	 * Set probe succeeded flag to 1 so that no other camera shall
 	 * probed on this slot
 	 */
+#ifdef CONFIG_XIAOMI_CLOVER
+	if (0 == slave_info->camera_id)
+		get_hardware_info_data(HWID_MAIN_CAM,(void *)slave_info->sensor_name);
+	else {
+		if (2 == slave_info->camera_id)
+			get_hardware_info_data(HWID_SUB_CAM,(void *)slave_info->sensor_name);
+	}
+#endif
 	s_ctrl->is_probe_succeed = 1;
 	return rc;
 
