@@ -167,6 +167,11 @@ static void fg_encode_default(struct fg_sram_param *sp,
 
 static struct fg_irq_info fg_irqs[FG_IRQ_MAX];
 
+#ifdef CONFIG_XIAOMI_CLOVER
+static int avoid_cool_capacity_jump;
+static int avoid_cool_capacity_time;
+#endif
+
 #define PARAM(_id, _addr_word, _addr_byte, _len, _num, _den, _offset,	\
 	      _enc, _dec)						\
 	[FG_SRAM_##_id] = {						\
@@ -1007,6 +1012,13 @@ static int fg_get_prop_capacity(struct fg_chip *chip, int *val)
 		return 0;
 	}
 
+#ifdef CONFIG_XIAOMI_CLOVER
+	if ((chip->charge_status == POWER_SUPPLY_STATUS_FULL) && (chip->health == POWER_SUPPLY_HEALTH_COOL)) {
+		*val = FULL_CAPACITY;
+		return 0;
+	}
+#endif
+
 	rc = fg_get_msoc(chip, &msoc);
 	if (rc < 0)
 		return rc;
@@ -1016,7 +1028,20 @@ static int fg_get_prop_capacity(struct fg_chip *chip, int *val)
 		msoc = EMPTY_REPORT_SOC;
 #endif
 
+#ifdef CONFIG_XIAOMI_CLOVER
+	if ((chip->charge_status == POWER_SUPPLY_STATUS_FULL) && (msoc == 99)){
+		*val = FULL_CAPACITY;
+		return 0;
+	}
+#endif
+
+#ifdef CONFIG_XIAOMI_CLOVER
+	if ((avoid_cool_capacity_jump == 1) && (avoid_cool_capacity_time <= 21) && (chip->health == POWER_SUPPLY_HEALTH_COOL) && (!is_input_present(chip))) {
+		*val = FULL_CAPACITY;
+	} else if (chip->dt.linearize_soc && chip->delta_soc > 0)
+#else
 	if (chip->dt.linearize_soc && chip->delta_soc > 0)
+#endif
 		*val = chip->maint_soc;
 	else
 		*val = msoc;
@@ -1172,6 +1197,15 @@ static int fg_get_batt_profile(struct fg_chip *chip)
                pr_err("battery nominal capacity unavailable, rc:%d\n", rc);
                chip->bp.nom_cap_uah = -EINVAL;
        }
+#endif
+
+#ifdef CONFIG_XIAOMI_CLOVER
+	rc = of_property_read_u32(profile_node, "qcom,nom-batt-capacity-mah",
+			&chip->bp.batt_capacity_mah);
+	if (rc < 0) {
+		pr_err("battery capacity mah unavailable, rc:%d\n", rc);
+		chip->bp.batt_capacity_mah = -EINVAL;
+	}
 #endif
 
 	data = of_get_property(profile_node, "qcom,fg-profile-data", &len);
@@ -1984,7 +2018,11 @@ static int fg_charge_full_update(struct fg_chip *chip)
 		msoc, bsoc, chip->health, chip->charge_status,
 		chip->charge_full);
 	if (chip->charge_done && !chip->charge_full) {
+#ifdef CONFIG_XIAOMI_CLOVER
+		if (msoc >= 99 && (chip->health == POWER_SUPPLY_HEALTH_GOOD || chip->health == POWER_SUPPLY_HEALTH_COOL)) {
+#else
 		if (msoc >= 99 && chip->health == POWER_SUPPLY_HEALTH_GOOD) {
+#endif
 			fg_dbg(chip, FG_STATUS, "Setting charge_full to true\n");
 			chip->charge_full = true;
 			/*
@@ -3005,6 +3043,12 @@ static void status_change_work(struct work_struct *work)
 	fg_cycle_counter_update(chip);
 	fg_cap_learning_update(chip);
 
+#ifdef CONFIG_XIAOMI_CLOVER
+	if ((chip->charge_status == POWER_SUPPLY_STATUS_FULL) && (chip->health == POWER_SUPPLY_HEALTH_COOL)) {
+		avoid_cool_capacity_jump = 1;
+	}
+#endif
+
 	rc = fg_charge_full_update(chip);
 	if (rc < 0)
 		pr_err("Error in charge_full_update, rc=%d\n", rc);
@@ -3993,6 +4037,17 @@ static void ttf_work(struct work_struct *work)
 		}
 	}
 
+#ifdef CONFIG_XIAOMI_CLOVER
+	if ((chip->health == POWER_SUPPLY_HEALTH_COOL) && (avoid_cool_capacity_jump == 1) && (!is_input_present(chip))) {
+		avoid_cool_capacity_time++;
+	}
+
+	if ((avoid_cool_capacity_time >= 22) || (chip->health != POWER_SUPPLY_HEALTH_COOL)) {
+		avoid_cool_capacity_time = 0;
+		avoid_cool_capacity_jump = 0;
+	}
+#endif
+
 	/* recurse every 10 seconds */
 	schedule_delayed_work(&chip->ttf_work, msecs_to_jiffies(10000));
 end_work:
@@ -4072,7 +4127,11 @@ static int fg_psy_get_property(struct power_supply *psy,
 			pval->intval = chip->bp.nom_cap_uah * 1000;
 		else
 #endif
+#ifdef CONFIG_XIAOMI_CLOVER
+		pval->intval = chip->bp.batt_capacity_mah;
+#else
 		pval->intval = chip->cl.nom_cap_uah;
+#endif
 		break;
 	case POWER_SUPPLY_PROP_RESISTANCE_ID:
 		pval->intval = chip->batt_id_ohms;
@@ -5263,19 +5322,35 @@ static int fg_parse_ki_coefficients(struct fg_chip *chip)
 	return 0;
 }
 
+#ifdef CONFIG_XIAOMI_CLOVER
+#define DEFAULT_CUTOFF_VOLT_MV		3400
+#define DEFAULT_EMPTY_VOLT_MV		3400
+#define DEFAULT_RECHARGE_VOLT_MV	4360
+#define DEFAULT_CHG_TERM_CURR_MA	200
+#else
 #define DEFAULT_CUTOFF_VOLT_MV		3200
 #define DEFAULT_EMPTY_VOLT_MV		2850
 #define DEFAULT_RECHARGE_VOLT_MV	4250
 #define DEFAULT_CHG_TERM_CURR_MA	100
+#endif
 #define DEFAULT_CHG_TERM_BASE_CURR_MA	75
+#ifdef CONFIG_XIAOMI_CLOVER
+#define DEFAULT_SYS_TERM_CURR_MA	-225
+#else
 #define DEFAULT_SYS_TERM_CURR_MA	-125
+#endif
 #define DEFAULT_CUTOFF_CURR_MA		500
 #define DEFAULT_DELTA_SOC_THR		1
 #define DEFAULT_RECHARGE_SOC_THR	95
 #define DEFAULT_BATT_TEMP_COLD		0
 #define DEFAULT_BATT_TEMP_COOL		5
+#ifdef CONFIG_XIAOMI_CLOVER
+#define DEFAULT_BATT_TEMP_WARM		70
+#define DEFAULT_BATT_TEMP_HOT		75
+#else
 #define DEFAULT_BATT_TEMP_WARM		45
 #define DEFAULT_BATT_TEMP_HOT		50
+#endif
 #define DEFAULT_CL_START_SOC		15
 #define DEFAULT_CL_MIN_TEMP_DECIDEGC	150
 #define DEFAULT_CL_MAX_TEMP_DECIDEGC	450
