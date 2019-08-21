@@ -1005,5 +1005,6 @@ config SND_SOC_MAX98937
 
 source "sound/soc/codecs/sdm660_cdc/Kconfig"
 source "sound/soc/codecs/msm_sdw/Kconfig"
+source "sound/soc/codecs/tas2557/Kconfig"
 
 endmenu
