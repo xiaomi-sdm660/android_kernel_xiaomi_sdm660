@@ -506,7 +506,7 @@ struct fb_info {
 	} *apertures;
 
 	bool skip_vt_switch; /* no VT switch on suspend/resume required */
-#ifdef CONFIG_MACH_XIAOMI_SDM660
+#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 	int blank;
 #endif
 };

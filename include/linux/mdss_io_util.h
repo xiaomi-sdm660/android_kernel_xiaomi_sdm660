@@ -124,7 +124,7 @@ int mdss_prim_panel_fb_unblank(int timeout);
 void mdss_fb_prim_panel_recover(void);
 #endif
 
-#ifdef CONFIG_MACH_XIAOMI_SDM660
+#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 int mdss_prim_panel_fb_unblank(int timeout);
 #endif
 

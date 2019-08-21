@@ -59,6 +59,11 @@ enum pon_restart_reason {
 	PON_RESTART_REASON_DMVERITY_CORRUPTED	= 0x04,
 	PON_RESTART_REASON_DMVERITY_ENFORCE	= 0x05,
 	PON_RESTART_REASON_KEYS_CLEAR		= 0x06,
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
+	PON_RESTART_REASON_NORMAL		= 0x20,
+	PON_RESTART_REASON_PANIC		= 0x21,
+	PON_RESTART_REASON_OTHER		= 0x00,
+#endif
 
 	/* 32 ~ 63 for OEMs/ODMs secific features */
 	PON_RESTART_REASON_OEM_MIN		= 0x20,
@@ -80,6 +85,11 @@ bool qpnp_pon_check_hard_reset_stored(void);
 int qpnp_pon_is_lpk(void);
 #endif
 int qpnp_pon_is_ps_hold_reset(void);
+
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
+int qpnp_pon_is_lpk(void);
+int qpnp_pon_is_ps_hold_reset(void);
+#endif
 
 #else
 static int qpnp_pon_system_pwr_off(enum pon_power_off_type type)
@@ -113,6 +123,10 @@ static inline int qpnp_pon_is_ps_hold_reset(void)
 {
 	return -ENODEV;
 }
+#endif
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
+static inline int qpnp_pon_is_lpk(void) { return -ENODEV; }
+static inline int qpnp_pon_is_ps_hold_reset(void) { return -ENODEV; }
 #endif
 #endif
 
