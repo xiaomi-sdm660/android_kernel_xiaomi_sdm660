@@ -202,11 +202,20 @@ static bool msm_swap_gnd_mic(struct snd_soc_codec *codec);
 static struct wcd_mbhc_config mbhc_cfg = {
 	.read_fw_bin = false,
 	.calibration = NULL,
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
+	.detect_extn_cable = false,
+#else
 	.detect_extn_cable = true,
+#endif
 	.mono_stero_detection = false,
 	.swap_gnd_mic = NULL,
 	.hs_ext_micbias = true,
 	.key_code[0] = KEY_MEDIA,
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
+	.key_code[1] = BTN_1,
+	.key_code[2] = BTN_2,
+	.key_code[3] = 0,
+#else
 #ifndef CONFIG_MACH_XIAOMI_SDM660
 	.key_code[1] = KEY_VOICECOMMAND,
 	.key_code[2] = KEY_VOLUMEUP,
@@ -215,6 +224,7 @@ static struct wcd_mbhc_config mbhc_cfg = {
 	.key_code[1] = KEY_VOLUMEUP,
 	.key_code[2] = KEY_VOLUMEDOWN,
 	.key_code[3] = 0,
+#endif
 #endif
 	.key_code[4] = 0,
 	.key_code[5] = 0,
