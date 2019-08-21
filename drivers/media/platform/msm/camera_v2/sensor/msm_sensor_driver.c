@@ -22,6 +22,9 @@
 #include <soc/qcom/camera2.h>
 extern struct vendor_eeprom s_vendor_eeprom[CAMERA_VENDOR_EEPROM_COUNT_MAX];
 #endif
+#ifdef CONFIG_XIAOMI_CLOVER
+#include <linux/hardware_info.h>
+#endif
 /* Logging macro */
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
@@ -1840,6 +1843,14 @@ CSID_TG:
 	 * Set probe succeeded flag to 1 so that no other camera shall
 	 * probed on this slot
 	 */
+#ifdef CONFIG_XIAOMI_CLOVER
+	if (0 == slave_info->camera_id)
+		get_hardware_info_data(HWID_MAIN_CAM,(void *)slave_info->sensor_name);
+	else {
+		if (2 == slave_info->camera_id)
+			get_hardware_info_data(HWID_SUB_CAM,(void *)slave_info->sensor_name);
+	}
+#endif
 	s_ctrl->is_probe_succeed = 1;
 	return rc;
 
