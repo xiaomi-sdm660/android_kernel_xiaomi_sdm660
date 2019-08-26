@@ -29,7 +29,6 @@
 #include <sound/adsp_err.h>
 #include <linux/qdsp6v2/apr_tal.h>
 #include <sound/q6core.h>
-
 #define WAKELOCK_TIMEOUT	5000
 enum {
 	AFE_COMMON_RX_CAL = 0,
@@ -1691,7 +1690,6 @@ fail_cmd:
 		 param_info.param_id, ret, src_port);
 	return ret;
 }
-
 static void afe_send_cal_spkr_prot_tx(int port_id)
 {
 	union afe_spkr_prot_config afe_spk_config;

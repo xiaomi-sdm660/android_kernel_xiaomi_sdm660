@@ -39,12 +39,6 @@
 #include <sound/q6adm-v2.h>
 #include <sound/apr_audio-v2.h>
 
-#ifdef CONFIG_ELLIPTCLABS
-/* ELUS Begin */
-#include <sound/apr_elliptic.h>
-#include <elliptic/elliptic_mixer_controls.h>
-/* ELUS End */
-#endif
 #include "msm-pcm-routing-v2.h"
 #include "msm-pcm-routing-devdep.h"
 #include "msm-qti-pp-config.h"
@@ -16928,9 +16922,6 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"MI2S_UL_HL", NULL, "MI2S_TX"},
 	{"PCM_RX_DL_HL", "Switch", "SLIM0_DL_HL"},
 	{"PCM_RX", NULL, "PCM_RX_DL_HL"},
-#ifdef CONFIG_ELLIPTCLABS
-	{"INT0_MI2S_RX", NULL, "INT0_MI2S_DL_HL"},
-#endif
 
 	/* connect to INT4_MI2S_DL_HL since same pcm_id */
 	{"INT0_MI2S_RX_DL_HL", "Switch", "INT4_MI2S_DL_HL"},
@@ -18630,11 +18621,6 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 	snd_soc_add_platform_controls(
 		platform, msm_routing_feature_support_mixer_controls,
 		ARRAY_SIZE(msm_routing_feature_support_mixer_controls));
-#ifdef CONFIG_ELLIPTCLABS
-	/* ELUS Begin */
-	elliptic_add_platform_controls(platform);
-	/* ELUS End */
-#endif
 	return 0;
 }
 
