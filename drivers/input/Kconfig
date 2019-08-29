@@ -225,6 +225,10 @@ source "drivers/input/touchscreen/Kconfig"
 
 source "drivers/input/misc/Kconfig"
 
+source "drivers/input/fingerprint/Kconfig"
+
+source "drivers/input/fingerprint/gf3208/Kconfig"
+
 source "drivers/input/sensors/bmi160/Kconfig"
 
 endif
@@ -238,4 +242,3 @@ source "drivers/input/gameport/Kconfig"
 endmenu
 
 endmenu
-
