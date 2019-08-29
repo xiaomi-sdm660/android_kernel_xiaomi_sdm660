@@ -223,7 +223,13 @@ config THERMAL_SWITCH
   bool "Support thermal config switch"
   help
   Support thermal config switch.
-  
+
+config A_ONLY_DEVICE
+  default n
+  bool "A-Only Device with early system mount"
+  help
+  A-Only Device Support.
+
 if ARM64_DMA_USE_IOMMU
 
 config ARM64_DMA_IOMMU_ALIGNMENT
