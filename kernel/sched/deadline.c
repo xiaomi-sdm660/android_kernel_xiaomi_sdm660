@@ -2018,6 +2018,9 @@ const struct sched_class dl_sched_class = {
 	.switched_to		= switched_to_dl,
 
 	.update_curr		= update_curr_dl,
+#ifdef CONFIG_SCHED_WALT
+	.fixup_cumulative_runnable_avg = walt_fixup_cumulative_runnable_avg,
+#endif
 };
 
 #ifdef CONFIG_SCHED_DEBUG
