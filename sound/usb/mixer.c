@@ -769,7 +769,7 @@ static int __check_input_term(struct mixer_build *state, int id,
 			} else { /* UAC_VERSION_3 */
 				struct uac3_input_terminal_descriptor *d = p1;
 
-				err = check_input_term(state,
+				err = __check_input_term(state,
 							d->bCSourceID, term);
 				if (err < 0)
 					return err;
@@ -827,7 +827,7 @@ static int __check_input_term(struct mixer_build *state, int id,
 			} else {
 				struct uac_selector_unit_descriptor *d = p1;
 				/* call recursively to retrieve channel info */
-				err = check_input_term(state,
+				err = __check_input_term(state,
 							d->baSourceID[0], term);
 				if (err < 0)
 					return err;
@@ -1729,7 +1729,7 @@ static int parse_audio_feature_unit(struct mixer_build *state, int unitid,
 	}
 
 	/* determine the input source type and name */
-	err = check_input_term(state, hdr->bSourceID, &iterm);
+	err = __check_input_term(state, hdr->bSourceID, &iterm);
 	if (err < 0)
 		return err;
 
@@ -1904,13 +1904,13 @@ static int parse_audio_mixer_unit(struct mixer_build *state, int unitid,
 		   (badd_baiof_mu_desc.wClusterDescrID == CLUSTER_ID_MONO) ?
 		    NUM_CHANNELS_MONO : NUM_CHANNELS_STEREO;
 	} else {
-    if (desc->bLength < 11 || !(input_pins = desc->bNrInPins) ||
-  	    desc->bLength < sizeof(*desc) + desc->bNrInPins ||
-  	    !(num_outs = uac_mixer_unit_bNrChannels(desc))) {
-  		usb_audio_err(state->chip,
-  			      "invalid MIXER UNIT descriptor %d\n",
-  			      unitid);
-  		return -EINVAL;
+		if (desc->bLength < 11 || !(input_pins = desc->bNrInPins) ||
+     	            desc->bLength < sizeof(*desc) + desc->bNrInPins ||
+		    !(num_outs = uac_mixer_unit_bNrChannels(desc))) {
+			usb_audio_err(state->chip,
+				      "invalid MIXER UNIT descriptor %d\n",
+				      unitid);
+			return -EINVAL;
 		}
 	}
 
@@ -1923,7 +1923,7 @@ static int parse_audio_mixer_unit(struct mixer_build *state, int unitid,
 		/* no bmControls field (e.g. Maya44) -> ignore */
 		if (desc->bLength <= 10 + input_pins)
 			continue;
-		err = check_input_term(state, desc->baSourceID[pin], &iterm);
+		err = __check_input_term(state, desc->baSourceID[pin], &iterm);
 		if (err < 0)
 			return err;
 		num_ins += iterm.channels;
