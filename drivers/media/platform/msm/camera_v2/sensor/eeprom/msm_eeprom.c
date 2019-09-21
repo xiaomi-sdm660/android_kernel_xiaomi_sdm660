@@ -328,7 +328,7 @@ ERROR:
 static int set_s5k2l7_fuse_id_from_eeprom(uint8_t *memptr) {
 
 	char s_fuse_id_temp[80] = {0};
-	if((memptr[S5K2L7_SENSOR_ID_ADD] == S5K2L7_SENSOR_ID)){
+	if(memptr[S5K2L7_SENSOR_ID_ADD] == S5K2L7_SENSOR_ID){
 		sprintf(s_fuse_id_temp,"back: %04x%04x%04x%04x%04x%04x%04x%04x%04x%04x%04x%04x%04x%04x%04x\n",
 					memptr[S5K2L7_SENSOR_FUSE_ID_START + 0],
 					memptr[S5K2L7_SENSOR_FUSE_ID_START + 1],
