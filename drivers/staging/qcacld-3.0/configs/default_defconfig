@@ -649,9 +649,9 @@ endif
 ifneq ($(TARGET_BUILD_VARIANT),user)
 CONFIG_DESC_DUP_DETECT_DEBUG := y
 CONFIG_DEBUG_RX_RING_BUFFER := y
+CONFIG_DP_TRACE := y
 endif
 
-CONFIG_DP_TRACE := y
 #Enable Beacon Reception Stats
 CONFIG_FEATURE_BECN_STATS := y
 
