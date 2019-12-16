@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -151,21 +151,10 @@
 #define SIR_MAC_QOS_DEF_BA_REQ      4
 #define SIR_MAC_QOS_DEF_BA_RSP      5
 
-#define SIR_MAC_ADDBA_REQ     0
-#define SIR_MAC_ADDBA_RSP     1
-#define SIR_MAC_DELBA_REQ     2
-
-#define SIR_MAC_BA_POLICY_DELAYED       0
-#define SIR_MAC_BA_POLICY_IMMEDIATE     1
-#define SIR_MAC_BA_AMSDU_SUPPORTED      1
-#define SIR_MAC_BA_DEFAULT_BUFF_SIZE    64
-
-#ifdef ANI_SUPPORT_11H
 #define SIR_MAC_ACTION_MEASURE_REQUEST_ID      0
 #define SIR_MAC_ACTION_MEASURE_REPORT_ID       1
 #define SIR_MAC_ACTION_TPC_REQUEST_ID          2
 #define SIR_MAC_ACTION_TPC_REPORT_ID           3
-#endif /* ANI_SUPPORT_11H */
 #define SIR_MAC_ACTION_CHANNEL_SWITCH_ID       4
 
 #ifdef ANI_SUPPORT_11H
@@ -210,7 +199,7 @@
 #define SIR_MAC_DLP_RSP             1
 #define SIR_MAC_DLP_TEARDOWN        2
 
-/* block acknowledgment action frame types */
+/* block acknowledgement action frame types */
 #define SIR_MAC_ACTION_VENDOR_SPECIFIC 9
 #define SIR_MAC_ACTION_VENDOR_SPECIFIC_CATEGORY     0x7F
 #define SIR_MAC_ACTION_P2P_SUBTYPE_PRESENCE_RSP     2
@@ -218,6 +207,7 @@
 /* Public Action for 20/40 BSS Coexistence */
 #define SIR_MAC_ACTION_2040_BSS_COEXISTENCE     0
 #define SIR_MAC_ACTION_EXT_CHANNEL_SWITCH_ID    4
+#define SIR_MAC_ACTION_MEASUREMENT_PILOT        7
 
 /* Public Action frames for GAS */
 #define SIR_MAC_ACTION_GAS_INITIAL_REQUEST      0x0A
@@ -409,6 +399,7 @@
 #define VHT_RX_HIGHEST_SUPPORTED_DATA_RATE_2_2       780
 #define VHT_TX_HIGHEST_SUPPORTED_DATA_RATE_2_2       780
 
+#define VHT_CAP_80_SUPP 0
 #define VHT_CAP_160_SUPP 1
 #define VHT_CAP_160_AND_80P80_SUPP 2
 
@@ -467,6 +458,13 @@
 #define SIR_MAX_NOA_ATTR_LEN        31
 #define SIR_MAX_NOA_DESCR           2
 #define SIR_P2P_IE_HEADER_LEN       6
+#define HEADER_LEN_P2P_IE  6
+#define OUI_SIZE_P2P       4
+
+#define P2P_1X1_WAR_OUI   "\x00\x50\xf2\x04"
+#define P2P_1X1_OUI_LEN    4
+#define MAX_CONFIG_METHODS_LEN   2
+#define DEVICE_CATEGORY_MAX_LEN  1
 
 #define SIR_MAC_CISCO_OUI "\x00\x40\x96"
 #define SIR_MAC_CISCO_OUI_SIZE 3
@@ -690,7 +688,7 @@ typedef enum eSirMacStatusCodes {
 	/* element is unacceptable */
 	eSIR_MAC_SPRTD_CHANNELS_BAD_STATUS = 24,        /* Association request rejected because the information in the Supported Channels */
 	/* element is unacceptable */
-	eSIR_MAC_SHORT_SLOT_NOT_SUPPORTED_STATUS = 25,   /* Association denied due to requesting station not supporting the Short Slot Time */
+	eSIR_MAC_SHORT_SLOT_NOT_SUPORTED_STATUS = 25,   /* Association denied due to requesting station not supporting the Short Slot Time */
 	/* option */
 	eSIR_MAC_DSSS_OFDM_NOT_SUPPORTED_STATUS = 26,   /* Association denied due to requesting station not supporting the DSSS-OFDM option */
 	/* reserved                                     27-29 */
@@ -713,7 +711,7 @@ typedef enum eSirMacStatusCodes {
 	eSIR_MAC_TS_NOT_HONOURED_STATUS = 39,   /* The TS has not been created because the request cannot be honored; however, a suggested */
 	/* TSPEC is provided so that the initiating STA may attempt to set another TS */
 	/* with the suggested changes to the TSPEC */
-	eSIR_MAC_INVALID_IE_STATUS = 40,       /* Invalid information element, i.e., an information element defined in this standard for */
+	eSIR_MAC_INVALID_INFORMATION_ELEMENT_STATUS = 40,       /* Invalid information element, i.e., an information element defined in this standard for */
 	/* which the content does not meet the specifications in Clause 7 */
 	eSIR_MAC_INVALID_GROUP_CIPHER_STATUS = 41,      /* Invalid group cipher */
 	eSIR_MAC_INVALID_PAIRWISE_CIPHER_STATUS = 42,   /* Invalid pairwise cipher */
@@ -1020,11 +1018,10 @@ struct merged_mac_rate_set {
 	uint8_t num_rates;
 	uint8_t rate[2 * SIR_MAC_RATESET_EID_MAX];
 };
-
 /* Reserve 1 byte for NULL character in the SSID name field to print in %s */
 typedef struct sSirMacSSid {
 	uint8_t length;
-	uint8_t ssId[SIR_MAC_MAX_SSID_LENGTH +1];
+	uint8_t ssId[SIR_MAC_MAX_SSID_LENGTH + 1];
 } qdf_packed tSirMacSSid;
 
 typedef struct sSirMacWpaInfo {
@@ -1163,11 +1160,7 @@ typedef struct sSirMacCW {
 typedef struct sSirMacEdcaParamRecord {
 	tSirMacAciAifsn aci;
 	tSirMacCW cw;
-	union {
-		uint16_t txoplimit;
-		uint16_t mu_edca_timer;
-	};
-	uint8_t no_ack;
+	uint16_t txoplimit;
 } qdf_packed tSirMacEdcaParamRecord;
 
 typedef struct sSirMacQosInfo {
@@ -1987,7 +1980,6 @@ typedef struct sSirMacAuthFrameBody {
 	uint8_t challengeText[SIR_MAC_AUTH_CHALLENGE_LENGTH];
 #ifdef WLAN_FEATURE_FILS_SK
 	tSirMacRsnInfo rsn_ie;
-	struct mac_ft_ie ft_ie;
 	uint8_t assoc_delay_info;
 	uint8_t session[SIR_FILS_SESSION_LENGTH];
 	uint8_t wrapped_data_len;
@@ -2155,305 +2147,6 @@ typedef struct sSirMacRadioMeasureReport {
 
 } tSirMacRadioMeasureReport, *tpSirMacRadioMeasureReport;
 
-#ifdef WLAN_FEATURE_11AX
-struct he_cap_network_endian {
-	uint32_t htc_he:1;
-	uint32_t twt_request:1;
-	uint32_t twt_responder:1;
-	uint32_t fragmentation:2;
-	uint32_t max_num_frag_msdu:3;
-	uint32_t min_frag_size:2;
-	uint32_t trigger_frm_mac_pad:2;
-	uint32_t multi_tid_aggr:3;
-	uint32_t he_link_adaptation:2;
-	uint32_t all_ack:1;
-	uint32_t ul_mu_rsp_sched:1;
-	uint32_t a_bsr:1;
-	uint32_t broadcast_twt:1;
-	uint32_t ba_32bit_bitmap:1;
-	uint32_t mu_cascade:1;
-	uint32_t ack_enabled_multitid:1;
-	uint32_t dl_mu_ba:1;
-	uint32_t omi_a_ctrl:1;
-	uint32_t ofdma_ra:1;
-	uint32_t max_ampdu_len:2;
-	uint32_t amsdu_frag:1;
-	uint32_t flex_twt_sched:1;
-	uint32_t rx_ctrl_frame:1;
-
-	uint8_t bsrp_ampdu_aggr:1;
-	uint8_t qtp:1;
-	uint8_t a_bqr:1;
-	uint8_t sr_responder:1;
-	uint8_t ndp_feedback_supp:1;
-	uint8_t ops_supp:1;
-	uint8_t amsdu_in_ampdu:1;
-	uint8_t reserved1:1;
-
-	uint32_t dual_band:1;
-	uint32_t chan_width:7;
-	uint32_t rx_pream_puncturing:4;
-	uint32_t device_class:1;
-	uint32_t ldpc_coding:1;
-	uint32_t he_1x_ltf_800_gi_ppdu:1;
-	uint32_t midamble_rx_max_nsts:2;
-	uint32_t he_4x_ltf_3200_gi_ndp:1;
-	uint32_t tx_stbc_lt_80mhz:1;
-	uint32_t rx_stbc_lt_80mhz:1;
-	uint32_t doppler:2;
-	uint32_t ul_mu:2;
-	uint32_t dcm_enc_tx:3;
-	uint32_t dcm_enc_rx:3;
-	uint32_t ul_he_mu:1;
-	uint32_t su_beamformer:1;
-
-	uint32_t su_beamformee:1;
-	uint32_t mu_beamformer:1;
-	uint32_t bfee_sts_lt_80:3;
-	uint32_t bfee_sts_gt_80:3;
-	uint32_t num_sounding_lt_80:3;
-	uint32_t num_sounding_gt_80:3;
-	uint32_t su_feedback_tone16:1;
-	uint32_t mu_feedback_tone16:1;
-	uint32_t codebook_su:1;
-	uint32_t codebook_mu:1;
-	uint32_t beamforming_feedback:3;
-	uint32_t he_er_su_ppdu:1;
-	uint32_t dl_mu_mimo_part_bw:1;
-	uint32_t ppet_present:1;
-	uint32_t srp:1;
-	uint32_t power_boost:1;
-	uint32_t he_ltf_800_gi_4x:1;
-	uint32_t max_nc:3;
-	uint32_t tx_stbc_gt_80mhz:1;
-	uint32_t rx_stbc_gt_80mhz:1;
-
-	uint8_t er_he_ltf_800_gi_4x:1;
-	uint8_t he_ppdu_20_in_40Mhz_2G:1;
-	uint8_t he_ppdu_20_in_160_80p80Mhz:1;
-	uint8_t he_ppdu_80_in_160_80p80Mhz:1;
-	uint8_t er_1x_he_ltf_gi:1;
-	uint8_t midamble_rx_1x_he_ltf:1;
-	uint8_t reserved2:2;
-
-	uint16_t rx_he_mcs_map_lt_80;
-	uint16_t tx_he_mcs_map_lt_80;
-	uint16_t rx_he_mcs_map_160;
-	uint16_t tx_he_mcs_map_160;
-	uint16_t rx_he_mcs_map_80_80;
-	uint16_t tx_he_mcs_map_80_80;
-} qdf_packed;
-
-struct he_ops_network_endian {
-	uint32_t            bss_color:6;
-	uint32_t           default_pe:3;
-	uint32_t         twt_required:1;
-	uint32_t        rts_threshold:10;
-	uint32_t      partial_bss_col:1;
-	uint32_t     vht_oper_present:1;
-	uint32_t            reserved1:6;
-	uint32_t            mbssid_ap:1;
-	uint32_t         tx_bssid_ind:1;
-	uint32_t     bss_col_disabled:1;
-	uint32_t            reserved2:1;
-	uint8_t             basic_mcs_nss[2];
-	union {
-		struct {
-			uint8_t chan_width;
-			uint8_t center_freq_seg0;
-			uint8_t center_freq_seg1;
-		} info; /* vht_oper_present = 1 */
-	} vht_oper;
-	union {
-		struct {
-			uint8_t data;
-		} info; /* mbssid_ap = 1 */
-	} maxbssid_ind;
-} qdf_packed;
-
-/* HE Capabilities Info */
-struct he_capability_info {
-#ifndef ANI_LITTLE_BIT_ENDIAN
-	uint32_t rx_ctrl_frame:1;
-	uint32_t flex_twt_sched:1;
-	uint32_t amsdu_frag:1;
-	uint32_t max_ampdu_len:2;
-	uint32_t ofdma_ra:1;
-	uint32_t omi_a_ctrl:1;
-	uint32_t dl_mu_ba:1;
-	uint32_t ack_enabled_multitid:1;
-	uint32_t mu_cascade:1;
-	uint32_t ba_32bit_bitmap:1;
-	uint32_t broadcast_twt:1;
-	uint32_t a_bsr:1;
-	uint32_t ul_mu_rsp_sched:1;
-	uint32_t all_ack:1;
-	uint32_t he_link_adaptation:2;
-	uint32_t multi_tid_aggr:3;
-	uint32_t trigger_frm_mac_pad:2;
-	uint32_t min_frag_size:2;
-	uint32_t max_num_frag_msdu:3;
-	uint32_t fragmentation:2;
-	uint32_t twt_responder:1;
-	uint32_t twt_request:1;
-	uint32_t htc_he:1;
-
-	uint8_t reserved1:1;
-	uint8_t amsdu_in_ampdu:1;
-	uint8_t ops_supp:1;
-	uint8_t ndp_feedback_supp:1;
-	uint8_t sr_responder:1;
-	uint8_t a_bqr:1;
-	uint8_t qtp:1;
-	uint8_t bsrp_ampdu_aggr:1;
-
-	uint32_t su_beamformer:1;
-	uint32_t ul_he_mu:1;
-	uint32_t dcm_enc_rx:3;
-	uint32_t dcm_enc_tx:3;
-	uint32_t ul_mu:2;
-	uint32_t doppler:2;
-	uint32_t rx_stbc_lt_80mhz:1;
-	uint32_t tx_stbc_lt_80mhz:1;
-	uint32_t he_4x_ltf_3200_gi_ndp:1;
-	uint32_t midamble_rx_max_nsts:2;
-	uint32_t he_1x_ltf_800_gi_ppdu:1;
-	uint32_t ldpc_coding:1;
-	uint32_t device_class:1;
-	uint32_t rx_pream_puncturing:4;
-	uint32_t chan_width:7;
-	uint32_t dual_band:1;
-
-	uint32_t rx_stbc_gt_80mhz:1;
-	uint32_t tx_stbc_gt_80mhz:1;
-	uint32_t max_nc:3;
-	uint32_t he_ltf_800_gi_4x:1;
-	uint32_t power_boost:1;
-	uint32_t srp:1;
-	uint32_t ppet_present:1;
-	uint32_t dl_mu_mimo_part_bw:1;
-	uint32_t he_er_su_ppdu:1;
-	uint32_t beamforming_feedback:3;
-	uint32_t codebook_mu:1;
-	uint32_t codebook_su:1;
-	uint32_t mu_feedback_tone16:1;
-	uint32_t su_feedback_tone16:1;
-	uint32_t num_sounding_gt_80:3;
-	uint32_t num_sounding_lt_80:3;
-	uint32_t bfee_sts_gt_80:3;
-	uint32_t bfee_sts_lt_80:3;
-	uint32_t mu_beamformer:1;
-	uint32_t su_beamformee:1;
-
-	uint8_t reserved2:2;
-	uint8_t midamble_rx_1x_he_ltf:1;
-	uint8_t er_1x_he_ltf_gi:1;
-	uint8_t he_ppdu_80_in_160_80p80Mhz:1;
-	uint8_t he_ppdu_20_in_160_80p80Mhz:1;
-	uint8_t he_ppdu_20_in_40Mhz_2G:1;
-	uint8_t er_he_ltf_800_gi_4x:1;
-
-	uint16_t tx_he_mcs_map_80_80;
-	uint16_t rx_he_mcs_map_80_80;
-	uint16_t tx_he_mcs_map_160;
-	uint16_t rx_he_mcs_map_160;
-	uint16_t tx_he_mcs_map_lt_80;
-	uint16_t rx_he_mcs_map_lt_80;
-#else
-	uint32_t htc_he:1;
-	uint32_t twt_request:1;
-	uint32_t twt_responder:1;
-	uint32_t fragmentation:2;
-	uint32_t max_num_frag_msdu:3;
-	uint32_t min_frag_size:2;
-	uint32_t trigger_frm_mac_pad:2;
-	uint32_t multi_tid_aggr:3;
-	uint32_t he_link_adaptation:2;
-	uint32_t all_ack:1;
-	uint32_t ul_mu_rsp_sched:1;
-	uint32_t a_bsr:1;
-	uint32_t broadcast_twt:1;
-	uint32_t ba_32bit_bitmap:1;
-	uint32_t mu_cascade:1;
-	uint32_t ack_enabled_multitid:1;
-	uint32_t dl_mu_ba:1;
-	uint32_t omi_a_ctrl:1;
-	uint32_t ofdma_ra:1;
-	uint32_t max_ampdu_len:2;
-	uint32_t amsdu_frag:1;
-	uint32_t flex_twt_sched:1;
-	uint32_t rx_ctrl_frame:1;
-
-	uint8_t bsrp_ampdu_aggr:1;
-	uint8_t qtp:1;
-	uint8_t a_bqr:1;
-	uint8_t sr_responder:1;
-	uint8_t ndp_feedback_supp:1;
-	uint8_t ops_supp:1;
-	uint8_t amsdu_in_ampdu:1;
-	uint8_t reserved1:1;
-
-	uint32_t dual_band:1;
-	uint32_t chan_width:7;
-	uint32_t rx_pream_puncturing:4;
-	uint32_t device_class:1;
-	uint32_t ldpc_coding:1;
-	uint32_t he_1x_ltf_800_gi_ppdu:1;
-	uint32_t midamble_rx_max_nsts:2;
-	uint32_t he_4x_ltf_3200_gi_ndp:1;
-	uint32_t tx_stbc_lt_80mhz:1;
-	uint32_t rx_stbc_lt_80mhz:1;
-	uint32_t doppler:2;
-	uint32_t ul_mu:2;
-	uint32_t dcm_enc_tx:3;
-	uint32_t dcm_enc_rx:3;
-	uint32_t ul_he_mu:1;
-	uint32_t su_beamformer:1;
-
-	uint32_t su_beamformee:1;
-	uint32_t mu_beamformer:1;
-	uint32_t bfee_sts_lt_80:3;
-	uint32_t bfee_sts_gt_80:3;
-	uint32_t num_sounding_lt_80:3;
-	uint32_t num_sounding_gt_80:3;
-	uint32_t su_feedback_tone16:1;
-	uint32_t mu_feedback_tone16:1;
-	uint32_t codebook_su:1;
-	uint32_t codebook_mu:1;
-	uint32_t beamforming_feedback:3;
-	uint32_t he_er_su_ppdu:1;
-	uint32_t dl_mu_mimo_part_bw:1;
-	uint32_t ppet_present:1;
-	uint32_t srp:1;
-	uint32_t power_boost:1;
-	uint32_t he_ltf_800_gi_4x:1;
-	uint32_t max_nc:3;
-	uint32_t tx_stbc_gt_80mhz:1;
-	uint32_t rx_stbc_gt_80mhz:1;
-
-	uint8_t er_he_ltf_800_gi_4x:1;
-	uint8_t he_ppdu_20_in_40Mhz_2G:1;
-	uint8_t he_ppdu_20_in_160_80p80Mhz:1;
-	uint8_t he_ppdu_80_in_160_80p80Mhz:1;
-	uint8_t er_1x_he_ltf_gi:1;
-	uint8_t midamble_rx_1x_he_ltf:1;
-	uint8_t reserved2:2;
-
-	uint16_t rx_he_mcs_map_lt_80;
-	uint16_t tx_he_mcs_map_lt_80;
-	uint16_t rx_he_mcs_map_160;
-	uint16_t tx_he_mcs_map_160;
-	uint16_t rx_he_mcs_map_80_80;
-	uint16_t tx_he_mcs_map_80_80;
-#endif
-} qdf_packed;
-#endif
-
-/*
- * frame parser does not include optional 160 and 80+80 mcs set for MIN IE len
- */
-#define SIR_MAC_HE_CAP_MIN_LEN       (DOT11F_IE_HE_CAP_MIN_LEN + 8)
-
 /* QOS action frame definitions */
 
 /* max number of possible tclas elements in any frame */
@@ -2578,4 +2271,67 @@ struct he_capability_info {
 #define SIR_MAC_TXSTBC                             1
 #define SIR_MAC_RXSTBC                             1
 
+/**
+ * enum p2p_attr_id - enum for P2P attributes ID in P2P IE
+ * @P2P_ATTR_STATUS - Attribute Status none
+ * @P2P_ATTR_MINOR_REASON_CODE: Minor reason code attribute
+ * @P2P_ATTR_CAPABILITY: Capability attribute
+ * @P2P_ATTR_DEVICE_ID: device ID attribute
+ * @P2P_ATTR_GROUP_OWNER_INTENT: Group owner intent attribute
+ * @P2P_ATTR_CONFIGURATION_TIMEOUT: Config timeout attribute
+ * @P2P_ATTR_LISTEN_CHANNEL: listen channel attribute
+ * @P2P_ATTR_GROUP_BSSID: Group BSSID attribute
+ * @P2P_ATTR_EXT_LISTEN_TIMING: Listen timing attribute
+ * @P2P_ATTR_INTENDED_INTERFACE_ADDR: Intended interface address attribute
+ * @P2P_ATTR_MANAGEABILITY:  Manageability attribute
+ * @P2P_ATTR_CHANNEL_LIST: Channel list attribute
+ * @P2P_ATTR_NOTICE_OF_ABSENCE: Notice of Absence attribute
+ * @P2P_ATTR_DEVICE_INFO: Device Info attribute
+ * @P2P_ATTR_GROUP_INFO: Group Info attribute
+ * @P2P_ATTR_GROUP_ID: Group ID attribute
+ * @P2P_ATTR_INTERFACE: Interface attribute
+ * @P2P_ATTR_OPERATING_CHANNEL: Operating channel attribute
+ * @P2P_ATTR_INVITATION_FLAGS: Invitation flags attribute
+ * @P2P_ATTR_OOB_GO_NEG_CHANNEL: GO neg channel attribute
+ * @P2P_ATTR_SERVICE_HASH: Service HASH attribute
+ * @P2P_ATTR_SESSION_INFORMATION_DATA: Session Info data attribute
+ * @P2P_ATTR_CONNECTION_CAPABILITY = Connection capability attribute
+ * @P2P_ATTR_ADVERTISEMENT_ID = Advertisement ID attribute
+ * @P2P_ATTR_ADVERTISED_SERVICE = Advertised Service attribute
+ * @P2P_ATTR_SESSION_ID = Session ID attribute
+ * @P2P_ATTR_FEATURE_CAPABILITY = Feature capability attribute
+ * @P2P_ATTR_PERSISTENT_GROUP -Persistent group attribute
+ * @P2P_ATTR_VENDOR_SPECIFIC - Vendor specific attribute
+ */
+enum p2p_attr_id {
+	P2P_ATTR_STATUS = 0,
+	P2P_ATTR_MINOR_REASON_CODE = 1,
+	P2P_ATTR_CAPABILITY = 2,
+	P2P_ATTR_DEVICE_ID = 3,
+	P2P_ATTR_GROUP_OWNER_INTENT = 4,
+	P2P_ATTR_CONFIGURATION_TIMEOUT = 5,
+	P2P_ATTR_LISTEN_CHANNEL = 6,
+	P2P_ATTR_GROUP_BSSID = 7,
+	P2P_ATTR_EXT_LISTEN_TIMING = 8,
+	P2P_ATTR_INTENDED_INTERFACE_ADDR = 9,
+	P2P_ATTR_MANAGEABILITY = 10,
+	P2P_ATTR_CHANNEL_LIST = 11,
+	P2P_ATTR_NOTICE_OF_ABSENCE = 12,
+	P2P_ATTR_DEVICE_INFO = 13,
+	P2P_ATTR_GROUP_INFO = 14,
+	P2P_ATTR_GROUP_ID = 15,
+	P2P_ATTR_INTERFACE = 16,
+	P2P_ATTR_OPERATING_CHANNEL = 17,
+	P2P_ATTR_INVITATION_FLAGS = 18,
+	P2P_ATTR_OOB_GO_NEG_CHANNEL = 19,
+	P2P_ATTR_SERVICE_HASH = 21,
+	P2P_ATTR_SESSION_INFORMATION_DATA = 22,
+	P2P_ATTR_CONNECTION_CAPABILITY = 23,
+	P2P_ATTR_ADVERTISEMENT_ID = 24,
+	P2P_ATTR_ADVERTISED_SERVICE = 25,
+	P2P_ATTR_SESSION_ID = 26,
+	P2P_ATTR_FEATURE_CAPABILITY = 27,
+	P2P_ATTR_PERSISTENT_GROUP = 28,
+	P2P_ATTR_VENDOR_SPECIFIC = 221
+};
 #endif /* __MAC_PROT_DEFS_H */

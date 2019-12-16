@@ -27,19 +27,12 @@
 #include "wlan_hdd_main.h"
 #include "wlan_hdd_ocb.h"
 #include "wlan_hdd_trace.h"
-#include "wlan_osif_request_manager.h"
-#include "wlan_tgt_def_config.h"
+#include "wlan_hdd_request_manager.h"
+#include "target_if_def_config.h"
 #include "sch_api.h"
 #include "wma_api.h"
-#include <cdp_txrx_cmn.h>
+#include "ol_txrx.h"
 #include <cdp_txrx_peer_ops.h>
-#include <cdp_txrx_handle.h>
-#include "wlan_ocb_public_structs.h"
-#include "wlan_ocb_ucfg_api.h"
-#include <cdp_txrx_cmn.h>
-#include <cdp_txrx_peer_ops.h>
-#include <cdp_txrx_handle.h>
-#include <cdp_txrx_ocb.h>
 
 /* Structure definitions for WLAN_SET_DOT11P_CHANNEL_SCHED */
 #define AIFSN_MIN		(2)
@@ -54,13 +47,13 @@
  * hdd_set_dot11p_config() - Set 802.11p config flag
  * @hdd_ctx: HDD Context pointer
  *
- * TODO-OCB: This has been temporarily added to ensure this parameter
+ * TODO-OCB: This has been temporarily added to ensure this paramter
  * is set in CSR when we init the channel list. This should be removed
  * once the 5.9 GHz channels are added to the regulatory domain.
  */
-void hdd_set_dot11p_config(struct hdd_context *hdd_ctx)
+void hdd_set_dot11p_config(hdd_context_t *hdd_ctx)
 {
-	sme_set_dot11p_config(hdd_ctx->mac_handle,
+	sme_set_dot11p_config(hdd_ctx->hHal,
 			      hdd_ctx->config->dot11p_mode !=
 				WLAN_HDD_11P_DISABLED);
 }
@@ -71,7 +64,7 @@ void hdd_set_dot11p_config(struct hdd_context *hdd_ctx)
  *
  * Return: 0 on success. error code on failure.
  */
-static int dot11p_validate_qos_params(struct ocb_wmm_param qos_params[])
+static int dot11p_validate_qos_params(struct sir_qos_params qos_params[])
 {
 	int i;
 
@@ -193,11 +186,11 @@ static int dot11p_validate_channel(struct wiphy *wiphy,
  *
  * Return: 0 on success.
  */
-static int hdd_ocb_validate_config(struct hdd_adapter *adapter,
-				   struct ocb_config *config)
+static int hdd_ocb_validate_config(hdd_adapter_t *adapter,
+				   struct sir_ocb_config *config)
 {
 	int i;
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 
 	for (i = 0; i < config->channel_count; i++) {
 		if (dot11p_validate_channel(hdd_ctx->wiphy,
@@ -226,27 +219,20 @@ static int hdd_ocb_validate_config(struct hdd_adapter *adapter,
  *
  * Return: 0 on success. -1 on failure.
  */
-static int hdd_ocb_register_sta(struct hdd_adapter *adapter)
+static int hdd_ocb_register_sta(hdd_adapter_t *adapter)
 {
 	QDF_STATUS qdf_status = QDF_STATUS_E_FAILURE;
 	struct ol_txrx_desc_type sta_desc = {0};
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
-	struct hdd_station_ctx *sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_station_ctx_t *pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 	uint8_t peer_id;
 	struct ol_txrx_ops txrx_ops;
-	void *soc = cds_get_context(QDF_MODULE_ID_SOC);
-	void *pdev = cds_get_context(QDF_MODULE_ID_TXRX);
 
-	qdf_status = cdp_peer_register_ocb_peer(soc,
-				adapter->mac_addr.bytes,
-				&peer_id);
+	qdf_status = ol_txrx_register_ocb_peer(hdd_ctx->pcds_context,
+					       adapter->macAddressCurrent.bytes,
+					       &peer_id);
 	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
 		hdd_err("Error registering OCB Self Peer!");
-		return -EINVAL;
-	}
-
-	if (peer_id >= HDD_MAX_ADAPTERS) {
-		hdd_err("Error: Invalid peer_id: %u", peer_id);
 		return -EINVAL;
 	}
 
@@ -258,29 +244,27 @@ static int hdd_ocb_register_sta(struct hdd_adapter *adapter)
 	/* Register the vdev transmit and receive functions */
 	qdf_mem_zero(&txrx_ops, sizeof(txrx_ops));
 	txrx_ops.rx.rx = hdd_rx_packet_cbk;
-	cdp_vdev_register(soc,
-		(struct cdp_vdev *)cdp_get_vdev_from_vdev_id(soc,
-		(struct cdp_pdev *)pdev, adapter->session_id),
-		adapter, &txrx_ops);
 	txrx_ops.rx.stats_rx = hdd_tx_rx_collect_connectivity_stats_info;
+	ol_txrx_vdev_register(
+		 ol_txrx_get_vdev_from_vdev_id(adapter->sessionId),
+		 adapter, &txrx_ops);
 	adapter->tx_fn = txrx_ops.tx.tx;
 
-	qdf_status = cdp_peer_register(soc,
-			(struct cdp_pdev *)pdev, &sta_desc);
+	qdf_status = ol_txrx_register_peer(&sta_desc);
 	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
 		hdd_err("Failed to register. Status= %d [0x%08X]",
 		       qdf_status, qdf_status);
 		return -EINVAL;
 	}
 
-	if (sta_ctx->conn_info.staId[0] != HDD_WLAN_INVALID_STA_ID &&
-	     sta_ctx->conn_info.staId[0] != peer_id) {
-		hdd_err("The ID for the OCB station has changed.");
+	if (pHddStaCtx->conn_info.staId[0] != HDD_WLAN_INVALID_STA_ID &&
+	     pHddStaCtx->conn_info.staId[0] != peer_id) {
+		hdd_warn("The ID for the OCB station has changed.");
 	}
 
-	sta_ctx->conn_info.staId[0] = peer_id;
-	qdf_copy_macaddr(&sta_ctx->conn_info.peerMacAddress[0],
-			 &adapter->mac_addr);
+	pHddStaCtx->conn_info.staId[0] = peer_id;
+	qdf_copy_macaddr(&pHddStaCtx->conn_info.peerMacAddress[0],
+			 &adapter->macAddressCurrent);
 
 	return 0;
 }
@@ -295,22 +279,22 @@ static int hdd_ocb_register_sta(struct hdd_adapter *adapter)
  * Return: A pointer to the OCB configuration struct, NULL on failure.
  */
 static
-struct ocb_config *hdd_ocb_config_new(uint32_t num_channels,
-				      uint32_t num_schedule,
-				      uint32_t ndl_chan_list_len,
-				      uint32_t ndl_active_state_list_len)
+struct sir_ocb_config *hdd_ocb_config_new(uint32_t num_channels,
+					  uint32_t num_schedule,
+					  uint32_t ndl_chan_list_len,
+					  uint32_t ndl_active_state_list_len)
 {
-	struct ocb_config *ret = 0;
+	struct sir_ocb_config *ret = 0;
 	uint32_t len;
 	void *cursor;
 
-	if (num_channels > CFG_TGT_NUM_OCB_CHANNELS ||
-			num_schedule > CFG_TGT_NUM_OCB_SCHEDULES)
+	if (num_channels > TGT_NUM_OCB_CHANNELS ||
+			num_schedule > TGT_NUM_OCB_SCHEDULES)
 		return NULL;
 
 	len = sizeof(*ret) +
-		num_channels * sizeof(struct ocb_config_chan) +
-		num_schedule * sizeof(struct ocb_config_schdl) +
+		num_channels * sizeof(struct sir_ocb_config_channel) +
+		num_schedule * sizeof(struct sir_ocb_config_sched) +
 		ndl_chan_list_len +
 		ndl_active_state_list_len;
 
@@ -357,27 +341,27 @@ struct hdd_ocb_set_config_priv {
  */
 static void hdd_ocb_set_config_callback(void *context_ptr, void *response_ptr)
 {
-	struct osif_request *request;
+	struct hdd_request *hdd_request;
 	struct hdd_ocb_set_config_priv *priv;
-	struct ocb_set_config_response *response = response_ptr;
+	struct sir_ocb_set_config_response *response = response_ptr;
 
-	request = osif_request_get(context_ptr);
-	if (!request) {
+	hdd_request = hdd_request_get(context_ptr);
+	if (!hdd_request) {
 		hdd_err("Obsolete request");
 		return;
 	}
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(hdd_request);
 
 	if (response && response->status)
 		hdd_warn("Operation failed: %d", response->status);
 
-	if (response && (response->status == OCB_CHANNEL_CONFIG_SUCCESS))
+	if (response && (0 == response->status))
 		priv->status = 0;
 	else
 		priv->status = -EINVAL;
 
-	osif_request_complete(request);
-	osif_request_put(request);
+	hdd_request_complete(hdd_request);
+	hdd_request_put(hdd_request);
 }
 
 /**
@@ -387,15 +371,16 @@ static void hdd_ocb_set_config_callback(void *context_ptr, void *response_ptr)
  *
  * Return: 0 on success.
  */
-static int hdd_ocb_set_config_req(struct hdd_adapter *adapter,
-				  struct ocb_config *config)
+static int hdd_ocb_set_config_req(hdd_adapter_t *adapter,
+				  struct sir_ocb_config *config)
 {
 	int rc;
 	QDF_STATUS status;
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	void *cookie;
-	struct osif_request *request;
+	struct hdd_request *hdd_request;
 	struct hdd_ocb_set_config_priv *priv;
-	static const struct osif_request_params params = {
+	static const struct hdd_request_params params = {
 		.priv_size = sizeof(*priv),
 		.timeout_ms = WLAN_WAIT_TIME_OCB_CMD,
 	};
@@ -405,35 +390,36 @@ static int hdd_ocb_set_config_req(struct hdd_adapter *adapter,
 		return -EINVAL;
 	}
 
-	request = osif_request_alloc(&params);
-	if (!request) {
+	hdd_request = hdd_request_alloc(&params);
+	if (!hdd_request) {
 		hdd_err("Request allocation failure");
 		return -ENOMEM;
 	}
-	cookie = osif_request_cookie(request);
+	cookie = hdd_request_cookie(hdd_request);
 
 	hdd_debug("Disabling queues");
 	wlan_hdd_netif_queue_control(adapter,
 				     WLAN_STOP_ALL_NETIF_QUEUE_N_CARRIER,
 				     WLAN_CONTROL_PATH);
 
-	status = ucfg_ocb_set_channel_config(adapter->vdev, config,
-					     hdd_ocb_set_config_callback,
-					     cookie);
+	status = sme_ocb_set_config(hdd_ctx->hHal, cookie,
+				    hdd_ocb_set_config_callback,
+				    config);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		hdd_err("Failed to set channel config.");
+		/* Convert from eHalStatus to errno */
 		rc = qdf_status_to_os_return(status);
 		goto end;
 	}
 
 	/* Wait for the function to complete. */
-	rc = osif_request_wait_for_response(request);
+	rc = hdd_request_wait_for_response(hdd_request);
 	if (rc) {
 		hdd_err("Operation timed out");
 		goto end;
 	}
 
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(hdd_request);
 	rc = priv->status;
 	if (rc) {
 		hdd_err("Operation failed: %d", rc);
@@ -446,12 +432,12 @@ static int hdd_ocb_set_config_req(struct hdd_adapter *adapter,
 	 */
 	if (!hdd_ocb_register_sta(adapter))
 		wlan_hdd_netif_queue_control(adapter,
-					WLAN_START_ALL_NETIF_QUEUE_N_CARRIER,
-					WLAN_CONTROL_PATH);
+					     WLAN_START_ALL_NETIF_QUEUE_N_CARRIER,
+					     WLAN_CONTROL_PATH);
 
 	/* fall through */
 end:
-	osif_request_put(request);
+	hdd_request_put(hdd_request);
 
 	return rc;
 }
@@ -470,25 +456,18 @@ static int __iw_set_dot11p_channel_sched(struct net_device *dev,
 					 struct iw_request_info *info,
 					 union iwreq_data *wrqu, char *extra)
 {
-	int rc;
+	int rc = 0;
 	struct dot11p_channel_sched *sched;
-	struct hdd_context *hdd_ctx;
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
-	struct ocb_config *config = NULL;
+	hdd_adapter_t *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	struct sir_ocb_config *config = NULL;
 	uint8_t *mac_addr;
 	int i, j;
-	struct ocb_config_chan *curr_chan;
+	struct sir_ocb_config_channel *curr_chan;
 
-	hdd_enter_dev(dev);
+	ENTER_DEV(dev);
 
-	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
-	rc = wlan_hdd_validate_context(hdd_ctx);
-	if (0 != rc)
-		return rc;
-
-	rc = hdd_check_private_wext_control(hdd_ctx, info);
-	if (0 != rc)
-		return rc;
+	if (wlan_hdd_validate_context(WLAN_HDD_GET_CTX(adapter)))
+		return -EINVAL;
 
 	if (adapter->device_mode != QDF_OCB_MODE) {
 		hdd_err("Device not in OCB mode!");
@@ -506,11 +485,11 @@ static int __iw_set_dot11p_channel_sched(struct net_device *dev,
 	}
 
 	/* Identify the vdev interface */
-	config->vdev_id = adapter->session_id;
+	config->session_id = adapter->sessionId;
 
 	/* Release all the mac addresses used for OCB */
 	for (i = 0; i < adapter->ocb_mac_addr_count; i++) {
-		wlan_hdd_release_intf_addr(hdd_ctx,
+		wlan_hdd_release_intf_addr(adapter->pHddCtx,
 					   adapter->ocb_mac_address[i].bytes);
 	}
 	adapter->ocb_mac_addr_count = 0;
@@ -525,7 +504,7 @@ static int __iw_set_dot11p_channel_sched(struct net_device *dev,
 		curr_chan->chan_freq = sched->channels[i].channel_freq;
 		/*
 		 * tx_power is divided by 2 because ocb_channel.tx_power is
-		 * in half dB increments and ocb_config_channel.max_pwr
+		 * in half dB increments and sir_ocb_config_channel.max_pwr
 		 * is in 1 dB increments.
 		 */
 		curr_chan->max_pwr = sched->channels[i].tx_power / 2;
@@ -540,9 +519,9 @@ static int __iw_set_dot11p_channel_sched(struct net_device *dev,
 		 */
 		if (i == 0) {
 			qdf_copy_macaddr(&curr_chan->mac_address,
-				     &adapter->mac_addr);
+				     &adapter->macAddressCurrent);
 		} else {
-			mac_addr = wlan_hdd_get_intf_addr(hdd_ctx,
+			mac_addr = wlan_hdd_get_intf_addr(adapter->pHddCtx,
 							  adapter->device_mode);
 			if (mac_addr == NULL) {
 				hdd_err("Cannot obtain mac address");
@@ -641,6 +620,10 @@ static const struct nla_policy qca_wlan_vendor_ocb_set_config_policy[
 	[QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_FLAGS] = {
 		.type = NLA_U32
 	},
+	[QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_DEF_TX_PARAM] = {
+		.type = NLA_BINARY
+	},
+
 };
 
 static const struct nla_policy qca_wlan_vendor_ocb_set_utc_time_policy[
@@ -735,8 +718,8 @@ struct wlan_hdd_ocb_config_channel {
 	uint32_t min_pwr;
 };
 
-static void wlan_hdd_ocb_config_channel_to_ocb_config_channel(
-	struct ocb_config_chan *dest,
+static void wlan_hdd_ocb_config_channel_to_sir_ocb_config_channel(
+	struct sir_ocb_config_channel *dest,
 	struct wlan_hdd_ocb_config_channel *src,
 	uint32_t channel_count)
 {
@@ -751,9 +734,9 @@ static void wlan_hdd_ocb_config_channel_to_ocb_config_channel(
 			     sizeof(dest[i].qos_params));
 		/*
 		 *  max_pwr and min_pwr are divided by 2 because
-		 *  ocb_channel_param.max_pwr and min_pwr
+		 *  wlan_hdd_ocb_config_channel.max_pwr and min_pwr
 		 *  are in 1/2 dB increments and
-		 *  ocb_config_channel.max_pwr and min_pwr are in
+		 *  sir_ocb_config_channel.max_pwr and min_pwr are in
 		 *  1 dB increments.
 		 */
 		dest[i].max_pwr = src[i].max_pwr / 2;
@@ -776,9 +759,9 @@ static int __wlan_hdd_cfg80211_ocb_set_config(struct wiphy *wiphy,
 					      const void *data,
 					      int data_len)
 {
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
+	hdd_context_t *hdd_ctx = wiphy_priv(wiphy);
 	struct net_device *dev = wdev->netdev;
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_adapter_t *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_MAX + 1];
 	struct nlattr *channel_array;
 	struct nlattr *sched_array;
@@ -787,13 +770,15 @@ static int __wlan_hdd_cfg80211_ocb_set_config(struct wiphy *wiphy,
 	struct nlattr *ndl_active_state_list;
 	uint32_t ndl_active_state_list_len;
 	uint32_t flags = 0;
+	void *def_tx_param = NULL;
+	uint32_t def_tx_param_size = 0;
 	int i;
 	uint32_t channel_count, schedule_size;
-	struct ocb_config *config;
+	struct sir_ocb_config *config;
 	int rc = -EINVAL;
 	uint8_t *mac_addr;
 
-	hdd_enter_dev(dev);
+	ENTER_DEV(dev);
 
 	if (wlan_hdd_validate_context(hdd_ctx))
 		return -EINVAL;
@@ -804,9 +789,8 @@ static int __wlan_hdd_cfg80211_ocb_set_config(struct wiphy *wiphy,
 	}
 
 	/* Parse the netlink message */
-	if (wlan_cfg80211_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_MAX,
-				    data, data_len,
-				    qca_wlan_vendor_ocb_set_config_policy)) {
+	if (hdd_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_MAX, data,
+			  data_len, qca_wlan_vendor_ocb_set_config_policy)) {
 		hdd_err("Invalid ATTR");
 		return -EINVAL;
 	}
@@ -837,10 +821,17 @@ static int __wlan_hdd_cfg80211_ocb_set_config(struct wiphy *wiphy,
 	ndl_active_state_list_len = (ndl_active_state_list ?
 				    nla_len(ndl_active_state_list) : 0);
 
-	/* Get the flags */
+	/* Get the flags. This parameter is optional.*/
 	if (tb[QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_FLAGS])
 		flags = nla_get_u32(tb[
 				QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_FLAGS]);
+/* Get the default TX parameters. This parameter is optional. */
+	if (tb[QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_DEF_TX_PARAM]) {
+		def_tx_param_size = nla_len(tb[
+			QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_DEF_TX_PARAM]);
+		def_tx_param = nla_data(tb[
+			QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_DEF_TX_PARAM]);
+	}
 
 	config = hdd_ocb_config_new(channel_count, schedule_size,
 				    ndl_chan_list_len,
@@ -853,6 +844,8 @@ static int __wlan_hdd_cfg80211_ocb_set_config(struct wiphy *wiphy,
 	config->channel_count = channel_count;
 	config->schedule_size = schedule_size;
 	config->flags = flags;
+	config->def_tx_param = def_tx_param;
+	config->def_tx_param_size = def_tx_param_size;
 
 	/* Read the channel array */
 	channel_array = tb[QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_CHANNEL_ARRAY];
@@ -865,15 +858,15 @@ static int __wlan_hdd_cfg80211_ocb_set_config(struct wiphy *wiphy,
 		hdd_err("CHANNEL_ARRAY is not the correct size");
 		goto fail;
 	}
-	wlan_hdd_ocb_config_channel_to_ocb_config_channel(
+	wlan_hdd_ocb_config_channel_to_sir_ocb_config_channel(
 	    config->channels, nla_data(channel_array), channel_count);
 
 	/* Identify the vdev interface */
-	config->vdev_id = adapter->session_id;
+	config->session_id = adapter->sessionId;
 
 	/* Release all the mac addresses used for OCB */
 	for (i = 0; i < adapter->ocb_mac_addr_count; i++) {
-		wlan_hdd_release_intf_addr(hdd_ctx,
+		wlan_hdd_release_intf_addr(adapter->pHddCtx,
 					   adapter->ocb_mac_address[i].bytes);
 	}
 	adapter->ocb_mac_addr_count = 0;
@@ -885,9 +878,9 @@ static int __wlan_hdd_cfg80211_ocb_set_config(struct wiphy *wiphy,
 	for (i = 0; i < config->channel_count; i++) {
 		if (i == 0) {
 			qdf_copy_macaddr(&config->channels[i].mac_address,
-				&adapter->mac_addr);
+				&adapter->macAddressCurrent);
 		} else {
-			mac_addr = wlan_hdd_get_intf_addr(hdd_ctx,
+			mac_addr = wlan_hdd_get_intf_addr(adapter->pHddCtx,
 							  adapter->device_mode);
 			if (mac_addr == NULL) {
 				hdd_err("Cannot obtain mac address");
@@ -978,16 +971,16 @@ static int __wlan_hdd_cfg80211_ocb_set_utc_time(struct wiphy *wiphy,
 						const void *data,
 						int data_len)
 {
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
+	hdd_context_t *hdd_ctx = wiphy_priv(wiphy);
 	struct net_device *dev = wdev->netdev;
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_adapter_t *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_OCB_SET_UTC_TIME_MAX + 1];
 	struct nlattr *utc_attr;
 	struct nlattr *time_error_attr;
-	struct ocb_utc_param *utc;
+	struct sir_ocb_utc *utc;
 	int rc = -EINVAL;
 
-	hdd_enter_dev(dev);
+	ENTER_DEV(dev);
 
 	if (wlan_hdd_validate_context(hdd_ctx))
 		return -EINVAL;
@@ -997,16 +990,14 @@ static int __wlan_hdd_cfg80211_ocb_set_utc_time(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	if (!wma_is_vdev_up(adapter->session_id)) {
+	if (!wma_is_vdev_up(adapter->sessionId)) {
 		hdd_err("The device has not been started");
 		return -EINVAL;
 	}
 
 	/* Parse the netlink message */
-	if (wlan_cfg80211_nla_parse(tb,
-				    QCA_WLAN_VENDOR_ATTR_OCB_SET_UTC_TIME_MAX,
-				    data, data_len,
-				    qca_wlan_vendor_ocb_set_utc_time_policy)) {
+	if (hdd_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_OCB_SET_UTC_TIME_MAX, data,
+			  data_len, qca_wlan_vendor_ocb_set_utc_time_policy)) {
 		hdd_err("Invalid ATTR");
 		return -EINVAL;
 	}
@@ -1038,13 +1029,12 @@ static int __wlan_hdd_cfg80211_ocb_set_utc_time(struct wiphy *wiphy,
 		hdd_err("qdf_mem_malloc failed");
 		return -ENOMEM;
 	}
-	utc->vdev_id = adapter->session_id;
+	utc->vdev_id = adapter->sessionId;
 	qdf_mem_copy(utc->utc_time, nla_data(utc_attr), SIZE_UTC_TIME);
 	qdf_mem_copy(utc->time_error, nla_data(time_error_attr),
 		SIZE_UTC_TIME_ERROR);
 
-	if (ucfg_ocb_set_utc_time(adapter->vdev, utc) !=
-			QDF_STATUS_SUCCESS) {
+	if (sme_ocb_set_utc_time(hdd_ctx->hHal, utc) != QDF_STATUS_SUCCESS) {
 		hdd_err("Error while setting UTC time");
 		rc = -EINVAL;
 	} else {
@@ -1093,14 +1083,14 @@ __wlan_hdd_cfg80211_ocb_start_timing_advert(struct wiphy *wiphy,
 					    const void *data,
 					    int data_len)
 {
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
+	hdd_context_t *hdd_ctx = wiphy_priv(wiphy);
 	struct net_device *dev = wdev->netdev;
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_adapter_t *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_OCB_START_TIMING_ADVERT_MAX + 1];
-	struct ocb_timing_advert_param *timing_advert;
+	struct sir_ocb_timing_advert *timing_advert;
 	int rc = -EINVAL;
 
-	hdd_enter_dev(dev);
+	ENTER_DEV(dev);
 
 	if (wlan_hdd_validate_context(hdd_ctx))
 		return -EINVAL;
@@ -1110,7 +1100,7 @@ __wlan_hdd_cfg80211_ocb_start_timing_advert(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	if (!wma_is_vdev_up(adapter->session_id)) {
+	if (!wma_is_vdev_up(adapter->sessionId)) {
 		hdd_err("The device has not been started");
 		return -EINVAL;
 	}
@@ -1120,13 +1110,12 @@ __wlan_hdd_cfg80211_ocb_start_timing_advert(struct wiphy *wiphy,
 		hdd_err("qdf_mem_malloc failed");
 		return -ENOMEM;
 	}
-	timing_advert->vdev_id = adapter->session_id;
+	timing_advert->vdev_id = adapter->sessionId;
 
 	/* Parse the netlink message */
-	if (wlan_cfg80211_nla_parse(tb,
-			      QCA_WLAN_VENDOR_ATTR_OCB_START_TIMING_ADVERT_MAX,
-			      data, data_len,
-			      qca_wlan_vendor_ocb_start_timing_advert_policy)) {
+	if (hdd_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_OCB_START_TIMING_ADVERT_MAX,
+			  data, data_len,
+			  qca_wlan_vendor_ocb_start_timing_advert_policy)) {
 		hdd_err("Invalid ATTR");
 		goto fail;
 	}
@@ -1146,8 +1135,8 @@ __wlan_hdd_cfg80211_ocb_start_timing_advert(struct wiphy *wiphy,
 		tb[QCA_WLAN_VENDOR_ATTR_OCB_START_TIMING_ADVERT_REPEAT_RATE]);
 
 	timing_advert->template_length =
-		sme_ocb_gen_timing_advert_frame(hdd_ctx->mac_handle,
-			*(tSirMacAddr *)&adapter->mac_addr.bytes,
+		sme_ocb_gen_timing_advert_frame(hdd_ctx->hHal,
+			*(tSirMacAddr *)&adapter->macAddressCurrent.bytes,
 			&timing_advert->template_value,
 			&timing_advert->timestamp_offset,
 			&timing_advert->time_value_offset);
@@ -1156,7 +1145,7 @@ __wlan_hdd_cfg80211_ocb_start_timing_advert(struct wiphy *wiphy,
 		goto fail;
 	}
 
-	if (ucfg_ocb_start_timing_advert(adapter->vdev, timing_advert) !=
+	if (sme_ocb_start_timing_advert(hdd_ctx->hHal, timing_advert) !=
 			QDF_STATUS_SUCCESS) {
 		hdd_err("Error while starting timing advert");
 		rc = -EINVAL;
@@ -1210,14 +1199,14 @@ __wlan_hdd_cfg80211_ocb_stop_timing_advert(struct wiphy *wiphy,
 					   const void *data,
 					   int data_len)
 {
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
+	hdd_context_t *hdd_ctx = wiphy_priv(wiphy);
 	struct net_device *dev = wdev->netdev;
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_adapter_t *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_OCB_STOP_TIMING_ADVERT_MAX + 1];
-	struct ocb_timing_advert_param *timing_advert;
+	struct sir_ocb_timing_advert *timing_advert;
 	int rc = -EINVAL;
 
-	hdd_enter_dev(dev);
+	ENTER_DEV(dev);
 
 	if (wlan_hdd_validate_context(hdd_ctx))
 		return -EINVAL;
@@ -1227,7 +1216,7 @@ __wlan_hdd_cfg80211_ocb_stop_timing_advert(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	if (!wma_is_vdev_up(adapter->session_id)) {
+	if (!wma_is_vdev_up(adapter->sessionId)) {
 		hdd_err("The device has not been started");
 		return -EINVAL;
 	}
@@ -1237,13 +1226,12 @@ __wlan_hdd_cfg80211_ocb_stop_timing_advert(struct wiphy *wiphy,
 		hdd_err("qdf_mem_malloc failed");
 		return -ENOMEM;
 	}
-	timing_advert->vdev_id = adapter->session_id;
+	timing_advert->vdev_id = adapter->sessionId;
 
 	/* Parse the netlink message */
-	if (wlan_cfg80211_nla_parse(tb,
-			       QCA_WLAN_VENDOR_ATTR_OCB_STOP_TIMING_ADVERT_MAX,
-			       data, data_len,
-			       qca_wlan_vendor_ocb_stop_timing_advert_policy)) {
+	if (hdd_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_OCB_STOP_TIMING_ADVERT_MAX,
+			  data, data_len,
+			  qca_wlan_vendor_ocb_stop_timing_advert_policy)) {
 		hdd_err("Invalid ATTR");
 		goto fail;
 	}
@@ -1255,7 +1243,7 @@ __wlan_hdd_cfg80211_ocb_stop_timing_advert(struct wiphy *wiphy,
 	timing_advert->chan_freq = nla_get_u32(
 		tb[QCA_WLAN_VENDOR_ATTR_OCB_STOP_TIMING_ADVERT_CHANNEL_FREQ]);
 
-	if (ucfg_ocb_stop_timing_advert(adapter->vdev, timing_advert) !=
+	if (sme_ocb_stop_timing_advert(hdd_ctx->hHal, timing_advert) !=
 			QDF_STATUS_SUCCESS) {
 		hdd_err("Error while stopping timing advert");
 		rc = -EINVAL;
@@ -1293,7 +1281,7 @@ int wlan_hdd_cfg80211_ocb_stop_timing_advert(struct wiphy *wiphy,
 }
 
 struct hdd_ocb_get_tsf_timer_priv {
-	struct ocb_get_tsf_timer_response response;
+	struct sir_ocb_get_tsf_timer_response response;
 	int status;
 };
 
@@ -1305,30 +1293,30 @@ struct hdd_ocb_get_tsf_timer_priv {
 static void hdd_ocb_get_tsf_timer_callback(void *context_ptr,
 					   void *response_ptr)
 {
-	struct osif_request *request;
+	struct hdd_request *hdd_request;
 	struct hdd_ocb_get_tsf_timer_priv *priv;
-	struct ocb_get_tsf_timer_response *response = response_ptr;
+	struct sir_ocb_get_tsf_timer_response *response = response_ptr;
 
-	request = osif_request_get(context_ptr);
-	if (!request) {
+	hdd_request = hdd_request_get(context_ptr);
+	if (!hdd_request) {
 		hdd_err("Obsolete request");
 		return;
 	}
 
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(hdd_request);
 	if (response) {
 		priv->response = *response;
 		priv->status = 0;
 	} else {
 		priv->status = -EINVAL;
 	}
-	osif_request_complete(request);
-	osif_request_put(request);
+	hdd_request_complete(hdd_request);
+	hdd_request_put(hdd_request);
 }
 
 static int
 hdd_ocb_get_tsf_timer_reply(struct wiphy *wiphy,
-			    struct ocb_get_tsf_timer_response *response)
+			    struct sir_ocb_get_tsf_timer_response *response)
 {
 	uint32_t nl_buf_len;
 	struct sk_buff *nl_resp;
@@ -1384,21 +1372,21 @@ __wlan_hdd_cfg80211_ocb_get_tsf_timer(struct wiphy *wiphy,
 				      const void *data,
 				      int data_len)
 {
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
+	hdd_context_t *hdd_ctx = wiphy_priv(wiphy);
 	struct net_device *dev = wdev->netdev;
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_adapter_t *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	int rc;
-	struct ocb_get_tsf_timer_param tsf_request = {0};
+	struct sir_ocb_get_tsf_timer request = {0};
 	QDF_STATUS status;
 	void *cookie;
-	struct osif_request *request;
+	struct hdd_request *hdd_request;
 	struct hdd_ocb_get_tsf_timer_priv *priv;
-	static const struct osif_request_params params = {
+	static const struct hdd_request_params params = {
 		.priv_size = sizeof(*priv),
 		.timeout_ms = WLAN_WAIT_TIME_OCB_CMD,
 	};
 
-	hdd_enter_dev(dev);
+	ENTER_DEV(dev);
 
 	rc = wlan_hdd_validate_context(hdd_ctx);
 	if (rc)
@@ -1409,35 +1397,36 @@ __wlan_hdd_cfg80211_ocb_get_tsf_timer(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	if (!wma_is_vdev_up(adapter->session_id)) {
+	if (!wma_is_vdev_up(adapter->sessionId)) {
 		hdd_err("The device has not been started");
 		return -EINVAL;
 	}
 
-	request = osif_request_alloc(&params);
-	if (!request) {
+	hdd_request = hdd_request_alloc(&params);
+	if (!hdd_request) {
 		hdd_err("Request allocation failure");
 		return -ENOMEM;
 	}
-	cookie = osif_request_cookie(request);
+	cookie = hdd_request_cookie(hdd_request);
 
-	tsf_request.vdev_id = adapter->session_id;
-	status = ucfg_ocb_get_tsf_timer(adapter->vdev, &tsf_request,
-					hdd_ocb_get_tsf_timer_callback,
-					cookie);
+	request.vdev_id = adapter->sessionId;
+	/* Call the SME function */
+	status = sme_ocb_get_tsf_timer(hdd_ctx->hHal, cookie,
+				       hdd_ocb_get_tsf_timer_callback,
+				       &request);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		hdd_err("Failed to get tsf timer.");
 		rc = qdf_status_to_os_return(status);
 		goto end;
 	}
 
-	rc = osif_request_wait_for_response(request);
+	rc = hdd_request_wait_for_response(hdd_request);
 	if (rc) {
 		hdd_err("Operation timed out");
 		goto end;
 	}
 
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(hdd_request);
 	rc = priv->status;
 	if (rc) {
 		hdd_err("Operation failed: %d", rc);
@@ -1457,7 +1446,7 @@ __wlan_hdd_cfg80211_ocb_get_tsf_timer(struct wiphy *wiphy,
 
 	/* fall through */
 end:
-	osif_request_put(request);
+	hdd_request_put(hdd_request);
 
 	return rc;
 }
@@ -1487,7 +1476,7 @@ int wlan_hdd_cfg80211_ocb_get_tsf_timer(struct wiphy *wiphy,
 }
 
 struct hdd_dcc_stats_priv {
-	struct ocb_dcc_get_stats_response *response;
+	struct sir_dcc_get_stats_response *response;
 	int status;
 };
 
@@ -1506,18 +1495,18 @@ static void hdd_dcc_get_stats_dealloc(void *context_ptr)
  */
 static void hdd_dcc_get_stats_callback(void *context_ptr, void *response_ptr)
 {
-	struct osif_request *request;
+	struct hdd_request *hdd_request;
 	struct hdd_dcc_stats_priv *priv;
-	struct ocb_dcc_get_stats_response *response = response_ptr;
-	struct ocb_dcc_get_stats_response *hdd_resp;
+	struct sir_dcc_get_stats_response *response = response_ptr;
+	struct sir_dcc_get_stats_response *hdd_resp;
 
-	request = osif_request_get(context_ptr);
-	if (!request) {
+	hdd_request = hdd_request_get(context_ptr);
+	if (!hdd_request) {
 		hdd_err("Obsolete request");
 		return;
 	}
 
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(hdd_request);
 	if (!response) {
 		priv->status = -EINVAL;
 		goto end;
@@ -1539,13 +1528,13 @@ static void hdd_dcc_get_stats_callback(void *context_ptr, void *response_ptr)
 	priv->status = 0;
 
 end:
-	osif_request_complete(request);
-	osif_request_put(request);
+	hdd_request_complete(hdd_request);
+	hdd_request_put(hdd_request);
 }
 
 static int
 hdd_dcc_get_stats_send_reply(struct wiphy *wiphy,
-			     struct ocb_dcc_get_stats_response *response)
+			     struct sir_dcc_get_stats_response *response)
 {
 	uint32_t nl_buf_len;
 	struct sk_buff *nl_resp;
@@ -1605,23 +1594,23 @@ static int __wlan_hdd_cfg80211_dcc_get_stats(struct wiphy *wiphy,
 	uint32_t channel_count = 0;
 	uint32_t request_array_len = 0;
 	void *request_array = 0;
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
+	hdd_context_t *hdd_ctx = wiphy_priv(wiphy);
 	struct net_device *dev = wdev->netdev;
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_adapter_t *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_DCC_GET_STATS_MAX + 1];
 	int rc;
-	struct ocb_dcc_get_stats_param dcc_request = {0};
+	struct sir_dcc_get_stats request = {0};
 	QDF_STATUS status;
 	void *cookie;
-	struct osif_request *request;
+	struct hdd_request *hdd_request;
 	struct hdd_dcc_stats_priv *priv;
-	static const struct osif_request_params params = {
+	static const struct hdd_request_params params = {
 		.priv_size = sizeof(*priv),
 		.timeout_ms = WLAN_WAIT_TIME_OCB_CMD,
 		.dealloc = hdd_dcc_get_stats_dealloc,
 	};
 
-	hdd_enter_dev(dev);
+	ENTER_DEV(dev);
 
 	rc = wlan_hdd_validate_context(hdd_ctx);
 	if (rc)
@@ -1632,15 +1621,14 @@ static int __wlan_hdd_cfg80211_dcc_get_stats(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	if (!wma_is_vdev_up(adapter->session_id)) {
+	if (!wma_is_vdev_up(adapter->sessionId)) {
 		hdd_err("The device has not been started");
 		return -EINVAL;
 	}
 
 	/* Parse the netlink message */
-	if (wlan_cfg80211_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_DCC_GET_STATS_MAX,
-				    data, data_len,
-				    qca_wlan_vendor_dcc_get_stats)) {
+	if (hdd_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_DCC_GET_STATS_MAX, data,
+			  data_len, qca_wlan_vendor_dcc_get_stats)) {
 		hdd_err("Invalid ATTR");
 		return -EINVAL;
 	}
@@ -1660,40 +1648,41 @@ static int __wlan_hdd_cfg80211_dcc_get_stats(struct wiphy *wiphy,
 		tb[QCA_WLAN_VENDOR_ATTR_DCC_GET_STATS_REQUEST_ARRAY]);
 
 	/* Check channel count. Per 11p spec, max 2 channels allowed */
-	if (!channel_count || channel_count > CFG_TGT_NUM_OCB_CHANNELS) {
+	if (!channel_count || channel_count > TGT_NUM_OCB_CHANNELS) {
 		hdd_err("Invalid channel_count %d", channel_count);
 		return -EINVAL;
 	}
 
-	request = osif_request_alloc(&params);
-	if (!request) {
+	hdd_request = hdd_request_alloc(&params);
+	if (!hdd_request) {
 		hdd_err("Request allocation failure");
 		return -ENOMEM;
 	}
-	cookie = osif_request_cookie(request);
+	cookie = hdd_request_cookie(hdd_request);
 
-	dcc_request.vdev_id = adapter->session_id;
-	dcc_request.channel_count = channel_count;
-	dcc_request.request_array_len = request_array_len;
-	dcc_request.request_array = request_array;
+	request.vdev_id = adapter->sessionId;
+	request.channel_count = channel_count;
+	request.request_array_len = request_array_len;
+	request.request_array = request_array;
 
-	status = ucfg_ocb_dcc_get_stats(adapter->vdev, &dcc_request,
-					hdd_dcc_get_stats_callback,
-					cookie);
+	/* Call the SME function. */
+	status = sme_dcc_get_stats(hdd_ctx->hHal, cookie,
+				   hdd_dcc_get_stats_callback,
+				   &request);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		hdd_err("Failed to get DCC stats.");
+		hdd_err("Error calling SME function.");
 		rc = qdf_status_to_os_return(status);
 		goto end;
 	}
 
 	/* Wait for the function to complete. */
-	rc = osif_request_wait_for_response(request);
+	rc = hdd_request_wait_for_response(hdd_request);
 	if (rc) {
 		hdd_err("Operation timed out");
 		goto end;
 	}
 
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(hdd_request);
 	rc = priv->status;
 	if (rc) {
 		hdd_err("Operation failed: %d", rc);
@@ -1709,7 +1698,7 @@ static int __wlan_hdd_cfg80211_dcc_get_stats(struct wiphy *wiphy,
 
 	/* fall through */
 end:
-	osif_request_put(request);
+	hdd_request_put(hdd_request);
 
 	return rc;
 }
@@ -1752,12 +1741,12 @@ static int __wlan_hdd_cfg80211_dcc_clear_stats(struct wiphy *wiphy,
 					       const void *data,
 					       int data_len)
 {
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
+	hdd_context_t *hdd_ctx = wiphy_priv(wiphy);
 	struct net_device *dev = wdev->netdev;
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_adapter_t *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_DCC_CLEAR_STATS_MAX + 1];
 
-	hdd_enter_dev(dev);
+	ENTER_DEV(dev);
 
 	if (wlan_hdd_validate_context(hdd_ctx))
 		return -EINVAL;
@@ -1767,16 +1756,14 @@ static int __wlan_hdd_cfg80211_dcc_clear_stats(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	if (!wma_is_vdev_up(adapter->session_id)) {
+	if (!wma_is_vdev_up(adapter->sessionId)) {
 		hdd_err("The device has not been started");
 		return -EINVAL;
 	}
 
 	/* Parse the netlink message */
-	if (wlan_cfg80211_nla_parse(tb,
-				    QCA_WLAN_VENDOR_ATTR_DCC_CLEAR_STATS_MAX,
-				    data, data_len,
-				    qca_wlan_vendor_dcc_clear_stats)) {
+	if (hdd_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_DCC_CLEAR_STATS_MAX, data,
+			  data_len, qca_wlan_vendor_dcc_clear_stats)) {
 		hdd_err("Invalid ATTR");
 		return -EINVAL;
 	}
@@ -1787,11 +1774,12 @@ static int __wlan_hdd_cfg80211_dcc_clear_stats(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	if (ucfg_ocb_dcc_clear_stats(adapter->vdev, adapter->session_id,
+	/* Call the SME function */
+	if (sme_dcc_clear_stats(hdd_ctx->hHal, adapter->sessionId,
 		nla_get_u32(
 			tb[QCA_WLAN_VENDOR_ATTR_DCC_CLEAR_STATS_BITMAP])) !=
 			QDF_STATUS_SUCCESS) {
-		hdd_err("Failed to clear DCC stats.");
+		hdd_err("Error calling SME function.");
 		return -EINVAL;
 	}
 
@@ -1833,23 +1821,22 @@ struct hdd_dcc_update_ndl_priv {
  */
 static void hdd_dcc_update_ndl_callback(void *context_ptr, void *response_ptr)
 {
-	struct osif_request *request;
+	struct hdd_request *hdd_request;
 	struct hdd_dcc_update_ndl_priv *priv;
-	struct ocb_dcc_update_ndl_response *response = response_ptr;
+	struct sir_dcc_update_ndl_response *response = response_ptr;
 
-	request = osif_request_get(context_ptr);
-	if (!request) {
+	hdd_request = hdd_request_get(context_ptr);
+	if (!hdd_request) {
 		hdd_err("Obsolete request");
 		return;
 	}
-	priv = osif_request_priv(request);
-	if (response && (0 == response->status)) {
+	priv = hdd_request_priv(hdd_request);
+	if (response && (0 == response->status))
 		priv->status = 0;
-	} else {
+	else
 		priv->status = -EINVAL;
-	}
-	osif_request_complete(request);
-	osif_request_put(request);
+	hdd_request_complete(hdd_request);
+	hdd_request_put(hdd_request);
 }
 
 /**
@@ -1866,11 +1853,11 @@ static int __wlan_hdd_cfg80211_dcc_update_ndl(struct wiphy *wiphy,
 					      const void *data,
 					      int data_len)
 {
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
+	hdd_context_t *hdd_ctx = wiphy_priv(wiphy);
 	struct net_device *dev = wdev->netdev;
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_adapter_t *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_DCC_UPDATE_NDL_MAX + 1];
-	struct ocb_dcc_update_ndl_param dcc_request;
+	struct sir_dcc_update_ndl request;
 	uint32_t channel_count;
 	uint32_t ndl_channel_array_len;
 	void *ndl_channel_array;
@@ -1879,14 +1866,14 @@ static int __wlan_hdd_cfg80211_dcc_update_ndl(struct wiphy *wiphy,
 	int rc;
 	QDF_STATUS status;
 	void *cookie;
-	struct osif_request *request;
+	struct hdd_request *hdd_request;
 	struct hdd_dcc_update_ndl_priv *priv;
-	static const struct osif_request_params params = {
+	static const struct hdd_request_params params = {
 		.priv_size = sizeof(*priv),
 		.timeout_ms = WLAN_WAIT_TIME_OCB_CMD,
 	};
 
-	hdd_enter_dev(dev);
+	ENTER_DEV(dev);
 
 	rc = wlan_hdd_validate_context(hdd_ctx);
 	if (rc)
@@ -1897,15 +1884,14 @@ static int __wlan_hdd_cfg80211_dcc_update_ndl(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	if (!wma_is_vdev_up(adapter->session_id)) {
+	if (!wma_is_vdev_up(adapter->sessionId)) {
 		hdd_err("The device has not been started");
 		return -EINVAL;
 	}
 
 	/* Parse the netlink message */
-	if (wlan_cfg80211_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_DCC_UPDATE_NDL_MAX,
-				    data, data_len,
-				    qca_wlan_vendor_dcc_update_ndl)) {
+	if (hdd_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_DCC_UPDATE_NDL_MAX, data,
+			  data_len, qca_wlan_vendor_dcc_update_ndl)) {
 		hdd_err("Invalid ATTR");
 		return -EINVAL;
 	}
@@ -1935,38 +1921,39 @@ static int __wlan_hdd_cfg80211_dcc_update_ndl(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	request = osif_request_alloc(&params);
-	if (!request) {
+	hdd_request = hdd_request_alloc(&params);
+	if (!hdd_request) {
 		hdd_err("Request allocation failure");
 		return -ENOMEM;
 	}
-	cookie = osif_request_cookie(request);
+	cookie = hdd_request_cookie(hdd_request);
 
 	/* Copy the parameters to the request structure. */
-	dcc_request.vdev_id = adapter->session_id;
-	dcc_request.channel_count = channel_count;
-	dcc_request.dcc_ndl_chan_list_len = ndl_channel_array_len;
-	dcc_request.dcc_ndl_chan_list = ndl_channel_array;
-	dcc_request.dcc_ndl_active_state_list_len = ndl_active_state_array_len;
-	dcc_request.dcc_ndl_active_state_list = ndl_active_state_array;
+	request.vdev_id = adapter->sessionId;
+	request.channel_count = channel_count;
+	request.dcc_ndl_chan_list_len = ndl_channel_array_len;
+	request.dcc_ndl_chan_list = ndl_channel_array;
+	request.dcc_ndl_active_state_list_len = ndl_active_state_array_len;
+	request.dcc_ndl_active_state_list = ndl_active_state_array;
 
-	status = ucfg_ocb_dcc_update_ndl(adapter->vdev, &dcc_request,
-					 hdd_dcc_update_ndl_callback,
-					 cookie);
+	/* Call the SME function */
+	status = sme_dcc_update_ndl(hdd_ctx->hHal, cookie,
+				    hdd_dcc_update_ndl_callback,
+				    &request);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		hdd_err("Failed to update NDL.");
+		hdd_err("Error calling SME function.");
 		rc = qdf_status_to_os_return(status);
 		goto end;
 	}
 
 	/* Wait for the function to complete. */
-	rc = osif_request_wait_for_response(request);
+	rc = hdd_request_wait_for_response(hdd_request);
 	if (rc) {
 		hdd_err("Operation timed out");
 		goto end;
 	}
 
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(hdd_request);
 	rc = priv->status;
 	if (rc) {
 		hdd_err("Operation failed: %d", rc);
@@ -1975,7 +1962,7 @@ static int __wlan_hdd_cfg80211_dcc_update_ndl(struct wiphy *wiphy,
 
 	/* fall through */
 end:
-	osif_request_put(request);
+	hdd_request_put(hdd_request);
 
 	return rc;
 }
@@ -2012,11 +1999,11 @@ int wlan_hdd_cfg80211_dcc_update_ndl(struct wiphy *wiphy,
 static void wlan_hdd_dcc_stats_event_callback(void *context_ptr,
 					      void *response_ptr)
 {
-	struct hdd_context *hdd_ctx = (struct hdd_context *)context_ptr;
-	struct ocb_dcc_get_stats_response *resp = response_ptr;
+	hdd_context_t *hdd_ctx = (hdd_context_t *)context_ptr;
+	struct sir_dcc_get_stats_response *resp = response_ptr;
 	struct sk_buff *vendor_event;
 
-	hdd_enter();
+	ENTER();
 
 	vendor_event =
 		cfg80211_vendor_event_alloc(hdd_ctx->wiphy,
@@ -2049,12 +2036,12 @@ static void wlan_hdd_dcc_stats_event_callback(void *context_ptr,
  * wlan_hdd_dcc_register_for_dcc_stats_event() - Register for dcc stats events
  * @hdd_ctx: hdd context
  */
-void wlan_hdd_dcc_register_for_dcc_stats_event(struct hdd_context *hdd_ctx)
+void wlan_hdd_dcc_register_for_dcc_stats_event(hdd_context_t *hdd_ctx)
 {
 	int rc;
 
-	rc = ucfg_ocb_register_for_dcc_stats_event(hdd_ctx->pdev, hdd_ctx,
+	rc = sme_register_for_dcc_stats_event(hdd_ctx->hHal, hdd_ctx,
 				      wlan_hdd_dcc_stats_event_callback);
 	if (rc)
-		hdd_err("Register DCC stats callback failed: %d", rc);
+		hdd_err("Register callback failed: %d", rc);
 }

@@ -78,9 +78,7 @@ extern "C" {
 
 #define HTC_SERVICE_TX_PACKET_TAG  HTC_TX_PACKET_TAG_INTERNAL
 
-#ifndef HTC_CREDIT_HISTORY_MAX
 #define HTC_CREDIT_HISTORY_MAX              1024
-#endif
 
 #define HTC_IS_EPPING_ENABLED(_x)           ((_x) == QDF_GLOBAL_EPPING_MODE)
 
@@ -110,6 +108,13 @@ htc_credit_exchange_type_str(enum htc_credit_exchange_type type)
 		return "Unknown htc_credit_exchange_type";
 	}
 }
+
+struct HTC_CREDIT_HISTORY {
+	enum htc_credit_exchange_type type;
+	uint64_t time;
+	uint32_t tx_credit;
+	uint32_t htc_tx_queue_depth;
+};
 
 typedef struct _HTC_ENDPOINT {
 	HTC_ENDPOINT_ID Id;
@@ -159,7 +164,6 @@ typedef struct _HTC_ENDPOINT {
 	struct htc_endpoint_stats endpoint_stats;
 #endif
 	bool TxCreditFlowEnabled;
-	bool async_update;  /* packets can be queued asynchronously */
 	qdf_spinlock_t lookup_queue_lock;
 } HTC_ENDPOINT;
 
@@ -219,12 +223,12 @@ typedef struct _HTC_TARGET {
 	qdf_work_t queue_kicker;
 
 #ifdef HIF_SDIO
-	uint16_t AltDataCreditSize;
+	A_UINT16 AltDataCreditSize;
 #endif
-	uint32_t avail_tx_credits;
+	A_UINT32 avail_tx_credits;
 #if defined(DEBUG_HL_LOGGING) && defined(CONFIG_HL_SUPPORT)
-	uint32_t rx_bundle_stats[HTC_MAX_MSG_PER_BUNDLE_RX];
-	uint32_t tx_bundle_stats[HTC_MAX_MSG_PER_BUNDLE_TX];
+	A_UINT32 rx_bundle_stats[HTC_MAX_MSG_PER_BUNDLE_RX];
+	A_UINT32 tx_bundle_stats[HTC_MAX_MSG_PER_BUNDLE_TX];
 #endif
 
 	uint32_t con_mode;
@@ -234,15 +238,6 @@ typedef struct _HTC_TARGET {
 	 * drop it. Besides, nodrop pkts have higher priority than normal pkts.
 	 */
 	A_BOOL is_nodrop_pkt;
-
-	/*
-	 * Number of WMI endpoints used.
-	 * Default value is 1. But it should be overidden after htc_create to
-	 * reflect the actual count.
-	 */
-	uint8_t wmi_ep_count;
-	/* Flag to indicate whether htc header length check is required */
-	bool htc_hdr_length_check;
 } HTC_TARGET;
 
 
@@ -263,6 +258,8 @@ do { \
 #define UNLOCK_HTC_RX(t)           qdf_spin_unlock_bh(&(t)->HTCRxLock)
 #define LOCK_HTC_TX(t)             qdf_spin_lock_bh(&(t)->HTCTxLock)
 #define UNLOCK_HTC_TX(t)           qdf_spin_unlock_bh(&(t)->HTCTxLock)
+#define LOCK_HTC_CREDIT(t)         qdf_spin_lock_bh(&(t)->HTCCreditLock)
+#define UNLOCK_HTC_CREDIT(t)       qdf_spin_unlock_bh(&(t)->HTCCreditLock)
 #define LOCK_HTC_EP_TX_LOOKUP(t)   qdf_spin_lock_bh(&(t)->lookup_queue_lock)
 #define UNLOCK_HTC_EP_TX_LOOKUP(t) qdf_spin_unlock_bh(&(t)->lookup_queue_lock)
 
@@ -298,18 +295,7 @@ void free_htc_packet_container(HTC_TARGET *target, HTC_PACKET *pPacket);
 void htc_flush_rx_hold_queue(HTC_TARGET *target, HTC_ENDPOINT *pEndpoint);
 void htc_flush_endpoint_tx(HTC_TARGET *target, HTC_ENDPOINT *pEndpoint,
 			   HTC_TX_TAG Tag);
-
-/**
- * htc_flush_endpoint_txlookupQ() - Flush EP's lookup queue
- * @target: HTC target
- * @endpoint_id: EP ID
- * @call_ep_callback: whether to call EP tx completion callback
- *
- * Return: void
- */
-void htc_flush_endpoint_txlookupQ(HTC_TARGET *target,
-				  HTC_ENDPOINT_ID endpoint_id,
-				  bool call_ep_callback);
+void htc_flush_endpoint_txlookupQ(HTC_TARGET *target);
 
 void htc_recv_init(HTC_TARGET *target);
 QDF_STATUS htc_wait_recv_ctrl_message(HTC_TARGET *target);
@@ -322,10 +308,13 @@ void htc_process_credit_rpt(HTC_TARGET *target,
 			    HTC_CREDIT_REPORT *pRpt,
 			    int NumEntries, HTC_ENDPOINT_ID FromEndpoint);
 void htc_fw_event_handler(void *context, QDF_STATUS status);
-void htc_send_complete_check_cleanup(void *context);
+void htc_send_complete_check_cleanup(unsigned long context);
 #ifdef FEATURE_RUNTIME_PM
 void htc_kick_queues(void *context);
 #endif
+
+void htc_credit_record(enum htc_credit_exchange_type type, uint32_t tx_credit,
+		       uint32_t htc_tx_queue_depth);
 
 static inline void htc_send_complete_poll_timer_stop(HTC_ENDPOINT *
 						     pEndpoint) {

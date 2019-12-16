@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016,2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2016 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -15,8 +15,6 @@
  * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  * PERFORMANCE OF THIS SOFTWARE.
  */
-
-#include "qdf_module.h"
 
 #if defined(IPQ4019_HEADERS_DEF)
 #define AR900B 1
@@ -207,7 +205,6 @@
 #define MY_TARGET_BOARD_EXT_DATA_SZ IPQ4019_BOARD_EXT_DATA_SZ
 #include "targetdef.h"
 #include "hostdef.h"
-qdf_export_symbol(IPQ4019_CE_TARGETdef);
 #else
 #include "common_drv.h"
 #include "targetdef.h"
@@ -215,5 +212,3 @@ qdf_export_symbol(IPQ4019_CE_TARGETdef);
 struct targetdef_s *IPQ4019_TARGETdef;
 struct hostdef_s *IPQ4019_HOSTdef;
 #endif /* IPQ4019_HEADERS_DEF */
-qdf_export_symbol(IPQ4019_TARGETdef);
-qdf_export_symbol(IPQ4019_HOSTdef);

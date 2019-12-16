@@ -41,6 +41,9 @@
 #include "sys_startup.h"
 #include "lim_trace.h"
 #include "wma_types.h"
+
+tSirRetStatus postPTTMsgApi(tpAniSirGlobal pMac, tSirMsgQ *pMsg);
+
 #include "qdf_types.h"
 #include "cds_packet.h"
 
@@ -62,14 +65,16 @@
  * @return None
  */
 
-QDF_STATUS sys_init_globals(tpAniSirGlobal pMac)
+tSirRetStatus sys_init_globals(tpAniSirGlobal pMac)
 {
 
-	qdf_mem_zero((uint8_t *) &pMac->sys, sizeof(pMac->sys));
+	qdf_mem_set((uint8_t *) &pMac->sys, sizeof(pMac->sys), 0);
 
+	pMac->sys.gSysEnableScanMode = 1;
 	pMac->sys.gSysEnableLinkMonitorMode = 0;
+	sch_init_globals(pMac);
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }
 
 /**
@@ -83,12 +88,12 @@ QDF_STATUS sys_init_globals(tpAniSirGlobal pMac)
  *
  * Return: None
  */
-QDF_STATUS
-sys_bbt_process_message_core(tpAniSirGlobal mac_ctx, struct scheduler_msg *msg,
+tSirRetStatus
+sys_bbt_process_message_core(tpAniSirGlobal mac_ctx, tpSirMsgQ msg,
 		uint32_t type, uint32_t subtype)
 {
 	uint32_t framecount;
-	QDF_STATUS ret;
+	tSirRetStatus ret;
 	void *bd_ptr;
 	tMgmtFrmDropReason dropreason;
 	cds_pkt_t *vos_pkt = (cds_pkt_t *) msg->bodyptr;
@@ -112,7 +117,8 @@ sys_bbt_process_message_core(tpAniSirGlobal mac_ctx, struct scheduler_msg *msg,
 		 */
 		if ((subtype == SIR_MAC_MGMT_BEACON) &&
 			(!lim_is_system_in_scan_state(mac_ctx)) &&
-			(GET_LIM_PROCESS_DEFD_MESGS(mac_ctx) != true)) {
+			(GET_LIM_PROCESS_DEFD_MESGS(mac_ctx) != true) &&
+			!mac_ctx->lim.gLimSystemInScanLearnMode) {
 			pe_debug("dropping received beacon in deffered state");
 			goto fail;
 		}
@@ -124,36 +130,47 @@ sys_bbt_process_message_core(tpAniSirGlobal mac_ctx, struct scheduler_msg *msg,
 				subtype, dropreason);
 				MTRACE(mac_trace(mac_ctx,
 					TRACE_CODE_RX_MGMT_DROP, NO_SESSION,
-					dropreason));
+					dropreason);)
 			goto fail;
 		}
 
 		mac_hdr = WMA_GET_RX_MAC_HEADER(bd_ptr);
 		if (subtype == SIR_MAC_MGMT_ASSOC_REQ) {
 			pe_debug("ASSOC REQ frame allowed: da: " MAC_ADDRESS_STR ", sa: " MAC_ADDRESS_STR ", bssid: " MAC_ADDRESS_STR ", Assoc Req count so far: %d",
-				 MAC_ADDR_ARRAY(mac_hdr->da),
-				 MAC_ADDR_ARRAY(mac_hdr->sa),
-				 MAC_ADDR_ARRAY(mac_hdr->bssId),
-				 mac_ctx->sys.gSysFrameCount[type][subtype]);
+				MAC_ADDR_ARRAY(mac_hdr->da),
+				MAC_ADDR_ARRAY(mac_hdr->sa),
+				MAC_ADDR_ARRAY(mac_hdr->bssId),
+				mac_ctx->sys.gSysFrameCount[type][subtype]);
 		}
 		if (subtype == SIR_MAC_MGMT_DEAUTH) {
 			pe_debug("DEAUTH frame allowed: da: " MAC_ADDRESS_STR ", sa: " MAC_ADDRESS_STR ", bssid: " MAC_ADDRESS_STR ", DEAUTH count so far: %d",
-				 MAC_ADDR_ARRAY(mac_hdr->da),
-				 MAC_ADDR_ARRAY(mac_hdr->sa),
-				 MAC_ADDR_ARRAY(mac_hdr->bssId),
-				 mac_ctx->sys.gSysFrameCount[type][subtype]);
+				MAC_ADDR_ARRAY(mac_hdr->da),
+				MAC_ADDR_ARRAY(mac_hdr->sa),
+				MAC_ADDR_ARRAY(mac_hdr->bssId),
+				mac_ctx->sys.gSysFrameCount[type][subtype]);
 		}
 		if (subtype == SIR_MAC_MGMT_DISASSOC) {
 			pe_debug("DISASSOC frame allowed: da: " MAC_ADDRESS_STR ", sa: " MAC_ADDRESS_STR ", bssid: " MAC_ADDRESS_STR ", DISASSOC count so far: %d",
-				 MAC_ADDR_ARRAY(mac_hdr->da),
-				 MAC_ADDR_ARRAY(mac_hdr->sa),
-				 MAC_ADDR_ARRAY(mac_hdr->bssId),
-				 mac_ctx->sys.gSysFrameCount[type][subtype]);
+				MAC_ADDR_ARRAY(mac_hdr->da),
+				MAC_ADDR_ARRAY(mac_hdr->sa),
+				MAC_ADDR_ARRAY(mac_hdr->bssId),
+				mac_ctx->sys.gSysFrameCount[type][subtype]);
 		}
 
-		/* Post the message to PE Queue */
-		ret = lim_post_msg_api(mac_ctx, msg);
-		if (ret != QDF_STATUS_SUCCESS) {
+		/*
+		 * Post the message to PE Queue. Prioritize the
+		 * Auth and assoc frames.
+		 */
+		if ((subtype == SIR_MAC_MGMT_AUTH) ||
+		   (subtype == SIR_MAC_MGMT_ASSOC_RSP) ||
+		   (subtype == SIR_MAC_MGMT_REASSOC_RSP) ||
+		   (subtype == SIR_MAC_MGMT_ASSOC_REQ) ||
+		   (subtype == SIR_MAC_MGMT_REASSOC_REQ))
+			ret = (tSirRetStatus)
+				   lim_post_msg_high_priority(mac_ctx, msg);
+		else
+			ret = (tSirRetStatus) lim_post_msg_api(mac_ctx, msg);
+		if (ret != eSIR_SUCCESS) {
 			pe_err("posting to LIM2 failed, ret %d\n", ret);
 			goto fail;
 		}
@@ -162,8 +179,8 @@ sys_bbt_process_message_core(tpAniSirGlobal mac_ctx, struct scheduler_msg *msg,
 	} else if (type == SIR_MAC_DATA_FRAME) {
 		pe_debug("IAPP Frame...");
 		/* Post the message to PE Queue */
-		ret = lim_post_msg_api(mac_ctx, msg);
-		if (ret != QDF_STATUS_SUCCESS) {
+		ret = (tSirRetStatus) lim_post_msg_api(mac_ctx, msg);
+		if (ret != eSIR_SUCCESS) {
 			pe_err("posting to LIM2 failed, ret: %d", ret);
 			goto fail;
 		}
@@ -175,9 +192,9 @@ sys_bbt_process_message_core(tpAniSirGlobal mac_ctx, struct scheduler_msg *msg,
 			lim_get_sme_state(mac_ctx));
 		goto fail;
 	}
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 fail:
 	mac_ctx->sys.gSysBbtDropped++;
-	return QDF_STATUS_E_FAILURE;
+	return eSIR_FAILURE;
 }
 

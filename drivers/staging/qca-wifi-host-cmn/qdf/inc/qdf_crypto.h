@@ -47,11 +47,10 @@ extern "C" {
 #define FIXED_PARAM_OFFSET_ASSOC_REQ 4
 #define FIXED_PARAM_OFFSET_ASSOC_RSP 6
 
+#ifdef WLAN_FEATURE_GMAC
 #define AAD_LEN 20
 #define IEEE80211_MMIE_GMAC_MICLEN  16
-
-#define IS_VALID_CTR_KEY_LEN(len) ((((len) == 16) || ((len) == 32) || \
-	((len) == 48)) ? 1 : 0)
+#endif
 
 /* Function declarations and documenation */
 

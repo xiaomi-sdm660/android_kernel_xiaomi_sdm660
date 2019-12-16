@@ -52,8 +52,6 @@
 #include "qdf_types.h"
 #include "wma_types.h"
 #include "lim_types.h"
-#include "wlan_utility.h"
-#include <wlan_mlme_main.h>
 
 #ifdef FEATURE_WLAN_TDLS
 #define IS_TDLS_PEER(type)  ((type) == STA_ENTRY_TDLS_PEER)
@@ -147,14 +145,14 @@ lim_compare_capabilities(tpAniSirGlobal pMac,
 	    (pLocalCapabs->shortSlotTime == 1)) {
 		if (wlan_cfg_get_int
 			    (pMac, WNI_CFG_ACCEPT_SHORT_SLOT_ASSOC_ONLY,
-			    &val) != QDF_STATUS_SUCCESS) {
+			    &val) != eSIR_SUCCESS) {
 			pe_err("error getting WNI_CFG_FORCE_SHORT_SLOT_ASSOC_ONLY");
 			return false;
 		}
 		if (val) {
 			if (pAssocReq->capabilityInfo.shortSlotTime !=
 			    pLocalCapabs->shortSlotTime) {
-				pe_err("AP rejects association as station doesn't support shortslot time");
+				pe_err("AP rejects association as station doesnt support shortslot time");
 				return false;
 			}
 			return false;
@@ -275,7 +273,7 @@ uint8_t lim_check_mcs_set(tpAniSirGlobal pMac, uint8_t *supportedMCSSet)
 	cfgLen = WNI_CFG_BASIC_MCS_SET_LEN;
 	if (wlan_cfg_get_str(pMac, WNI_CFG_BASIC_MCS_SET,
 			     (uint8_t *) basicMCSSet,
-			     (uint32_t *) &cfgLen) != QDF_STATUS_SUCCESS) {
+			     (uint32_t *) &cfgLen) != eSIR_SUCCESS) {
 		/* / Could not get Basic MCS rateset from CFG. Log error. */
 		pe_err("could not retrieve Basic MCS rateset");
 		return false;
@@ -333,7 +331,7 @@ static inline bool is_non_rsn_cipher(uint8_t cipher_suite)
  * lim_check_rx_rsn_ie_match()- validate received rsn ie with supported cipher
  *      suites.
  * @mac_ctx: pointer to global mac structure
- * @rx_rsn_ie: received rsn IE pointer
+ * @rx_rsn_ie: received rsn IE
  * @session_entry: pe session entry
  * @sta_is_ht: peer station HT capability
  * @pmf_connection: set to true if this is pmf connection
@@ -342,14 +340,14 @@ static inline bool is_non_rsn_cipher(uint8_t cipher_suite)
  * frame handling to determine whether received RSN in
  * Assoc/Reassoc request frames include supported cipher suites or not.
  *
- * Return: QDF_STATUS_SUCCESS if ALL supported cipher suites are present in the
+ * Return: eSIR_SUCCESS if ALL supported cipher suites are present in the
  *                  received rsn IE else failure status.
  */
 
-uint8_t lim_check_rx_rsn_ie_match(tpAniSirGlobal mac_ctx,
-				  tDot11fIERSN * const rx_rsn_ie,
-				  tpPESession session_entry, uint8_t sta_is_ht,
-				  bool *pmf_connection)
+uint8_t
+lim_check_rx_rsn_ie_match(tpAniSirGlobal mac_ctx, tDot11fIERSN rx_rsn_ie,
+			  tpPESession session_entry, uint8_t sta_is_ht,
+			  bool *pmf_connection)
 {
 	tDot11fIERSN *rsn_ie;
 	uint8_t i, j, match, only_non_ht_cipher = 1;
@@ -363,15 +361,10 @@ uint8_t lim_check_rx_rsn_ie_match(tpAniSirGlobal mac_ctx,
 	/* RSN IE should be received from PE */
 	rsn_ie = &session_entry->gStartBssRSNIe;
 
-	if (!rx_rsn_ie) {
-		pe_debug("Rx RSN IE is NULL");
-		return QDF_STATUS_E_FAILURE;
-	}
-
 	/* Check groupwise cipher suite */
-	for (i = 0; i < sizeof(rx_rsn_ie->gp_cipher_suite); i++)
+	for (i = 0; i < sizeof(rx_rsn_ie.gp_cipher_suite); i++)
 		if (rsn_ie->gp_cipher_suite[i] !=
-				 rx_rsn_ie->gp_cipher_suite[i]) {
+				 rx_rsn_ie.gp_cipher_suite[i]) {
 			pe_debug("Invalid groupwise cipher suite");
 			return eSIR_MAC_INVALID_GROUP_CIPHER_STATUS;
 		}
@@ -381,11 +374,11 @@ uint8_t lim_check_rx_rsn_ie_match(tpAniSirGlobal mac_ctx,
 	 * received pairwise
 	 */
 	match = 0;
-	for (i = 0; i < rx_rsn_ie->pwise_cipher_suite_count; i++) {
+	for (i = 0; i < rx_rsn_ie.pwise_cipher_suite_count; i++) {
 		for (j = 0; j < rsn_ie->pwise_cipher_suite_count; j++) {
-			if (!qdf_mem_cmp(&rx_rsn_ie->pwise_cipher_suites[i],
-			    &rsn_ie->pwise_cipher_suites[j],
-			    sizeof(rsn_ie->pwise_cipher_suites[j]))) {
+			if (!qdf_mem_cmp(&rx_rsn_ie.pwise_cipher_suites[i],
+				&rsn_ie->pwise_cipher_suites[j],
+				sizeof(rsn_ie->pwise_cipher_suites[j]))) {
 				match = 1;
 				break;
 			}
@@ -394,10 +387,10 @@ uint8_t lim_check_rx_rsn_ie_match(tpAniSirGlobal mac_ctx,
 		if (sta_is_ht)
 #ifdef ANI_LITTLE_BYTE_ENDIAN
 			only_non_ht_cipher = is_non_rsn_cipher(
-				rx_rsn_ie->pwise_cipher_suites[i][3]);
+				rx_rsn_ie.pwise_cipher_suites[i][3]);
 #else
 			only_non_ht_cipher = is_non_rsn_cipher(
-				rx_rsn_ie->pwise_cipher_suites[i][0]);
+				rx_rsn_ie.pwise_cipher_suites[i][0]);
 #endif
 	}
 
@@ -409,7 +402,7 @@ uint8_t lim_check_rx_rsn_ie_match(tpAniSirGlobal mac_ctx,
 	 * Check RSN capabilities
 	 * Bit 0 of First Byte - PreAuthentication Capability
 	 */
-	if (((rx_rsn_ie->RSN_Cap[0] >> 0) & 0x1) == true) {
+	if (((rx_rsn_ie.RSN_Cap[0] >> 0) & 0x1) == true) {
 		/* this is supported by AP only */
 		pe_debug("Invalid RSN information element capabilities");
 		return eSIR_MAC_INVALID_RSN_IE_CAPABILITIES_STATUS;
@@ -420,8 +413,8 @@ uint8_t lim_check_rx_rsn_ie_match(tpAniSirGlobal mac_ctx,
 #ifdef WLAN_FEATURE_11W
 	we_are_pmf_capable = session_entry->pLimStartBssReq->pmfCapable;
 	we_require_pmf = session_entry->pLimStartBssReq->pmfRequired;
-	they_are_pmf_capable = (rx_rsn_ie->RSN_Cap[0] >> 7) & 0x1;
-	they_require_pmf = (rx_rsn_ie->RSN_Cap[0] >> 6) & 0x1;
+	they_are_pmf_capable = (rx_rsn_ie.RSN_Cap[0] >> 7) & 0x1;
+	they_require_pmf = (rx_rsn_ie.RSN_Cap[0] >> 6) & 0x1;
 
 	if ((they_require_pmf && they_are_pmf_capable && !we_are_pmf_capable) ||
 	    (we_require_pmf && !they_are_pmf_capable)) {
@@ -444,7 +437,7 @@ uint8_t lim_check_rx_rsn_ie_match(tpAniSirGlobal mac_ctx,
 		they_require_pmf, *pmf_connection);
 #endif
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }
 
 /**
@@ -518,7 +511,7 @@ lim_check_rx_wpa_ie_match(tpAniSirGlobal mac, tDot11fIEWPA rx_wpaie,
 		return eSIR_MAC_CIPHER_SUITE_REJECTED_STATUS;
 	}
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }
 
 /**
@@ -551,11 +544,11 @@ lim_check_rx_wpa_ie_match(tpAniSirGlobal mac, tDot11fIEWPA rx_wpaie,
  * @return None
  */
 
-QDF_STATUS
+tSirRetStatus
 lim_cleanup_rx_path(tpAniSirGlobal pMac, tpDphHashNode pStaDs,
 		    tpPESession psessionEntry)
 {
-	QDF_STATUS retCode = QDF_STATUS_SUCCESS;
+	tSirRetStatus retCode = eSIR_SUCCESS;
 
 	pe_debug("Cleanup Rx Path for AID: %d"
 		"psessionEntry->limSmeState: %d, mlmState: %d",
@@ -606,7 +599,7 @@ lim_cleanup_rx_path(tpAniSirGlobal pMac, tpDphHashNode pStaDs,
 	lim_send_sme_tsm_ie_ind(pMac, psessionEntry, 0, 0, 0);
 	/* Any roaming related changes should be above this line */
 	if (lim_is_roam_synch_in_progress(psessionEntry))
-		return QDF_STATUS_SUCCESS;
+		return eSIR_SUCCESS;
 	pStaDs->mlmStaContext.mlmState = eLIM_MLM_WT_DEL_STA_RSP_STATE;
 
 	if (LIM_IS_STA_ROLE(psessionEntry)) {
@@ -617,6 +610,8 @@ lim_cleanup_rx_path(tpAniSirGlobal pMac, tpDphHashNode pStaDs,
 		/* Deactivating probe after heart beat timer */
 		lim_deactivate_and_change_timer(pMac, eLIM_PROBE_AFTER_HB_TIMER);
 		lim_deactivate_and_change_timer(pMac, eLIM_JOIN_FAIL_TIMER);
+		pMac->lim.gLastBeaconDtimCount = 0;
+		pMac->lim.gLastBeaconDtimPeriod = 0;
 	}
 #ifdef WLAN_DEBUG
 	/* increment a debug count */
@@ -1008,7 +1003,7 @@ lim_decide_ap_protection_on_delete(tpAniSirGlobal mac_ctx,
 {
 	uint32_t phy_mode;
 	tHalBitVal erp_enabled = eHAL_CLEAR;
-	enum band_info rf_band = BAND_UNKNOWN;
+	tSirRFBand rf_band = SIR_BAND_UNKNOWN;
 	uint32_t i;
 
 	if (NULL == sta_ds)
@@ -1018,7 +1013,7 @@ lim_decide_ap_protection_on_delete(tpAniSirGlobal mac_ctx,
 	lim_get_phy_mode(mac_ctx, &phy_mode, session_entry);
 	erp_enabled = sta_ds->erpEnabled;
 
-	if ((BAND_5G == rf_band) &&
+	if ((SIR_BAND_5_GHZ == rf_band) &&
 		(true == session_entry->htCapability) &&
 		(session_entry->beaconParams.llaCoexist) &&
 		(false == sta_ds->mlmStaContext.htCapability)) {
@@ -1050,7 +1045,7 @@ lim_decide_ap_protection_on_delete(tpAniSirGlobal mac_ctx,
 	}
 
 	/* we are HT or 11G and 11B station is getting deleted */
-	if ((BAND_2G == rf_band) &&
+	if ((SIR_BAND_2_4_GHZ == rf_band) &&
 		(phy_mode == WNI_CFG_PHY_MODE_11G ||
 		session_entry->htCapability) &&
 		(erp_enabled == eHAL_CLEAR)) {
@@ -1080,7 +1075,7 @@ lim_decide_ap_protection_on_delete(tpAniSirGlobal mac_ctx,
 	 * we are HT AP and non-11B station is leaving.
 	 * 11g station is leaving
 	 */
-	if ((BAND_2G == rf_band) &&
+	if ((SIR_BAND_2_4_GHZ == rf_band) &&
 		session_entry->htCapability &&
 		!sta_ds->mlmStaContext.htCapability) {
 		pe_debug("(%d) A 11g STA is disassociated. Addr is %pM",
@@ -1220,10 +1215,10 @@ static void lim_decide_short_preamble(tpAniSirGlobal mac_ctx,
 		 * enable short preamble
 		 * reset the cache
 		 */
-		qdf_mem_zero((uint8_t *) &session_entry->gLimNoShortParams,
-				sizeof(tLimNoShortParams));
+		qdf_mem_set((uint8_t *) &session_entry->gLimNoShortParams,
+				sizeof(tLimNoShortParams), 0);
 		if (lim_enable_short_preamble(mac_ctx, true,
-			beacon_params, session_entry) != QDF_STATUS_SUCCESS)
+			beacon_params, session_entry) != eSIR_SUCCESS)
 			pe_err("Cannot enable short preamble");
 	}
 }
@@ -1279,9 +1274,9 @@ lim_decide_short_slot(tpAniSirGlobal mac_ctx, tpDphHashNode sta_ds,
 			 * enable short slot time
 			 * reset the cache
 			 */
-			qdf_mem_zero((uint8_t *) &session_entry->
+			qdf_mem_set((uint8_t *) &session_entry->
 				gLimNoShortSlotParams,
-				sizeof(tLimNoShortSlotParams));
+				sizeof(tLimNoShortSlotParams), 0);
 			beacon_params->fShortSlotTime = true;
 			beacon_params->paramChangeBitmap |=
 				PARAM_SHORT_SLOT_TIME_CHANGED;
@@ -1312,9 +1307,9 @@ lim_decide_short_slot(tpAniSirGlobal mac_ctx, tpDphHashNode sta_ds,
 			 * enable short slot time
 			 * reset the cache
 			 */
-			qdf_mem_zero(
+			qdf_mem_set(
 				(uint8_t *) &mac_ctx->lim.gLimNoShortSlotParams,
-				sizeof(tLimNoShortSlotParams));
+				sizeof(tLimNoShortSlotParams), 0);
 			/*in case of AP set SHORT_SLOT_TIME to enable*/
 			if (LIM_IS_AP_ROLE(session_entry)) {
 				beacon_params->fShortSlotTime = true;
@@ -1337,9 +1332,9 @@ lim_decide_short_slot(tpAniSirGlobal mac_ctx, tpDphHashNode sta_ds,
  *
  * Populates vht mcs rate set based on peer and self capabilities
  *
- * Return: QDF_STATUS_SUCCESS on success else QDF_STATUS_E_FAILURE
+ * Return: eSIR_SUCCESS on success else eSIR_FAILURE
  */
-QDF_STATUS lim_populate_vht_mcs_set(tpAniSirGlobal mac_ctx,
+tSirRetStatus lim_populate_vht_mcs_set(tpAniSirGlobal mac_ctx,
 				       tpSirSupportedRates rates,
 				       tDot11fIEVHTCaps *peer_vht_caps,
 				       tpPESession session_entry,
@@ -1353,17 +1348,17 @@ QDF_STATUS lim_populate_vht_mcs_set(tpAniSirGlobal mac_ctx,
 	wlan_cfg_get_int(mac_ctx, WNI_CFG_DOT11_MODE, &self_sta_dot11mode);
 
 	if (!IS_DOT11_MODE_VHT(self_sta_dot11mode))
-		return QDF_STATUS_SUCCESS;
+		return eSIR_SUCCESS;
 
 	if (wlan_cfg_get_int(mac_ctx, WNI_CFG_VHT_RX_MCS_MAP, &val) !=
-	    QDF_STATUS_SUCCESS) {
+	    eSIR_SUCCESS) {
 		pe_err("could not retrieve VHT RX MCS MAP");
 		goto error;
 	}
 	rates->vhtRxMCSMap = (uint16_t) val;
 
 	if (wlan_cfg_get_int(mac_ctx, WNI_CFG_VHT_TX_MCS_MAP, &val) !=
-		QDF_STATUS_SUCCESS) {
+		eSIR_SUCCESS) {
 		pe_err("could not retrieve VHT TX MCS MAP");
 		goto error;
 	}
@@ -1371,7 +1366,7 @@ QDF_STATUS lim_populate_vht_mcs_set(tpAniSirGlobal mac_ctx,
 
 	if (wlan_cfg_get_int(mac_ctx,
 			WNI_CFG_VHT_RX_HIGHEST_SUPPORTED_DATA_RATE,
-			&val) != QDF_STATUS_SUCCESS) {
+			&val) != eSIR_SUCCESS) {
 		pe_err("couldn't retrieve VHT RX Supported data rate MAP");
 		goto error;
 	}
@@ -1379,7 +1374,7 @@ QDF_STATUS lim_populate_vht_mcs_set(tpAniSirGlobal mac_ctx,
 
 	if (wlan_cfg_get_int(mac_ctx,
 			WNI_CFG_VHT_TX_HIGHEST_SUPPORTED_DATA_RATE,
-			&val) != QDF_STATUS_SUCCESS) {
+			&val) != eSIR_SUCCESS) {
 		pe_err("couldn't retrieve VHT RX Supported data rate MAP");
 		goto error;
 	}
@@ -1392,7 +1387,7 @@ QDF_STATUS lim_populate_vht_mcs_set(tpAniSirGlobal mac_ctx,
 			VHT_TX_HIGHEST_SUPPORTED_DATA_RATE_1_1;
 		rates->vhtRxHighestDataRate =
 			VHT_RX_HIGHEST_SUPPORTED_DATA_RATE_1_1;
-		if (session_entry && !session_entry->ch_width &&
+		if (!session_entry->ch_width &&
 				!mac_ctx->roam.configParam.enable_vht20_mcs9 &&
 				((rates->vhtRxMCSMap & VHT_1x1_MCS_MASK) ==
 				 VHT_1x1_MCS9_MAP)) {
@@ -1402,7 +1397,7 @@ QDF_STATUS lim_populate_vht_mcs_set(tpAniSirGlobal mac_ctx,
 					NSS_1x1_MODE);
 		}
 	} else {
-		if (session_entry && !session_entry->ch_width &&
+		if (!session_entry->ch_width &&
 				!mac_ctx->roam.configParam.enable_vht20_mcs9 &&
 				((rates->vhtRxMCSMap & VHT_2x2_MCS_MASK) ==
 				 VHT_2x2_MCS9_MAP)) {
@@ -1414,7 +1409,7 @@ QDF_STATUS lim_populate_vht_mcs_set(tpAniSirGlobal mac_ctx,
 	}
 
 	if ((peer_vht_caps == NULL) || (!peer_vht_caps->present))
-		return QDF_STATUS_SUCCESS;
+		return eSIR_SUCCESS;
 
 	rates->vhtTxHighestDataRate =
 		QDF_MIN(rates->vhtTxHighestDataRate,
@@ -1480,10 +1475,10 @@ QDF_STATUS lim_populate_vht_mcs_set(tpAniSirGlobal mac_ctx,
 		       session_entry->supported_nss_1x1);
 	}
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 error:
 
-	return QDF_STATUS_E_FAILURE;
+	return eSIR_FAILURE;
 }
 
 /**
@@ -1506,14 +1501,13 @@ error:
  * ERP bit is set iff the dph PHY mode is 11G and there is at least
  * an A rate in the supported or extended rate sets
  *
- * Return: QDF_STATUS_SUCCESS or QDF_STATUS_E_FAILURE.
+ * Return: eSIR_SUCCESS or eSIR_FAILURE.
  */
-QDF_STATUS
+tSirRetStatus
 lim_populate_own_rate_set(tpAniSirGlobal mac_ctx,
 		tpSirSupportedRates rates, uint8_t *supported_mcs_set,
 		uint8_t basic_only, tpPESession session_entry,
-		struct sDot11fIEVHTCaps *vht_caps,
-		struct sDot11fIEhe_cap *he_caps)
+		tDot11fIEVHTCaps *vht_caps)
 {
 	tSirMacRateSet temp_rate_set;
 	tSirMacRateSet temp_rate_set2;
@@ -1558,7 +1552,7 @@ lim_populate_own_rate_set(tpAniSirGlobal mac_ctx,
 
 	if ((temp_rate_set.numRates + temp_rate_set2.numRates) > 12) {
 		pe_err("more than 12 rates in CFG");
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 	/* copy all rates in temp_rate_set, there are 12 rates max */
 	for (i = 0; i < temp_rate_set2.numRates; i++)
@@ -1572,7 +1566,7 @@ lim_populate_own_rate_set(tpAniSirGlobal mac_ctx,
 	 * put the result in pSupportedRates
 	 */
 
-	qdf_mem_zero((uint8_t *) rates, sizeof(tSirSupportedRates));
+	qdf_mem_set((uint8_t *) rates, sizeof(tSirSupportedRates), 0);
 	for (i = 0; i < temp_rate_set.numRates; i++) {
 		min = 0;
 		val = 0xff;
@@ -1590,12 +1584,30 @@ lim_populate_own_rate_set(tpAniSirGlobal mac_ctx,
 		if (sirIsArate(temp_rate_set.rate[min] & 0x7f))
 			is_arate = 1;
 
-		if (is_arate)
-			rates->llaRates[a_rate_index++] =
-						temp_rate_set.rate[min];
-		else
-			rates->llbRates[b_rate_index++] =
-						temp_rate_set.rate[min];
+		/*
+		 * HAL needs to know whether the rate is basic rate or
+		 * not, as it needs to update the response rate table
+		 * accordingly. e.g. if one of the 11a rates is
+		 * basic rate, then that rate can be used for sending
+		 * control frames.
+		 * HAL updates the response rate table whenever basic
+		 * rate set is changed.
+		 */
+		if (basic_only && temp_rate_set.rate[min] & 0x80) {
+			if (is_arate)
+				rates->llaRates[a_rate_index++] =
+					temp_rate_set.rate[min];
+			else
+				rates->llbRates[b_rate_index++] =
+					temp_rate_set.rate[min];
+		} else {
+			if (is_arate)
+				rates->llaRates[a_rate_index++] =
+					temp_rate_set.rate[min];
+			else
+				rates->llbRates[b_rate_index++] =
+					temp_rate_set.rate[min];
+		}
 		temp_rate_set.rate[min] = 0xff;
 	}
 
@@ -1603,9 +1615,9 @@ lim_populate_own_rate_set(tpAniSirGlobal mac_ctx,
 		val = SIZE_OF_SUPPORTED_MCS_SET;
 		if (wlan_cfg_get_str(mac_ctx, WNI_CFG_SUPPORTED_MCS_SET,
 				     rates->supportedMCSSet,
-				     &val) != QDF_STATUS_SUCCESS) {
+				     &val) != eSIR_SUCCESS) {
 			pe_err("could not retrieve supportedMCSSet");
-			return QDF_STATUS_E_FAILURE;
+			return eSIR_FAILURE;
 		}
 
 		if (session_entry->nss == NSS_1x1_MODE)
@@ -1628,41 +1640,22 @@ lim_populate_own_rate_set(tpAniSirGlobal mac_ctx,
 	}
 	lim_populate_vht_mcs_set(mac_ctx, rates, vht_caps,
 			session_entry, session_entry->nss);
-	lim_populate_he_mcs_set(mac_ctx, rates, he_caps,
-			session_entry, session_entry->nss);
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }
 
-#ifdef WLAN_FEATURE_11AX
-/**
- * lim_calculate_he_nss() - function to calculate new nss from he rates
- * @rates: supported rtes struct object
- * @session: pe session entry
- * This function calculates nss from rx_he_mcs_map_lt_80 within rates struct
- * object and assigns new value to nss within pe_session
- *
- * Return: None
- */
-static void lim_calculate_he_nss(tpSirSupportedRates rates, tpPESession session)
-{
-	HE_GET_NSS(rates->rx_he_mcs_map_lt_80, session->nss);
-}
-#else
-static void lim_calculate_he_nss(tpSirSupportedRates rates, tpPESession session)
-{
-}
-#endif
-
-QDF_STATUS
+tSirRetStatus
 lim_populate_peer_rate_set(tpAniSirGlobal pMac,
-		tpSirSupportedRates pRates, uint8_t *pSupportedMCSSet,
-		uint8_t basicOnly, tpPESession psessionEntry,
-		tDot11fIEVHTCaps *pVHTCaps, tDot11fIEhe_cap *he_caps)
+			   tpSirSupportedRates pRates,
+			   uint8_t *pSupportedMCSSet,
+			   uint8_t basicOnly,
+			   tpPESession psessionEntry, tDot11fIEVHTCaps *pVHTCaps)
 {
 	tSirMacRateSet tempRateSet;
 	tSirMacRateSet tempRateSet2;
-	uint32_t i, j, val, min, isArate = 0;
+	uint32_t i, j, val, min, isArate;
+
+	isArate = 0;
 
 	/* copy operational rate set from psessionEntry */
 	if (psessionEntry->rateSet.numRates <= SIR_MAC_RATESET_EID_MAX) {
@@ -1672,7 +1665,7 @@ lim_populate_peer_rate_set(tpAniSirGlobal pMac,
 		tempRateSet.numRates = psessionEntry->rateSet.numRates;
 	} else {
 		pe_err("more than SIR_MAC_RATESET_EID_MAX rates");
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 	if ((psessionEntry->dot11mode == WNI_CFG_DOT11_MODE_11G) ||
 		(psessionEntry->dot11mode == WNI_CFG_DOT11_MODE_11A) ||
@@ -1688,14 +1681,14 @@ lim_populate_peer_rate_set(tpAniSirGlobal pMac,
 				psessionEntry->extRateSet.numRates;
 		} else {
 			pe_err("psessionEntry->extRateSet.numRates more than SIR_MAC_RATESET_EID_MAX rates");
-			return QDF_STATUS_E_FAILURE;
+			return eSIR_FAILURE;
 		}
 	} else
 		tempRateSet2.numRates = 0;
 	if ((tempRateSet.numRates + tempRateSet2.numRates) >
 	    SIR_MAC_RATESET_EID_MAX) {
 		pe_err("more than 12 rates in CFG");
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 
 	/* copy all rates in tempRateSet, there are 12 rates max */
@@ -1711,7 +1704,7 @@ lim_populate_peer_rate_set(tpAniSirGlobal pMac,
 		uint8_t aRateIndex = 0;
 		uint8_t bRateIndex = 0;
 
-		qdf_mem_zero((uint8_t *) pRates, sizeof(tSirSupportedRates));
+		qdf_mem_set((uint8_t *) pRates, sizeof(tSirSupportedRates), 0);
 		for (i = 0; i < tempRateSet.numRates; i++) {
 			min = 0;
 			val = 0xff;
@@ -1758,9 +1751,9 @@ lim_populate_peer_rate_set(tpAniSirGlobal pMac,
 		val = SIZE_OF_SUPPORTED_MCS_SET;
 		if (wlan_cfg_get_str(pMac, WNI_CFG_SUPPORTED_MCS_SET,
 				     pRates->supportedMCSSet,
-				     &val) != QDF_STATUS_SUCCESS) {
+				     &val) != eSIR_SUCCESS) {
 			pe_err("could not retrieve supportedMCSSet");
-			return QDF_STATUS_E_FAILURE;
+			return eSIR_FAILURE;
 		}
 		if (psessionEntry->nss == NSS_1x1_MODE)
 			pRates->supportedMCSSet[1] = 0;
@@ -1790,20 +1783,14 @@ lim_populate_peer_rate_set(tpAniSirGlobal pMac,
 	lim_populate_vht_mcs_set(pMac, pRates, pVHTCaps,
 			psessionEntry, psessionEntry->nss);
 
-	lim_populate_he_mcs_set(pMac, pRates, he_caps,
-			psessionEntry, psessionEntry->nss);
-
-	if (IS_DOT11_MODE_HE(psessionEntry->dot11mode) && he_caps) {
-		lim_calculate_he_nss(pRates, psessionEntry);
-	} else if (IS_DOT11_MODE_VHT(psessionEntry->dot11mode)) {
+	if (IS_DOT11_MODE_VHT(psessionEntry->dot11mode)) {
 		if ((pRates->vhtRxMCSMap & MCSMAPMASK2x2) == MCSMAPMASK2x2)
 			psessionEntry->nss = NSS_1x1_MODE;
 	} else if (pRates->supportedMCSSet[1] == 0) {
 		psessionEntry->nss = NSS_1x1_MODE;
 	}
-	pe_debug("nss: %d", psessionEntry->nss);
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 } /*** lim_populate_peer_rate_set() ***/
 
 /**
@@ -1834,16 +1821,15 @@ lim_populate_peer_rate_set(tpAniSirGlobal pMac,
  * The parser has already ensured unicity of the rates in the
  * association request structure
  *
- * Return: QDF_STATUS_SUCCESS on success else QDF_STATUS_E_FAILURE
+ * Return: eSIR_SUCCESS on success else eSIR_FAILURE
  */
-QDF_STATUS lim_populate_matching_rate_set(tpAniSirGlobal mac_ctx,
+tSirRetStatus lim_populate_matching_rate_set(tpAniSirGlobal mac_ctx,
 					     tpDphHashNode sta_ds,
 					     tSirMacRateSet *oper_rate_set,
 					     tSirMacRateSet *ext_rate_set,
 					     uint8_t *supported_mcs_set,
 					     tpPESession session_entry,
-					     tDot11fIEVHTCaps *vht_caps,
-					     tDot11fIEhe_cap *he_caps)
+					     tDot11fIEVHTCaps *vht_caps)
 {
 	tSirMacRateSet temp_rate_set;
 	tSirMacRateSet temp_rate_set2;
@@ -1881,7 +1867,7 @@ QDF_STATUS lim_populate_matching_rate_set(tpAniSirGlobal mac_ctx,
 	if (((uint16_t)temp_rate_set.numRates +
 		(uint16_t)temp_rate_set2.numRates) > 12) {
 		pe_err("more than 12 rates in CFG");
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 
 	/*
@@ -1968,7 +1954,7 @@ QDF_STATUS lim_populate_matching_rate_set(tpAniSirGlobal mac_ctx,
 	}
 
 	rates = &sta_ds->supportedRates;
-	qdf_mem_zero((uint8_t *) rates, sizeof(tSirSupportedRates));
+	qdf_mem_set((uint8_t *) rates, sizeof(tSirSupportedRates), 0);
 	for (i = 0; (i < temp_rate_set2.numRates &&
 			 i < SIR_MAC_RATESET_EID_MAX); i++) {
 		for (j = 0; (j < temp_rate_set.numRates &&
@@ -2005,9 +1991,9 @@ QDF_STATUS lim_populate_matching_rate_set(tpAniSirGlobal mac_ctx,
 	{
 		val = SIZE_OF_SUPPORTED_MCS_SET;
 		if (wlan_cfg_get_str(mac_ctx, WNI_CFG_SUPPORTED_MCS_SET,
-				     mcs_set, &val) != QDF_STATUS_SUCCESS) {
+				     mcs_set, &val) != eSIR_SUCCESS) {
 			pe_err("could not retrieve supportedMCSet");
-			return QDF_STATUS_E_FAILURE;
+			return eSIR_FAILURE;
 		}
 
 		if (session_entry->nss == NSS_1x1_MODE)
@@ -2026,8 +2012,6 @@ QDF_STATUS lim_populate_matching_rate_set(tpAniSirGlobal mac_ctx,
 	}
 	lim_populate_vht_mcs_set(mac_ctx, &sta_ds->supportedRates, vht_caps,
 				 session_entry, session_entry->nss);
-	lim_populate_he_mcs_set(mac_ctx, &sta_ds->supportedRates, he_caps,
-				session_entry, session_entry->nss);
 	/*
 	 * Set the erpEnabled bit if the phy is in G mode and at least
 	 * one A rate is supported
@@ -2035,7 +2019,7 @@ QDF_STATUS lim_populate_matching_rate_set(tpAniSirGlobal mac_ctx,
 	if ((phy_mode == WNI_CFG_PHY_MODE_11G) && is_arate)
 		sta_ds->erpEnabled = eHAL_SET;
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }
 
 /**
@@ -2092,30 +2076,6 @@ static uint32_t lim_populate_vht_caps(tDot11fIEVHTCaps input_caps)
 
 	return vht_caps;
 }
-
-/**
- * lim_update_he_stbc_capable() - Update stbc capable flag based on
- * HE capability
- * @add_sta_params: add sta related parameters
- *
- * Update stbc cpable flag based on HE capability
- *
- * Return: None
- */
-#ifdef WLAN_FEATURE_11AX
-static void lim_update_he_stbc_capable(tpAddStaParams add_sta_params)
-{
-	if (add_sta_params &&
-	    add_sta_params->he_capable &&
-	    add_sta_params->stbc_capable)
-		add_sta_params->stbc_capable =
-			add_sta_params->he_config.rx_stbc_lt_80mhz;
-}
-#else
-static void lim_update_he_stbc_capable(tpAddStaParams add_sta_params)
-{}
-#endif
-
 /**
  * lim_add_sta()- called to add an STA context at hardware
  * @mac_ctx: pointer to global mac structure
@@ -2126,22 +2086,21 @@ static void lim_update_he_stbc_capable(tpAddStaParams add_sta_params)
  * This function is called to add an STA context at hardware
  * whenever a STA is (Re) Associated.
  *
- * Return: QDF_STATUS_SUCCESS on success else QDF_STATUS failure codes
+ * Return: eSIR_SUCCESS on success else eSirRetStatus failure codes
  */
 
-QDF_STATUS
+tSirRetStatus
 lim_add_sta(tpAniSirGlobal mac_ctx,
 	tpDphHashNode sta_ds, uint8_t update_entry, tpPESession session_entry)
 {
 	tpAddStaParams add_sta_params = NULL;
-	struct scheduler_msg msg_q = {0};
-	QDF_STATUS ret_code = QDF_STATUS_SUCCESS;
+	tSirMsgQ msg_q;
+	tSirRetStatus ret_code = eSIR_SUCCESS;
 	tSirMacAddr sta_mac, *sta_Addr;
 	tpSirAssocReq assoc_req;
 	uint8_t i, nw_type_11b = 0;
 	tLimIbssPeerNode *peer_node; /* for IBSS mode */
-	const uint8_t *p2p_ie = NULL;
-	tDot11fIEVHTCaps vht_caps;
+	uint8_t *p2p_ie = NULL;
 
 	sir_copy_mac_addr(sta_mac, session_entry->selfMacAddr);
 
@@ -2152,7 +2111,7 @@ lim_add_sta(tpAniSirGlobal mac_ctx,
 	add_sta_params = qdf_mem_malloc(sizeof(tAddStaParams));
 	if (NULL == add_sta_params) {
 		pe_err("Unable to allocate memory during ADD_STA");
-		return QDF_STATUS_E_NOMEM;
+		return eSIR_MEM_ALLOC_FAILED;
 	}
 
 	if (LIM_IS_AP_ROLE(session_entry) || LIM_IS_IBSS_ROLE(session_entry) ||
@@ -2223,13 +2182,13 @@ lim_add_sta(tpAniSirGlobal mac_ctx,
 
 	add_sta_params->status = QDF_STATUS_SUCCESS;
 	add_sta_params->respReqd = 1;
+	/* Update HT/VHT Capability */
 
-	/* Update VHT/HT Capability */
 	if (LIM_IS_AP_ROLE(session_entry) ||
 	    LIM_IS_IBSS_ROLE(session_entry)) {
 		add_sta_params->htCapable = sta_ds->mlmStaContext.htCapability;
 		add_sta_params->vhtCapable =
-			 sta_ds->mlmStaContext.vhtCapability;
+			sta_ds->mlmStaContext.vhtCapability;
 	}
 #ifdef FEATURE_WLAN_TDLS
 	/* SystemRole shouldn't be matter if staType is TDLS peer */
@@ -2242,19 +2201,17 @@ lim_add_sta(tpAniSirGlobal mac_ctx,
 	else {
 		add_sta_params->htCapable = session_entry->htCapability;
 		add_sta_params->vhtCapable = session_entry->vhtCapability;
-	}
 
+	}
 	pe_debug("StaIdx: %d updateSta: %d htcapable: %d vhtCapable: %d",
 		add_sta_params->staIdx, add_sta_params->updateSta,
 		add_sta_params->htCapable, add_sta_params->vhtCapable);
-
 	/*
 	 * If HT client is connected to SAP DUT and self cap is NSS = 2 then
 	 * disable ASYNC DBS scan by sending WMI_VDEV_PARAM_SMPS_INTOLERANT
 	 * to FW, because HT client's can't drop down chain using SMPS frames.
 	 */
-	if (!policy_mgr_is_hw_dbs_2x2_capable(mac_ctx->psoc) &&
-		LIM_IS_AP_ROLE(session_entry) &&
+	if (LIM_IS_AP_ROLE(session_entry) &&
 		(STA_ENTRY_PEER == sta_ds->staType) &&
 		!add_sta_params->vhtCapable &&
 		(session_entry->nss == 2)) {
@@ -2266,9 +2223,6 @@ lim_add_sta(tpAniSirGlobal mac_ctx,
 				1, VDEV_CMD);
 		}
 	}
-
-	lim_update_sta_he_capable(mac_ctx, add_sta_params, sta_ds,
-				  session_entry);
 
 	add_sta_params->greenFieldCapable = sta_ds->htGreenfield;
 	add_sta_params->maxAmpduDensity = sta_ds->htAMpduDensity;
@@ -2387,17 +2341,9 @@ lim_add_sta(tpAniSirGlobal mac_ctx,
 				     sizeof(add_sta_params->ht_caps));
 		}
 
-		if (assoc_req && add_sta_params->vhtCapable) {
-			if (assoc_req->vendor_vht_ie.VHTCaps.present)
-				vht_caps = assoc_req->vendor_vht_ie.VHTCaps;
-			else
-				vht_caps = assoc_req->VHTCaps;
+		if (assoc_req && add_sta_params->vhtCapable)
 			add_sta_params->vht_caps =
-				lim_populate_vht_caps(vht_caps);
-		}
-
-		lim_add_he_cap(add_sta_params, assoc_req);
-
+				 lim_populate_vht_caps(assoc_req->VHTCaps);
 	} else if (LIM_IS_IBSS_ROLE(session_entry)) {
 
 		/*
@@ -2407,7 +2353,7 @@ lim_add_sta(tpAniSirGlobal mac_ctx,
 		peer_node = lim_ibss_peer_find(mac_ctx, *sta_Addr);
 		if (!peer_node) {
 			pe_err("Can't find IBSS peer node for ADD_STA");
-			return QDF_STATUS_E_NOENT;
+			return eSIR_HAL_STA_DOES_NOT_EXIST;
 		}
 
 		if (peer_node->atimIePresent) {
@@ -2442,11 +2388,7 @@ lim_add_sta(tpAniSirGlobal mac_ctx,
 	if (STA_ENTRY_TDLS_PEER == sta_ds->staType) {
 		add_sta_params->ht_caps = sta_ds->ht_caps;
 		add_sta_params->vht_caps = sta_ds->vht_caps;
-		if (add_sta_params->vhtCapable) {
-			add_sta_params->maxAmpduSize =
-				SIR_MAC_GET_VHT_MAX_AMPDU_EXPO(
-						sta_ds->vht_caps);
-		}
+
 		pe_debug("Sta type is TDLS_PEER, ht_caps: 0x%x, vht_caps: 0x%x",
 			  add_sta_params->ht_caps,
 			  add_sta_params->vht_caps);
@@ -2527,27 +2469,8 @@ lim_add_sta(tpAniSirGlobal mac_ctx,
 			add_sta_params->nwType = eSIR_11B_NW_TYPE;
 	}
 
-	if (add_sta_params->htCapable && session_entry->htConfig.ht_tx_stbc) {
-		struct sDot11fIEHTCaps *ht_caps = (struct sDot11fIEHTCaps *)
-			&add_sta_params->ht_caps;
-		if (ht_caps->rxSTBC)
-			add_sta_params->stbc_capable = 1;
-		else
-			add_sta_params->stbc_capable = 0;
-	}
-
-	if (add_sta_params->vhtCapable && add_sta_params->stbc_capable) {
-		struct sDot11fIEVHTCaps *vht_caps = (struct sDot11fIEVHTCaps *)
-			&add_sta_params->vht_caps;
-		if (vht_caps->rxSTBC)
-			add_sta_params->stbc_capable = 1;
-		else
-			add_sta_params->stbc_capable = 0;
-	}
-
-	lim_update_he_stbc_capable(add_sta_params);
-
 	msg_q.type = WMA_ADD_STA_REQ;
+
 	msg_q.reserved = 0;
 	msg_q.bodyptr = add_sta_params;
 	msg_q.bodyval = 0;
@@ -2557,7 +2480,7 @@ lim_add_sta(tpAniSirGlobal mac_ctx,
 			 msg_q.type));
 
 	ret_code = wma_post_ctrl_msg(mac_ctx, &msg_q);
-	if (QDF_STATUS_SUCCESS != ret_code) {
+	if (eSIR_SUCCESS != ret_code) {
 		if (add_sta_params->respReqd)
 			SET_LIM_PROCESS_DEFD_MESGS(mac_ctx, true);
 		pe_err("ADD_STA_REQ for aId %d failed (reason %X)",
@@ -2591,18 +2514,18 @@ lim_add_sta(tpAniSirGlobal mac_ctx,
  * @return retCode - Indicates success or failure return code
  */
 
-QDF_STATUS
+tSirRetStatus
 lim_del_sta(tpAniSirGlobal pMac,
 	    tpDphHashNode pStaDs, bool fRespReqd, tpPESession psessionEntry)
 {
 	tpDeleteStaParams pDelStaParams = NULL;
-	struct scheduler_msg msgQ = {0};
-	QDF_STATUS retCode = QDF_STATUS_SUCCESS;
+	tSirMsgQ msgQ;
+	tSirRetStatus retCode = eSIR_SUCCESS;
 
 	pDelStaParams = qdf_mem_malloc(sizeof(tDeleteStaParams));
 	if (NULL == pDelStaParams) {
 		pe_err("Unable to allocate memory during ADD_STA");
-		return QDF_STATUS_E_NOMEM;
+		return eSIR_MEM_ALLOC_FAILED;
 	}
 
 	/*
@@ -2612,8 +2535,7 @@ lim_del_sta(tpAniSirGlobal pMac,
 	 * and 5G; and enable async dbs scan when all HT clients are gone
 	 * 5G-AS: Don't care
 	 */
-	if (!policy_mgr_is_hw_dbs_2x2_capable(pMac->psoc) &&
-		LIM_IS_AP_ROLE(psessionEntry) &&
+	if (LIM_IS_AP_ROLE(psessionEntry) &&
 		(pStaDs->staType == STA_ENTRY_PEER) &&
 		!pStaDs->mlmStaContext.vhtCapability &&
 		(psessionEntry->nss == 2)) {
@@ -2625,6 +2547,7 @@ lim_del_sta(tpAniSirGlobal pMac,
 				0, VDEV_CMD);
 		}
 	}
+
 	/* */
 	/* DPH contains the STA index only for "peer" STA entries. */
 	/* LIM global contains "self" STA index */
@@ -2705,7 +2628,7 @@ lim_del_sta(tpAniSirGlobal pMac,
 
 	MTRACE(mac_trace_msg_tx(pMac, psessionEntry->peSessionId, msgQ.type));
 	retCode = wma_post_ctrl_msg(pMac, &msgQ);
-	if (QDF_STATUS_SUCCESS != retCode) {
+	if (eSIR_SUCCESS != retCode) {
 		if (fRespReqd)
 			SET_LIM_PROCESS_DEFD_MESGS(pMac, true);
 		pe_err("Posting DELETE_STA_REQ to HAL failed, reason=%X",
@@ -2738,13 +2661,13 @@ lim_del_sta(tpAniSirGlobal pMac,
  * @return retCode - Indicates success or failure return code
  */
 
-QDF_STATUS
+tSirRetStatus
 lim_add_sta_self(tpAniSirGlobal pMac, uint16_t staIdx, uint8_t updateSta,
 		 tpPESession psessionEntry)
 {
 	tpAddStaParams pAddStaParams = NULL;
-	struct scheduler_msg msgQ = {0};
-	QDF_STATUS retCode = QDF_STATUS_SUCCESS;
+	tSirMsgQ msgQ;
+	tSirRetStatus retCode = eSIR_SUCCESS;
 	tSirMacAddr staMac;
 	uint32_t listenInterval = WNI_CFG_LISTEN_INTERVAL_STADEF;
 	uint32_t ampduLenExponent = 0;
@@ -2771,7 +2694,7 @@ lim_add_sta_self(tpAniSirGlobal pMac, uint16_t staIdx, uint8_t updateSta,
 	pAddStaParams = qdf_mem_malloc(sizeof(tAddStaParams));
 	if (NULL == pAddStaParams) {
 		pe_err("Unable to allocate memory during ADD_STA");
-		return QDF_STATUS_E_NOMEM;
+		return eSIR_MEM_ALLOC_FAILED;
 	}
 
 	/* / Add STA context at MAC HW (BMU, RHP & TFP) */
@@ -2799,7 +2722,7 @@ lim_add_sta_self(tpAniSirGlobal pMac, uint16_t staIdx, uint8_t updateSta,
 	pAddStaParams->updateSta = updateSta;
 
 	if (wlan_cfg_get_int(pMac, WNI_CFG_SHORT_PREAMBLE, &val) !=
-			QDF_STATUS_SUCCESS) {
+			eSIR_SUCCESS) {
 		pe_err("Couldn't get SHORT_PREAMBLE, set default");
 		pAddStaParams->shortPreambleSupported = 1;
 	} else {
@@ -2807,7 +2730,7 @@ lim_add_sta_self(tpAniSirGlobal pMac, uint16_t staIdx, uint8_t updateSta,
 	}
 
 	lim_populate_own_rate_set(pMac, &pAddStaParams->supportedRates, NULL, false,
-				  psessionEntry, NULL, NULL);
+				  psessionEntry, NULL);
 	if (IS_DOT11_MODE_HT(selfStaDot11Mode)) {
 		pAddStaParams->htCapable = true;
 #ifdef DISABLE_GF_FOR_INTEROP
@@ -2890,7 +2813,7 @@ lim_add_sta_self(tpAniSirGlobal pMac, uint16_t staIdx, uint8_t updateSta,
 	if (IS_DOT11_MODE_VHT(selfStaDot11Mode)) {
 		if (wlan_cfg_get_int
 			    (pMac, WNI_CFG_VHT_AMPDU_LEN_EXPONENT, &ampduLenExponent)
-		    != QDF_STATUS_SUCCESS) {
+		    != eSIR_SUCCESS) {
 			pe_err("Couldn't get WNI_CFG_VHT_AMPDU_LEN_EXPONENT");
 		}
 		pAddStaParams->maxAmpduSize = (uint8_t) ampduLenExponent;
@@ -2912,9 +2835,8 @@ lim_add_sta_self(tpAniSirGlobal pMac, uint16_t staIdx, uint8_t updateSta,
 		((psessionEntry->txLdpcIniFeatureEnabled >> 1) & 0x01);
 
 	if (wlan_cfg_get_int(pMac, WNI_CFG_LISTEN_INTERVAL, &listenInterval) !=
-	    QDF_STATUS_SUCCESS)
+	    eSIR_SUCCESS)
 		pe_err("Couldn't get LISTEN_INTERVAL");
-
 	pAddStaParams->listenInterval = (uint16_t) listenInterval;
 
 	if (QDF_P2P_CLIENT_MODE == psessionEntry->pePersona) {
@@ -2940,9 +2862,6 @@ lim_add_sta_self(tpAniSirGlobal pMac, uint16_t staIdx, uint8_t updateSta,
 		pAddStaParams->listenInterval,
 		pAddStaParams->shortPreambleSupported);
 
-	if (IS_DOT11_MODE_HE(selfStaDot11Mode))
-		lim_add_self_he_cap(pAddStaParams, psessionEntry);
-
 	msgQ.type = WMA_ADD_STA_REQ;
 	msgQ.reserved = 0;
 	msgQ.bodyptr = pAddStaParams;
@@ -2955,7 +2874,7 @@ lim_add_sta_self(tpAniSirGlobal pMac, uint16_t staIdx, uint8_t updateSta,
 	MTRACE(mac_trace_msg_tx(pMac, psessionEntry->peSessionId, msgQ.type));
 
 	retCode = wma_post_ctrl_msg(pMac, &msgQ);
-	if (QDF_STATUS_SUCCESS != retCode) {
+	if (eSIR_SUCCESS != retCode) {
 		pe_err("Posting WMA_ADD_STA_REQ to HAL failed, reason=%X",
 			retCode);
 		qdf_mem_free(pAddStaParams);
@@ -3108,12 +3027,12 @@ lim_delete_dph_hash_entry(tpAniSirGlobal mac_ctx, tSirMacAddr sta_addr,
 
 		if (sta_ds->non_ecsa_capable) {
 			if (session_entry->lim_non_ecsa_cap_num == 0) {
-				pe_debug("NonECSA sta 0, id %d is ecsa",
-					 sta_id);
+				pe_err("NonECSA sta 0, id %d is ecsa",
+					sta_id);
 			} else {
 				session_entry->lim_non_ecsa_cap_num--;
-				pe_debug("reducing the non ECSA num to %d",
-					 session_entry->lim_non_ecsa_cap_num);
+				pe_err("reducing the non ECSA num to %d",
+					session_entry->lim_non_ecsa_cap_num);
 			}
 		}
 
@@ -3135,9 +3054,6 @@ lim_delete_dph_hash_entry(tpAniSirGlobal mac_ctx, tSirMacAddr sta_addr,
 			lim_send_beacon_params(mac_ctx, &beacon_params,
 					       session_entry);
 		}
-
-		lim_obss_send_detection_cfg(mac_ctx, session_entry, false);
-
 #ifdef WLAN_FEATURE_11W
 		if (sta_ds->rmfEnabled) {
 			pe_debug("delete pmf timer sta-idx:%d assoc-id:%d",
@@ -3148,7 +3064,7 @@ lim_delete_dph_hash_entry(tpAniSirGlobal mac_ctx, tSirMacAddr sta_addr,
 	}
 
 	if (dph_delete_hash_entry(mac_ctx, sta_addr, sta_id,
-		 &session_entry->dph.dphHashTable) != QDF_STATUS_SUCCESS)
+		 &session_entry->dph.dphHashTable) != eSIR_SUCCESS)
 		pe_err("error deleting hash entry");
 }
 
@@ -3243,7 +3159,7 @@ lim_check_and_announce_join_success(tpAniSirGlobal mac_ctx,
 
 		/*
 		 * If MAX Noa exceeds 3 secs we will consider only 3 secs to
-		 * avoid arbitrary values in noa duration field
+		 * avoid arbitary values in noa duration field
 		 */
 		noa = noa > MAX_NOA_PERIOD_IN_MICROSECS ?
 				MAX_NOA_PERIOD_IN_MICROSECS : noa;
@@ -3251,7 +3167,7 @@ lim_check_and_announce_join_success(tpAniSirGlobal mac_ctx,
 
 		if (wlan_cfg_get_int(mac_ctx,
 			WNI_CFG_AUTHENTICATE_FAILURE_TIMEOUT, &val) ==
-			 QDF_STATUS_SUCCESS) {
+			 eSIR_SUCCESS) {
 			session_entry->defaultAuthFailureTimeout = val;
 			cfg_set_int(mac_ctx,
 				WNI_CFG_AUTHENTICATE_FAILURE_TIMEOUT,
@@ -3361,29 +3277,26 @@ lim_check_and_announce_join_success(tpAniSirGlobal mac_ctx,
  * @param   ieLen        Length of all IEs combined
  * @param   beaconStruct A pointer to tSirProbeRespBeacon that needs to be
  *                       populated
- * @return  status       A status reporting QDF_STATUS_SUCCESS or QDF_STATUS_E_FAILURE
+ * @return  status       A status reporting eSIR_SUCCESS or eSIR_FAILURE
  */
-QDF_STATUS lim_extract_ap_capabilities(tpAniSirGlobal pMac,
+tSirRetStatus lim_extract_ap_capabilities(tpAniSirGlobal pMac,
 					  uint8_t *pIE,
 					  uint16_t ieLen,
 					  tpSirProbeRespBeacon beaconStruct)
 {
-	qdf_mem_zero((uint8_t *) beaconStruct, sizeof(tSirProbeRespBeacon));
+	qdf_mem_set((uint8_t *) beaconStruct, sizeof(tSirProbeRespBeacon), 0);
 
-	pe_debug("lim_extract_ap_capabilities: The IE's being received are:");
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_PE, QDF_TRACE_LEVEL_DEBUG,
-				pIE, ieLen);
 	/* Parse the Beacon IE's, Don't try to parse if we dont have anything in IE */
 	if (ieLen > 0) {
-		if (QDF_STATUS_SUCCESS !=
+		if (eSIR_SUCCESS !=
 		    sir_parse_beacon_ie(pMac, beaconStruct, pIE,
 					(uint32_t) ieLen)) {
 			pe_err("APCapExtract: Beacon parsing error!");
-			return QDF_STATUS_E_FAILURE;
+			return eSIR_FAILURE;
 		}
 	}
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }
 
 /**
@@ -3407,18 +3320,18 @@ QDF_STATUS lim_extract_ap_capabilities(tpAniSirGlobal pMac,
  * @return retCode - Indicates success or failure return code
  */
 
-QDF_STATUS
+tSirRetStatus
 lim_del_bss(tpAniSirGlobal pMac, tpDphHashNode pStaDs, uint16_t bssIdx,
 	    tpPESession psessionEntry)
 {
 	tpDeleteBssParams pDelBssParams = NULL;
-	struct scheduler_msg msgQ = {0};
-	QDF_STATUS retCode = QDF_STATUS_SUCCESS;
+	tSirMsgQ msgQ;
+	tSirRetStatus retCode = eSIR_SUCCESS;
 
 	pDelBssParams = qdf_mem_malloc(sizeof(tDeleteBssParams));
 	if (NULL == pDelBssParams) {
 		pe_err("Unable to allocate memory during ADD_BSS");
-		return QDF_STATUS_E_NOMEM;
+		return eSIR_MEM_ALLOC_FAILED;
 	}
 
 	pDelBssParams->sessionId = psessionEntry->peSessionId; /* update PE session Id */
@@ -3467,7 +3380,7 @@ lim_del_bss(tpAniSirGlobal pMac, tpDphHashNode pStaDs, uint16_t bssIdx,
 	MTRACE(mac_trace_msg_tx(pMac, psessionEntry->peSessionId, msgQ.type));
 
 	retCode = wma_post_ctrl_msg(pMac, &msgQ);
-	if (QDF_STATUS_SUCCESS != retCode) {
+	if (eSIR_SUCCESS != retCode) {
 		SET_LIM_PROCESS_DEFD_MESGS(pMac, true);
 		pe_err("Posting DELETE_BSS_REQ to HAL failed, reason=%X",
 			retCode);
@@ -3565,25 +3478,6 @@ static void lim_update_vht_oper_assoc_resp(tpAniSirGlobal mac_ctx,
 	pe_debug("Updating VHT Operation in assoc Response");
 }
 
-#ifdef WLAN_SUPPORT_TWT
-/**
- * lim_set_sta_ctx_twt() - Save the TWT settings in STA context
- * @sta_ctx: Pointer to Station Context
- * @session: Pointer to PE session
- *
- * Return: None
- */
-static void lim_set_sta_ctx_twt(tAddStaParams *sta_ctx, tpPESession session)
-{
-	sta_ctx->twt_requestor = session->peer_twt_requestor;
-	sta_ctx->twt_responder = session->peer_twt_responder;
-}
-#else
-static inline void lim_set_sta_ctx_twt(tAddStaParams *sta_ctx,
-				       tpPESession session)
-{
-}
-#endif
 
 /**
  * limSendAddBss()
@@ -3599,7 +3493,7 @@ static inline void lim_set_sta_ctx_twt(tAddStaParams *sta_ctx,
  * JOIN REQ parameters are saved in pMac->lim.gLimMlmJoinReq
  * ADD BSS parameters can be obtained from two sources:
  * 1) pMac->lim.gLimMlmJoinReq
- * 2) beaconStruct, passed as parameter
+ * 2) beaconStruct, passed as paramter
  * So, if a reqd parameter is found in bssDescriptions
  * then it is given preference over beaconStruct
  *
@@ -3612,17 +3506,16 @@ static inline void lim_set_sta_ctx_twt(tAddStaParams *sta_ctx,
  * @return None
  */
 
-QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
+tSirRetStatus lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 				   tpSchBeaconStruct pBeaconStruct,
 				   tpSirBssDescription bssDescription,
 				   uint8_t updateEntry, tpPESession psessionEntry)
 {
-	struct scheduler_msg msgQ = {0};
+	tSirMsgQ msgQ;
 	tpAddBssParams pAddBssParams = NULL;
 	uint32_t retCode;
 	tpDphHashNode pStaDs = NULL;
 	uint8_t chanWidthSupp = 0;
-	bool is_vht_cap_in_vendor_ie = false;
 	uint32_t enableTxBF20MHz;
 	tDot11fIEVHTCaps *vht_caps = NULL;
 	tDot11fIEVHTOperation *vht_oper = NULL;
@@ -3633,7 +3526,7 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 	pAddBssParams = qdf_mem_malloc(sizeof(tAddBssParams));
 	if (NULL == pAddBssParams) {
 		pe_err("Unable to allocate memory during ADD_BSS");
-		retCode = QDF_STATUS_E_NOMEM;
+		retCode = eSIR_MEM_ALLOC_FAILED;
 		goto returnFailure;
 	}
 
@@ -3712,12 +3605,8 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 	pAddBssParams->dot11_mode = psessionEntry->dot11mode;
 	pe_debug("dot11_mode: %d", pAddBssParams->dot11_mode);
 
-	if (IS_DOT11_MODE_HT(psessionEntry->dot11mode))
-		chanWidthSupp = lim_get_ht_capability(pMac,
-						eHT_SUPPORTED_CHANNEL_WIDTH_SET,
-						psessionEntry);
-
 	/* Use the advertised capabilities from the received beacon/PR */
+
 	if (IS_DOT11_MODE_HT(psessionEntry->dot11mode)
 	    && (pAssocRsp->HTCaps.present)) {
 		pAddBssParams->htCapable = pAssocRsp->HTCaps.present;
@@ -3727,7 +3616,10 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 				(tSirMacHTOperatingMode) pAssocRsp->HTInfo.opMode;
 			pAddBssParams->dualCTSProtection =
 				(uint8_t) pAssocRsp->HTInfo.dualCTSProtection;
-
+			chanWidthSupp =
+				lim_get_ht_capability(pMac,
+						      eHT_SUPPORTED_CHANNEL_WIDTH_SET,
+						      psessionEntry);
 			if ((pAssocRsp->HTCaps.supportedChannelWidthSet)
 			    && (chanWidthSupp)) {
 				pAddBssParams->ch_width = (uint8_t)
@@ -3775,7 +3667,7 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 			pAssocRsp->vendor_vht_ie.VHTCaps.present){
 		pAddBssParams->vhtCapable =
 			pAssocRsp->vendor_vht_ie.VHTCaps.present;
-		pe_debug("VHT Caps and Operation are present in vendor Specific IE");
+		pe_debug("VHT Caps and Operation are present in vendor Specfic IE");
 		vht_caps = &pAssocRsp->vendor_vht_ie.VHTCaps;
 		vht_oper = &pAssocRsp->vendor_vht_ie.VHTOperation;
 	} else {
@@ -3795,11 +3687,6 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 			pAddBssParams->ch_center_freq_seg0,
 			pAddBssParams->ch_center_freq_seg1);
 
-	if (lim_is_session_he_capable(psessionEntry) &&
-			(pAssocRsp->he_cap.present)) {
-		lim_add_bss_he_cap(pAddBssParams, pAssocRsp);
-		lim_add_bss_he_cfg(pAddBssParams, psessionEntry);
-	}
 	/*
 	 * Populate the STA-related parameters here
 	 * Note that the STA here refers to the AP
@@ -3812,7 +3699,7 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 	qdf_mem_copy(pAddBssParams->staContext.bssId,
 			bssDescription->bssId, sizeof(tSirMacAddr));
 	if (wlan_cfg_get_int(pMac, WNI_CFG_LISTEN_INTERVAL, &listen_interval) !=
-				QDF_STATUS_SUCCESS)
+				eSIR_SUCCESS)
 		pe_err("Couldn't get LISTEN_INTERVAL");
 	pAddBssParams->staContext.listenInterval = listen_interval;
 
@@ -3825,7 +3712,7 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 			MAC_ADDRESS_STR,
 			MAC_ADDR_ARRAY(
 				pAddBssParams->staContext.staMac));
-			return QDF_STATUS_E_FAILURE;
+			return eSIR_FAILURE;
 	}
 
 	pAddBssParams->staContext.uAPSD =
@@ -3853,10 +3740,6 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 				pAddBssParams->staContext.htCapable,
 				pAddBssParams->staContext.greenFieldCapable,
 				pAddBssParams->staContext.lsigTxopProtection);
-		if (psessionEntry->htConfig.ht_tx_stbc)
-			pAddBssParams->staContext.stbc_capable =
-				pAssocRsp->HTCaps.rxSTBC;
-
 		if (psessionEntry->vhtCapability &&
 				(IS_BSS_VHT_CAPABLE(pBeaconStruct->VHTCaps) ||
 				 IS_BSS_VHT_CAPABLE(pBeaconStruct->
@@ -3868,8 +3751,7 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 				vht_caps = &pAssocRsp->VHTCaps;
 			else if (pAssocRsp->vendor_vht_ie.VHTCaps.present) {
 				vht_caps = &pAssocRsp->vendor_vht_ie.VHTCaps;
-				pe_debug("VHT Caps are in vendor Specific IE");
-				is_vht_cap_in_vendor_ie = true;
+				pe_debug("VHT Caps are in vendor Specfic IE");
 			}
 
 			if ((vht_caps != NULL) && (vht_caps->suBeamFormerCap ||
@@ -3884,19 +3766,11 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 			if ((vht_caps != NULL) && vht_caps->suBeamformeeCap &&
 				psessionEntry->vht_config.su_beam_former)
 				sta_context->enable_su_tx_bformer = 1;
+		}
 
-			if (vht_caps && pAddBssParams->staContext.stbc_capable)
-				pAddBssParams->staContext.stbc_capable =
-					vht_caps->rxSTBC;
-		}
-		if (lim_is_session_he_capable(psessionEntry) &&
-		    pAssocRsp->he_cap.present) {
-			lim_intersect_ap_he_caps(psessionEntry,
-						 pAddBssParams,
-						 NULL,
-						 pAssocRsp);
-			lim_update_he_stbc_capable(&pAddBssParams->staContext);
-		}
+		chanWidthSupp = lim_get_ht_capability(pMac,
+					eHT_SUPPORTED_CHANNEL_WIDTH_SET,
+					psessionEntry);
 
 		/*
 		 * in limExtractApCapability function intersection of FW
@@ -3910,8 +3784,8 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 			pAddBssParams->staContext.ch_width =
 					psessionEntry->ch_width;
 		} else {
-			sta_context->ch_width =	CH_WIDTH_20MHZ;
-			if ((QDF_IS_STATUS_SUCCESS(
+			sta_context->ch_width = CH_WIDTH_20MHZ;
+			if ((IS_SIR_STATUS_SUCCESS(
 				wlan_cfg_get_int(pMac,
 					WNI_CFG_VHT_ENABLE_TXBF_20MHZ,
 					&enableTxBF20MHz))) &&
@@ -3920,11 +3794,11 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 		}
 
 		pe_debug("StaCtx: vhtCap %d ChBW %d TxBF %d",
-			 pAddBssParams->staContext.vhtCapable,
-			 pAddBssParams->staContext.ch_width,
-			 sta_context->vhtTxBFCapable);
+				pAddBssParams->staContext.vhtCapable,
+				pAddBssParams->staContext.ch_width,
+				sta_context->vhtTxBFCapable);
 		pe_debug("StaContext su_tx_bfer %d",
-			 sta_context->enable_su_tx_bformer);
+				sta_context->enable_su_tx_bformer);
 
 		pAddBssParams->staContext.mimoPS =
 			(tSirMacHTMIMOPowerSaveState)
@@ -3943,17 +3817,17 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 		 * hardcode this values to 0.
 		 */
 		if (psessionEntry->htConfig.ht_sgi20) {
-			pAddBssParams->staContext.fShortGI20Mhz =
-				(uint8_t)pAssocRsp->HTCaps.shortGI20MHz;
-		} else {
-			pAddBssParams->staContext.fShortGI20Mhz = false;
-		}
+				pAddBssParams->staContext.fShortGI20Mhz =
+					(uint8_t)pAssocRsp->HTCaps.shortGI20MHz;
+			} else {
+				pAddBssParams->staContext.fShortGI20Mhz = false;
+			}
 
 		if (psessionEntry->htConfig.ht_sgi40) {
 			pAddBssParams->staContext.fShortGI40Mhz =
 				(uint8_t) pAssocRsp->HTCaps.shortGI40MHz;
 		} else {
-			pAddBssParams->staContext.fShortGI40Mhz = false;
+				pAddBssParams->staContext.fShortGI40Mhz = false;
 		}
 
 		if (!pAddBssParams->staContext.vhtCapable)
@@ -3982,19 +3856,14 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 				vht_caps = &pAssocRsp->VHTCaps;
 			else if (pAssocRsp->vendor_vht_ie.VHTCaps.present) {
 				vht_caps = &pAssocRsp->vendor_vht_ie.VHTCaps;
-				pe_debug("VHT Caps is in vendor Specific IE");
+				pe_debug("VHT Caps is in vendor Specfic IE");
 			}
 			if (vht_caps != NULL &&
-				(psessionEntry->txLdpcIniFeatureEnabled & 0x2)) {
-				if (!is_vht_cap_in_vendor_ie)
-					pAddBssParams->staContext.vhtLdpcCapable =
-					  (uint8_t) pAssocRsp->VHTCaps.ldpcCodingCap;
-				else
-					pAddBssParams->staContext.vhtLdpcCapable =
-					    (uint8_t) vht_caps->ldpcCodingCap;
-			} else {
+				(psessionEntry->txLdpcIniFeatureEnabled & 0x2))
+				pAddBssParams->staContext.vhtLdpcCapable =
+					(uint8_t) vht_caps->ldpcCodingCap;
+			else
 				pAddBssParams->staContext.vhtLdpcCapable = 0;
-			}
 		}
 
 		if (pBeaconStruct->HTInfo.present)
@@ -4123,7 +3992,6 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 		pAddBssParams->ch_width = CH_WIDTH_10MHZ;
 		pAddBssParams->staContext.ch_width = CH_WIDTH_10MHZ;
 	}
-	lim_set_sta_ctx_twt(&pAddBssParams->staContext, psessionEntry);
 
 	msgQ.type = WMA_ADD_BSS_REQ;
 	/** @ToDo : Update the Global counter to keeptrack of the PE <--> HAL messages*/
@@ -4136,7 +4004,7 @@ QDF_STATUS lim_sta_send_add_bss(tpAniSirGlobal pMac, tpSirAssocRsp pAssocRsp,
 	MTRACE(mac_trace_msg_tx(pMac, psessionEntry->peSessionId, msgQ.type));
 
 	retCode = wma_post_ctrl_msg(pMac, &msgQ);
-	if (QDF_STATUS_SUCCESS != retCode) {
+	if (eSIR_SUCCESS != retCode) {
 		SET_LIM_PROCESS_DEFD_MESGS(pMac, true);
 		qdf_mem_free(pAddBssParams);
 		pe_err("Posting ADD_BSS_REQ to HAL failed, reason=%X",
@@ -4151,10 +4019,10 @@ returnFailure:
 	return retCode;
 }
 
-QDF_STATUS lim_sta_send_add_bss_pre_assoc(tpAniSirGlobal pMac, uint8_t updateEntry,
+tSirRetStatus lim_sta_send_add_bss_pre_assoc(tpAniSirGlobal pMac, uint8_t updateEntry,
 					     tpPESession psessionEntry)
 {
-	struct scheduler_msg msgQ = {0};
+	tSirMsgQ msgQ;
 	tpAddBssParams pAddBssParams = NULL;
 	uint32_t retCode;
 	tSchBeaconStruct *pBeaconStruct;
@@ -4169,14 +4037,14 @@ QDF_STATUS lim_sta_send_add_bss_pre_assoc(tpAniSirGlobal pMac, uint8_t updateEnt
 	pBeaconStruct = qdf_mem_malloc(sizeof(tSchBeaconStruct));
 	if (NULL == pBeaconStruct) {
 		pe_err("Unable to allocate memory during ADD_BSS");
-		return QDF_STATUS_E_NOMEM;
+		return eSIR_MEM_ALLOC_FAILED;
 	}
 
 	/* Package SIR_HAL_ADD_BSS_REQ message parameters */
 	pAddBssParams = qdf_mem_malloc(sizeof(tAddBssParams));
 	if (NULL == pAddBssParams) {
 		pe_err("Unable to allocate memory during ADD_BSS");
-		retCode = QDF_STATUS_E_NOMEM;
+		retCode = eSIR_MEM_ALLOC_FAILED;
 		goto returnFailure;
 	}
 
@@ -4325,7 +4193,7 @@ QDF_STATUS lim_sta_send_add_bss_pre_assoc(tpAniSirGlobal pMac, uint8_t updateEnt
 			vht_oper = &pBeaconStruct->VHTOperation;
 		else if (pBeaconStruct->vendor_vht_ie.VHTOperation.present) {
 			vht_oper = &pBeaconStruct->vendor_vht_ie.VHTOperation;
-			pe_debug("VHT Operation is present in vendor Specific IE");
+			pe_debug("VHT Operation is present in vendor Specfic IE");
 		}
 
 
@@ -4351,16 +4219,11 @@ QDF_STATUS lim_sta_send_add_bss_pre_assoc(tpAniSirGlobal pMac, uint8_t updateEnt
 	} else {
 		pAddBssParams->vhtCapable = 0;
 	}
-
-	if (lim_is_session_he_capable(psessionEntry) &&
-	    pBeaconStruct->he_cap.present) {
-		lim_update_bss_he_capable(pMac, pAddBssParams);
-		lim_add_bss_he_cfg(pAddBssParams, psessionEntry);
-	}
 	pe_debug("vhtCapable %d vhtTxChannelWidthSet %d center_freq_seg0 - %d, center_freq_seg1 - %d",
 		pAddBssParams->vhtCapable, pAddBssParams->ch_width,
 		pAddBssParams->ch_center_freq_seg0,
 		pAddBssParams->ch_center_freq_seg1);
+
 	/*
 	 * Populate the STA-related parameters here
 	 * Note that the STA here refers to the AP
@@ -4371,7 +4234,7 @@ QDF_STATUS lim_sta_send_add_bss_pre_assoc(tpAniSirGlobal pMac, uint8_t updateEnt
 	qdf_mem_copy(pAddBssParams->staContext.bssId,
 			bssDescription->bssId, sizeof(tSirMacAddr));
 	if (wlan_cfg_get_int(pMac, WNI_CFG_LISTEN_INTERVAL, &listen_interval) !=
-				QDF_STATUS_SUCCESS)
+				eSIR_SUCCESS)
 		pe_err("Couldn't get LISTEN_INTERVAL");
 	pAddBssParams->staContext.listenInterval = listen_interval;
 	pAddBssParams->staContext.assocId = 0;
@@ -4429,11 +4292,6 @@ QDF_STATUS lim_sta_send_add_bss_pre_assoc(tpAniSirGlobal pMac, uint8_t updateEnt
 			pe_debug("StaContext: su_tx_bfer %d",
 				pAddBssParams->staContext.enable_su_tx_bformer);
 		}
-		if (lim_is_session_he_capable(psessionEntry) &&
-			pBeaconStruct->he_cap.present)
-			lim_intersect_ap_he_caps(psessionEntry, pAddBssParams,
-					      pBeaconStruct, NULL);
-
 		if ((pBeaconStruct->HTCaps.supportedChannelWidthSet) &&
 				(chanWidthSupp)) {
 			pAddBssParams->staContext.ch_width =
@@ -4499,7 +4357,7 @@ QDF_STATUS lim_sta_send_add_bss_pre_assoc(tpAniSirGlobal pMac, uint8_t updateEnt
 			else if (pBeaconStruct->vendor_vht_ie.VHTCaps.present) {
 				vht_caps =
 					&pBeaconStruct->vendor_vht_ie.VHTCaps;
-				pe_debug("VHT Caps are in vendor Specific IE");
+				pe_debug("VHT Caps are in vendor Specfic IE");
 			}
 			if (vht_caps != NULL &&
 				(psessionEntry->txLdpcIniFeatureEnabled & 0x2))
@@ -4547,8 +4405,7 @@ QDF_STATUS lim_sta_send_add_bss_pre_assoc(tpAniSirGlobal pMac, uint8_t updateEnt
 			supportedRates,
 			pBeaconStruct->HTCaps.supportedMCSSet,
 			false, psessionEntry,
-			&pBeaconStruct->VHTCaps,
-			&pBeaconStruct->he_cap);
+			&pBeaconStruct->VHTCaps);
 
 	pAddBssParams->staContext.encryptType = psessionEntry->encryptType;
 
@@ -4620,7 +4477,7 @@ QDF_STATUS lim_sta_send_add_bss_pre_assoc(tpAniSirGlobal pMac, uint8_t updateEnt
 	MTRACE(mac_trace_msg_tx(pMac, psessionEntry->peSessionId, msgQ.type));
 
 	retCode = wma_post_ctrl_msg(pMac, &msgQ);
-	if (QDF_STATUS_SUCCESS != retCode) {
+	if (eSIR_SUCCESS != retCode) {
 		SET_LIM_PROCESS_DEFD_MESGS(pMac, true);
 		qdf_mem_free(pAddBssParams);
 		pe_err("Posting ADD_BSS_REQ to HAL failed, reason=%X",
@@ -4704,7 +4561,7 @@ void lim_init_pre_auth_timer_table(tpAniSirGlobal pMac,
 	/* Get AUTH_RSP Timers value */
 
 	if (wlan_cfg_get_int(pMac, WNI_CFG_AUTHENTICATE_RSP_TIMEOUT,
-			     &cfgValue) != QDF_STATUS_SUCCESS) {
+			     &cfgValue) != eSIR_SUCCESS) {
 		pe_err("could not retrieve AUTH_RSP timeout value");
 		return;
 	}
@@ -4750,7 +4607,7 @@ tLimPreAuthNode *lim_acquire_free_pre_auth_node(tpAniSirGlobal pMac,
 
 /** -------------------------------------------------------------
    \fn lim_get_pre_auth_node_from_index
-   \brief Depending on the Index this retrieves the pre auth node.
+   \brief Depending on the Index this retrives the pre auth node.
    \param     tpAniSirGlobal    pMac
    \param     tpLimPreAuthTable pAuthTable
    \param     uint32_t authNodeIdx
@@ -4771,7 +4628,7 @@ tLimPreAuthNode *lim_get_pre_auth_node_from_index(tpAniSirGlobal pMac,
 }
 
 /* Util API to check if the channels supported by STA is within range */
-QDF_STATUS lim_is_dot11h_supported_channels_valid(tpAniSirGlobal pMac,
+tSirRetStatus lim_is_dot11h_supported_channels_valid(tpAniSirGlobal pMac,
 						     tSirAssocReq *assoc)
 {
 	/*
@@ -4781,11 +4638,11 @@ QDF_STATUS lim_is_dot11h_supported_channels_valid(tpAniSirGlobal pMac,
 	 * The specification of the algorithm is beyond the scope of this amendment.
 	 */
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }
 
 /* Util API to check if the txpower supported by STA is within range */
-QDF_STATUS lim_is_dot11h_power_capabilities_in_range(tpAniSirGlobal pMac,
+tSirRetStatus lim_is_dot11h_power_capabilities_in_range(tpAniSirGlobal pMac,
 							tSirAssocReq *assoc,
 							tpPESession psessionEntry)
 {
@@ -4798,9 +4655,9 @@ QDF_STATUS lim_is_dot11h_power_capabilities_in_range(tpAniSirGlobal pMac,
 
 	if (wlan_cfg_get_int
 		    (pMac, WNI_CFG_LOCAL_POWER_CONSTRAINT,
-		    &localPwrConstraint) != QDF_STATUS_SUCCESS) {
+		    &localPwrConstraint) != eSIR_SUCCESS) {
 		pe_err("Unable to get Local Power Constraint from cfg");
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 	localMaxTxPower -= (int8_t) localPwrConstraint;
 
@@ -4811,10 +4668,10 @@ QDF_STATUS lim_is_dot11h_power_capabilities_in_range(tpAniSirGlobal pMac,
 	if (assoc->powerCapability.minTxPower > localMaxTxPower) {
 		pe_warn("minTxPower (STA): %d, localMaxTxPower (AP): %d",
 			assoc->powerCapability.minTxPower, localMaxTxPower);
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }
 
 /** -------------------------------------------------------------
@@ -4859,7 +4716,7 @@ void lim_send_sme_unprotected_mgmt_frame_ind(tpAniSirGlobal pMac, uint8_t frameT
 					     uint16_t sessionId,
 					     tpPESession psessionEntry)
 {
-	struct scheduler_msg mmhMsg = {0};
+	tSirMsgQ mmhMsg;
 	tSirSmeUnprotMgmtFrameInd *pSirSmeMgmtFrame = NULL;
 	uint16_t length;
 
@@ -4900,7 +4757,7 @@ void lim_send_sme_unprotected_mgmt_frame_ind(tpAniSirGlobal pMac, uint8_t frameT
 void lim_send_sme_tsm_ie_ind(tpAniSirGlobal pMac, tpPESession psessionEntry,
 			     uint8_t tid, uint8_t state, uint16_t measInterval)
 {
-	struct scheduler_msg mmhMsg = {0};
+	tSirMsgQ mmhMsg;
 	tpSirSmeTsmIEInd pSirSmeTsmIeInd = NULL;
 
 	if (!pMac || !psessionEntry)
@@ -4925,33 +4782,3 @@ void lim_send_sme_tsm_ie_ind(tpAniSirGlobal pMac, tpPESession psessionEntry,
 	return;
 }
 #endif /* FEATURE_WLAN_ESE */
-
-void lim_extract_ies_from_deauth_disassoc(tpAniSirGlobal mac_ctx,
-					  uint8_t vdev_id,
-					  uint8_t *deauth_disassoc_frame,
-					  uint16_t deauth_disassoc_frame_len)
-{
-	struct wlan_objmgr_vdev *vdev;
-	uint16_t reason_code, ie_offset;
-	struct wlan_ies ie;
-
-	/* Get the offset of IEs */
-	ie_offset = sizeof(struct wlan_frame_hdr) + sizeof(reason_code);
-
-	if (!deauth_disassoc_frame || deauth_disassoc_frame_len <= ie_offset)
-		return;
-
-	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(mac_ctx->psoc,
-						    vdev_id,
-						    WLAN_LEGACY_MAC_ID);
-	if (!vdev) {
-		pe_err("Got NULL vdev obj, returning");
-		return;
-	}
-
-	ie.data = deauth_disassoc_frame + ie_offset;
-	ie.len = deauth_disassoc_frame_len - ie_offset;
-
-	mlme_set_peer_disconnect_ies(vdev, &ie);
-	wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
-}

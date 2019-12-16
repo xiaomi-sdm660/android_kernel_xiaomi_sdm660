@@ -1,8 +1,6 @@
+
 /*
- * Copyright (c) 2018 The Linux Foundation. All rights reserved.
- *
- * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
- *
+ * Copyright (c) 2018-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -32,7 +30,7 @@
 #include <wma_api.h>
 #include "qwlan_version.h"
 #include "wmi_unified_param.h"
-#include "wlan_osif_request_manager.h"
+#include "wlan_hdd_request_manager.h"
 
 /**
  * hdd_roam_scan_stats_debugfs_dealloc() - Dealloc objects in hdd request mgr
@@ -64,14 +62,14 @@ static void hdd_roam_scan_stats_debugfs_dealloc(void *priv)
 static void
 hdd_roam_scan_stats_cb(void *context, struct wmi_roam_scan_stats_res *res)
 {
-	struct osif_request *request;
+	struct hdd_request *request;
 	struct hdd_roam_scan_stats_debugfs_priv *priv;
 	struct wmi_roam_scan_stats_res *stats_res;
 	uint32_t total_len;
 
-	hdd_enter();
+	ENTER();
 
-	request = osif_request_get(context);
+	request = hdd_request_get(context);
 	if (!request) {
 		hdd_err("Obsolete roam scan stats request");
 		return;
@@ -82,7 +80,7 @@ hdd_roam_scan_stats_cb(void *context, struct wmi_roam_scan_stats_res *res)
 		goto end;
 	}
 
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(request);
 
 	total_len = sizeof(*res) + res->num_roam_scans *
 		    sizeof(struct wmi_roam_scan_stats_params);
@@ -97,10 +95,10 @@ hdd_roam_scan_stats_cb(void *context, struct wmi_roam_scan_stats_res *res)
 	priv->roam_scan_stats_res = stats_res;
 
 end:
-	osif_request_complete(request);
-	osif_request_put(request);
+	hdd_request_complete(request);
+	hdd_request_put(request);
 
-	hdd_exit();
+	EXIT();
 }
 
 /**
@@ -112,51 +110,51 @@ end:
  * from firmware
  */
 static struct
-wmi_roam_scan_stats_res *hdd_get_roam_scan_stats(struct hdd_context *hdd_ctx,
-						 struct hdd_adapter *adapter)
+wmi_roam_scan_stats_res *hdd_get_roam_scan_stats(hdd_context_t *hdd_ctx,
+						 hdd_adapter_t *adapter)
 {
 	struct wmi_roam_scan_stats_res *res;
 	struct wmi_roam_scan_stats_res *stats_res = NULL;
 	void *context;
-	struct osif_request *request;
+	struct hdd_request *request;
 	struct hdd_roam_scan_stats_debugfs_priv *priv;
-	static const struct osif_request_params params = {
+	static const struct hdd_request_params params = {
 		.priv_size = sizeof(*priv),
 		.timeout_ms = WLAN_WAIT_TIME_FW_ROAM_STATS,
 		.dealloc = hdd_roam_scan_stats_debugfs_dealloc,
 	};
 	QDF_STATUS status;
-	int ret;
+	int32_t ret;
 	uint32_t total_len;
 
-	hdd_enter();
+	ENTER();
 
-	if (!wlan_hdd_validate_modules_state(hdd_ctx))
+	if (!wlan_hdd_modules_are_enabled(hdd_ctx))
 		return NULL;
 
-	request = osif_request_alloc(&params);
+	request = hdd_request_alloc(&params);
 	if (!request) {
 		hdd_err("Request allocation failure");
 		return NULL;
 	}
 
-	context = osif_request_cookie(request);
+	context = hdd_request_cookie(request);
 
-	status = sme_get_roam_scan_stats(hdd_ctx->mac_handle,
+	status = sme_get_roam_scan_stats(hdd_ctx->hHal,
 					 hdd_roam_scan_stats_cb,
-					 context, adapter->session_id);
+					 context, adapter->sessionId);
 	if (!QDF_IS_STATUS_SUCCESS(status)) {
 		hdd_err("roam scan stats request failed");
 		goto cleanup;
 	}
 
-	ret = osif_request_wait_for_response(request);
+	ret = hdd_request_wait_for_response(request);
 	if (ret) {
 		hdd_err("roam scan stats response time out");
 		goto cleanup;
 	}
 
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(request);
 	res = priv->roam_scan_stats_res;
 	if (!res) {
 		hdd_err("Failure of roam scan stats response retrieval");
@@ -175,8 +173,7 @@ wmi_roam_scan_stats_res *hdd_get_roam_scan_stats(struct hdd_context *hdd_ctx,
 	qdf_mem_copy(stats_res, res, total_len);
 
 cleanup:
-	osif_request_put(request);
-	hdd_exit();
+	hdd_request_put(request);
 
 	return stats_res;
 }
@@ -216,7 +213,6 @@ static char *hdd_roam_scan_trigger_to_str(uint32_t roam_scan_trigger)
 	default:
 		return "UNKNOWN REASON";
 	}
-	return "UNKNOWN REASON";
 }
 
 /**
@@ -281,7 +277,6 @@ static char *hdd_client_id_to_str(uint32_t client_id)
 	default:
 		return "UNKNOWN";
 	}
-	return "UNKNOWN";
 }
 
 /**
@@ -297,17 +292,17 @@ hdd_roam_scan_trigger(struct wmi_roam_scan_stats_params *scan,
 		      uint8_t *buf, ssize_t buf_avail_len)
 {
 	ssize_t length = 0;
-	int ret;
+	int ret_val;
 	char *str;
 	bool print_trigger_value;
 
-	ret = scnprintf(buf, buf_avail_len,
-			"Trigger reason is %s\n",
-			hdd_roam_scan_trigger_to_str(scan->trigger_id));
-	if (ret <= 0)
+	ret_val = scnprintf(buf, buf_avail_len,
+			    "Trigger reason is %s\n",
+			    hdd_roam_scan_trigger_to_str(scan->trigger_id));
+	if (ret_val <= 0)
 		return length;
 
-	length = ret;
+	length = ret_val;
 
 	str = hdd_roam_scan_trigger_value(scan->trigger_id,
 					  &print_trigger_value);
@@ -320,13 +315,13 @@ hdd_roam_scan_trigger(struct wmi_roam_scan_stats_params *scan,
 		return length;
 	}
 
-	ret = scnprintf(buf + length, buf_avail_len - length,
-			"Trigger value is: %u %s\n",
-			scan->trigger_value, str);
-	if (ret <= 0)
+	ret_val = scnprintf(buf + length, buf_avail_len - length,
+			    "Trigger value is: %u %s\n",
+			    scan->trigger_value, str);
+	if (ret_val <= 0)
 		return length;
 
-	length += ret;
+	length += ret_val;
 	return length;
 }
 
@@ -344,16 +339,16 @@ hdd_roam_scan_chan(struct wmi_roam_scan_stats_params *scan,
 {
 	ssize_t length = 0;
 	uint32_t i;
-	int ret;
+	int ret_val;
 
-	ret = scnprintf(buf, buf_avail_len,
-			"Num of scan channels: %u\n"
-			"scan channel list:",
-			scan->num_scan_chans);
-	if (ret <= 0)
+	ret_val = scnprintf(buf, buf_avail_len,
+			    "Num of scan channels: %u\n"
+			    "scan channel list:",
+			    scan->num_scan_chans);
+	if (ret_val <= 0)
 		return length;
 
-	length = ret;
+	length = ret_val;
 
 	for (i = 0; i < scan->num_scan_chans; i++) {
 		if (length >= buf_avail_len) {
@@ -362,12 +357,12 @@ hdd_roam_scan_chan(struct wmi_roam_scan_stats_params *scan,
 			return length;
 		}
 
-		ret = scnprintf(buf + length, buf_avail_len - length,
-				"%u ", scan->scan_freqs[i]);
-		if (ret <= 0)
+		ret_val = scnprintf(buf + length, buf_avail_len - length,
+				    "%u ", scan->scan_freqs[i]);
+		if (ret_val <= 0)
 			return length;
 
-		length += ret;
+		length += ret_val;
 	}
 
 	return length;
@@ -383,34 +378,33 @@ hdd_roam_scan_chan(struct wmi_roam_scan_stats_params *scan,
  * Return: Size of formatted roam scan response stats
  */
 static ssize_t
-wlan_hdd_update_roam_stats(struct hdd_context *hdd_ctx,
-			   struct hdd_adapter *adapter,
+wlan_hdd_update_roam_stats(hdd_context_t *hdd_ctx, hdd_adapter_t *adapter,
 			   uint8_t *buf, ssize_t buf_avail_len)
 {
 	ssize_t length = 0;
 	struct wmi_roam_scan_stats_res *roam_stats;
 	struct wmi_roam_scan_stats_params *scan;
-	int ret;
+	int ret_val;
 	int rsi; /* roam scan iterator */
 	int rci; /* roam candidate iterator */
 
 	roam_stats = hdd_get_roam_scan_stats(hdd_ctx, adapter);
 	if (!roam_stats) {
 		hdd_err("Couldn't get roam stats");
-		ret = scnprintf(buf, buf_avail_len,
-				"Failed to fetch roam stats\n");
-		if (ret <= 0)
+		ret_val = scnprintf(buf, buf_avail_len,
+				    "Failed to fetch roam stats\n");
+		if (ret_val <= 0)
 			return length;
-		length += ret;
+		length += ret_val;
 		return length;
 	}
 
-	ret = scnprintf(buf, buf_avail_len,
-			"\n\nStats of last %u roam scans\n",
-			roam_stats->num_roam_scans);
-	if (ret <= 0)
+	ret_val = scnprintf(buf, buf_avail_len,
+			   "\n\nStats of last %u roam scans\n",
+			   roam_stats->num_roam_scans);
+	if (ret_val <= 0)
 		goto free_mem;
-	length += ret;
+	length += ret_val;
 
 	for (rsi = 0; rsi < roam_stats->num_roam_scans; rsi++) {
 		if (length >= buf_avail_len) {
@@ -420,11 +414,11 @@ wlan_hdd_update_roam_stats(struct hdd_context *hdd_ctx,
 		}
 
 		scan = &roam_stats->roam_scan[rsi];
-		ret = scnprintf(buf + length, buf_avail_len - length,
-				"\nRoam scan[%u] details\n", rsi);
-		if (ret <= 0)
+		ret_val = scnprintf(buf + length, buf_avail_len - length,
+				   "\nRoam scan[%u] details\n", rsi);
+		if (ret_val <= 0)
 			goto free_mem;
-		length += ret;
+		length += ret_val;
 
 		if (length >= buf_avail_len) {
 			hdd_err("No sufficient buf_avail_len");
@@ -432,13 +426,13 @@ wlan_hdd_update_roam_stats(struct hdd_context *hdd_ctx,
 			goto free_mem;
 		}
 
-		ret = scnprintf(buf + length, buf_avail_len - length,
-				"This scan is triggered by \"%s\" scan client\n",
-				hdd_client_id_to_str(scan->client_id));
+		ret_val = scnprintf(buf + length, buf_avail_len - length,
+			   "This scan is triggered by \"%s\" scan client\n",
+			   hdd_client_id_to_str(scan->client_id));
 
-		if (ret <= 0)
+		if (ret_val <= 0)
 			goto free_mem;
-		length += ret;
+		length += ret_val;
 
 		if (length >= buf_avail_len) {
 			hdd_err("No sufficient buf_avail_len");
@@ -462,12 +456,12 @@ wlan_hdd_update_roam_stats(struct hdd_context *hdd_ctx,
 			goto free_mem;
 		}
 
-		ret = scnprintf(buf + length, buf_avail_len - length,
-				"\nRoam Scan time: 0x%llx\n",
-				roam_stats->roam_scan[rsi].time_stamp);
-		if (ret <= 0)
+		ret_val = scnprintf(buf + length, buf_avail_len - length,
+			"\nRaom Scan time: 0x%llx\n",
+			roam_stats->roam_scan[rsi].time_stamp);
+		if (ret_val <= 0)
 			goto free_mem;
-		length += ret;
+		length += ret_val;
 
 		if (length >= buf_avail_len) {
 			hdd_err("No sufficient buf_avail_len");
@@ -476,23 +470,22 @@ wlan_hdd_update_roam_stats(struct hdd_context *hdd_ctx,
 		}
 
 		if (scan->is_roam_successful) {
-			ret = scnprintf(buf + length,
+			ret_val = scnprintf(buf + length,
 					buf_avail_len - length,
-					"\nSTA roamed from "
-					MAC_ADDRESS_STR " to "
-					MAC_ADDRESS_STR "\n",
-					MAC_ADDR_ARRAY(scan->old_bssid),
-					MAC_ADDR_ARRAY(scan->new_bssid));
+				"\nSTA roamed from " MAC_ADDRESS_STR " to "
+				MAC_ADDRESS_STR "\n",
+				MAC_ADDR_ARRAY(scan->old_bssid),
+				MAC_ADDR_ARRAY(scan->new_bssid));
 		} else {
-			ret = scnprintf(buf + length,
+			ret_val = scnprintf(buf + length,
 					buf_avail_len - length,
 					"\nSTA is connected to " MAC_ADDRESS_STR
 					" before and after scan, not roamed\n",
 					MAC_ADDR_ARRAY(scan->old_bssid));
 		}
-		if (ret <= 0)
+		if (ret_val <= 0)
 			goto free_mem;
-		length += ret;
+		length += ret_val;
 
 		if (length >= buf_avail_len) {
 			hdd_err("No sufficient buf_avail_len");
@@ -500,11 +493,11 @@ wlan_hdd_update_roam_stats(struct hdd_context *hdd_ctx,
 			goto free_mem;
 		}
 
-		ret = scnprintf(buf + length, buf_avail_len - length,
-				"Roam candidate details\n");
-		if (ret <= 0)
+		ret_val = scnprintf(buf + length, buf_avail_len - length,
+				    "Roam candidate details\n");
+		if (ret_val <= 0)
 			goto free_mem;
-		length += ret;
+		length += ret_val;
 
 		if (length >= buf_avail_len) {
 			hdd_err("No sufficient buf_avail_len");
@@ -512,11 +505,11 @@ wlan_hdd_update_roam_stats(struct hdd_context *hdd_ctx,
 			goto free_mem;
 		}
 
-		ret = scnprintf(buf + length, buf_avail_len - length,
-				"      BSSID     FREQ   SCORE  RSSI\n");
-		if (ret <= 0)
+		ret_val = scnprintf(buf + length, buf_avail_len - length,
+				    "      BSSID     FREQ   SCORE  RSSI\n");
+		if (ret_val <= 0)
 			goto free_mem;
-		length += ret;
+		length += ret_val;
 
 		for (rci = 0; rci < scan->num_roam_candidates; rci++) {
 			uint8_t *bssid = scan->cand[rci].bssid;
@@ -527,16 +520,16 @@ wlan_hdd_update_roam_stats(struct hdd_context *hdd_ctx,
 				goto free_mem;
 			}
 
-			ret = scnprintf(buf + length,
+			ret_val = scnprintf(buf + length,
 					buf_avail_len - length,
 					MAC_ADDRESS_STR " %4u  %3u   %3u\n",
 					MAC_ADDR_ARRAY(bssid),
 					scan->cand[rci].freq,
 					scan->cand[rci].score,
 					scan->cand[rci].rssi);
-			if (ret <= 0)
+			if (ret_val <= 0)
 				goto free_mem;
-			length += ret;
+			length += ret_val;
 		}
 	}
 
@@ -546,14 +539,12 @@ free_mem:
 }
 
 ssize_t
-wlan_hdd_debugfs_update_roam_stats(struct hdd_context *hdd_ctx,
-				   struct hdd_adapter *adapter,
+wlan_hdd_debugfs_update_roam_stats(hdd_context_t *hdd_ctx,
+				   hdd_adapter_t *adapter,
 				   uint8_t *buf, ssize_t buf_avail_len)
 {
 	ssize_t len = 0;
 	int ret_val;
-
-	hdd_enter();
 
 	len = wlan_hdd_current_time_info_debugfs(buf, buf_avail_len - len);
 
@@ -577,8 +568,6 @@ wlan_hdd_debugfs_update_roam_stats(struct hdd_context *hdd_ctx,
 	}
 	len += wlan_hdd_update_roam_stats(hdd_ctx, adapter, buf + len,
 					  buf_avail_len - len);
-
-	hdd_exit();
 
 	return len;
 }

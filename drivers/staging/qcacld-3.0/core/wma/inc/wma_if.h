@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -43,6 +43,20 @@
 #elif !defined(ANI_OS_TYPE_ANDROID) && !defined(ANI_OS_TYPE_QNX) /* NONE */
 #error "NONE of the ANI_OS_TYPE_xxx are defined for this build"
 #endif
+
+/*
+ * Validate the compiler
+ */
+#if (defined(ANI_COMPILER_TYPE_MSVC) && defined(ANI_COMPILER_TYPE_GCC) && \
+					defined(ANI_COMPILER_TYPE_RVCT))
+#error "more than one ANI_COMPILER_TYPE_xxx is defined for this build"
+
+#elif !(defined(ANI_COMPILER_TYPE_MSVC) || defined(ANI_COMPILER_TYPE_GCC) || \
+					defined(ANI_COMPILER_TYPE_RVCT))
+#error "NONE of the ANI_COMPILER_TYPE_xxx are defined for this build"
+
+#endif
+
 
 #define WMA_CONFIG_PARAM_UPDATE_REQ    SIR_CFG_PARAM_UPDATE_IND
 
@@ -179,6 +193,8 @@ typedef struct sAniProbeRspStruct {
  * @respReqd: A flag to indicate to HAL if the response message is required
  * @rmfEnabled: Robust Management Frame (RMF) enabled/disabled
  * @encryptType: The unicast encryption type in the association
+ * @ucUcastSig: Unicast DPU index
+ * @ucBcastSig: Broadcast DPU index
  * @sessionId: PE session id
  * @p2pCapableSta: if this is a P2P Capable Sta
  * @csaOffloadEnable: CSA offload enable flag
@@ -204,7 +220,6 @@ typedef struct sAniProbeRspStruct {
  * @atimIePresent: Peer Atim Info
  * @peerAtimWindowLength: peer ATIM Window length
  * @nss: Return the number of spatial streams supported
- * @stbc_capable: stbc capable
  * @max_amsdu_num: Maximum number of MSDUs in a tx aggregate frame
  *
  * This structure contains parameter required for
@@ -275,6 +290,8 @@ typedef struct {
 	uint8_t respReqd;
 	uint8_t rmfEnabled;
 	uint32_t encryptType;
+	uint8_t ucUcastSig;
+	uint8_t ucBcastSig;
 	uint8_t sessionId;
 	uint8_t p2pCapableSta;
 	uint8_t csaOffloadEnable;
@@ -302,17 +319,7 @@ typedef struct {
 	uint32_t peerAtimWindowLength;
 	uint8_t nonRoamReassoc;
 	uint32_t nss;
-#ifdef WLAN_FEATURE_11AX
-	bool he_capable;
-	tDot11fIEhe_cap he_config;
-	tDot11fIEhe_op he_op;
-#endif
-	uint8_t stbc_capable;
 	uint8_t max_amsdu_num;
-#ifdef WLAN_SUPPORT_TWT
-	uint8_t twt_requestor;
-	uint8_t twt_responder;
-#endif
 } tAddStaParams, *tpAddStaParams;
 
 /**
@@ -341,7 +348,6 @@ typedef struct {
  * struct tSetStaKeyParams - set key params
  * @staIdx: station id
  * @encType: encryption type
- * @wepType: WEP type
  * @defWEPIdx: Default WEP key, valid only for static WEP, must between 0 and 3
  * @key: valid only for non-static WEP encyrptions
  * @singleTidRc: 1=Single TID based Replay Count, 0=Per TID based RC
@@ -359,7 +365,6 @@ typedef struct {
 typedef struct {
 	uint16_t staIdx;
 	tAniEdType encType;
-	tAniWepType wepType;
 	uint8_t defWEPIdx;
 	tSirKeys key[SIR_MAC_MAX_NUM_OF_DEFAULT_KEYS];
 	uint8_t singleTidRc;
@@ -438,13 +443,12 @@ typedef struct sLimMlmSetKeysReq {
  * @chainMask: chain mask
  * @smpsMode: SMPS mode
  * @dot11_mode: 802.11 mode
- * @he_capable: HE Capability
- * @cac_duration_ms: cac duration in milliseconds
- * @dfs_regdomain: dfs region
  */
 typedef struct {
 	tSirMacAddr bssId;
+#ifdef HAL_SELF_STA_PER_BSS
 	tSirMacAddr selfMacAddr;
+#endif /* HAL_SELF_STA_PER_BSS */
 	tSirBssType bssType;
 	uint8_t operMode;
 	tSirNwType nwType;
@@ -508,19 +512,7 @@ typedef struct {
 	uint32_t tx_aggregation_size_bk;
 	uint32_t tx_aggregation_size_vi;
 	uint32_t tx_aggregation_size_vo;
-	uint32_t tx_non_aggregation_size_be;
-	uint32_t tx_non_aggregation_size_bk;
-	uint32_t tx_non_aggregation_size_vi;
-	uint32_t tx_non_aggregation_size_vo;
 	uint32_t rx_aggregation_size;
-#ifdef WLAN_FEATURE_11AX
-	bool he_capable;
-	tDot11fIEhe_cap he_config;
-	tDot11fIEhe_op he_op;
-	uint32_t he_sta_obsspd;
-#endif
-	uint32_t cac_duration_ms;
-	uint32_t dfs_regdomain;
 } tAddBssParams, *tpAddBssParams;
 
 /**
@@ -805,8 +797,6 @@ typedef struct {
 	uint8_t fRIFSMode;
 	uint16_t paramChangeBitmap;
 	uint8_t smeSessionId;
-	uint32_t bss_color;
-	bool bss_color_disabled;
 } tUpdateBeaconParams, *tpUpdateBeaconParams;
 
 /**
@@ -818,6 +808,7 @@ typedef struct {
  */
 typedef struct {
 	uint16_t opMode;
+	uint16_t dot11_mode;
 	uint16_t staId;
 	uint16_t smesessionId;
 	tSirMacAddr peer_mac;
@@ -866,23 +857,6 @@ typedef struct {
 } tUpdateUserPos, *tpUpdateUserPos;
 
 /**
- * struct tUpdateCFParams -CF parameters
- * @bssIdx: BSSID index
- * @cfpCount: CFP count
- * @cfpPeriod: the number of DTIM intervals between the start of CFPs
- */
-typedef struct {
-	uint8_t bssIdx;
-	/*
-	 * cfpCount indicates how many DTIMs (including the current frame)
-	 * appear before the next CFP start. A CFPCount of 0 indicates that
-	 * the current DTIM marks the start of the CFP.
-	 */
-	uint8_t cfpCount;
-	uint8_t cfpPeriod;
-} tUpdateCFParams, *tpUpdateCFParams;
-
-/**
  * struct tSwitchChannelParams - switch channel request parameter
  * @channelNumber: channel number
  * @localPowerConstraint: local power constraint
@@ -898,8 +872,6 @@ typedef struct {
  * @isDfsChannel: is DFS channel
  * @vhtCapable: VHT capable
  * @dot11_mode: 802.11 mode
- * @cac_duration_ms: cac duration in milliseconds
- * @dfs_regdomain: dfs region
  * @reduced_beacon_interval: reduced beacon interval value
  * @ssid_hidden: the sap ssid is hidden
  * @ssid: sap ssid
@@ -933,11 +905,7 @@ typedef struct {
 
 	uint8_t restart_on_chan_switch;
 	uint8_t nss;
-#ifdef WLAN_FEATURE_11AX
-	bool he_capable;
-#endif
-	uint32_t cac_duration_ms;
-	uint32_t dfs_regdomain;
+	bool rx_ldpc;
 	uint16_t reduced_beacon_interval;
 	uint8_t ssid_hidden;
 	tSirMacSSid ssid;
@@ -1026,7 +994,7 @@ typedef struct {
  * @tspec: tspec value
  * @status: QDF status
  * @sessionId: session id
- * @vdev_id: vdev id
+ * @vdev_id: vdev_id
  */
 typedef struct {
 	uint16_t staIdx;
@@ -1038,17 +1006,16 @@ typedef struct {
 } tAggrAddTsParams, *tpAggrAddTsParams;
 
 
-typedef QDF_STATUS (*tHalMsgCallback)(tpAniSirGlobal pMac, uint32_t mesgId,
-				      void *mesgParam);
+typedef tSirRetStatus (*tHalMsgCallback)(tpAniSirGlobal pMac, uint32_t mesgId,
+					 void *mesgParam);
 
 /**
  * struct tEdcaParams - EDCA parameters
  * @bssIdx: BSSID index
- * @acbe: best effort access category
- * @acbk: Background access category
- * @acvi: video access category
- * @acvo: voice access category
- * @mu_edca_params: flag to indicate MU EDCA
+ * @acbe: best effort access catagory
+ * @acbk: Background access catagory
+ * @acvi: video access catagory
+ * @acvo: voice access catagory
  */
 typedef struct {
 	uint16_t bssIdx;
@@ -1056,7 +1023,6 @@ typedef struct {
 	tSirMacEdcaParamRecord acbk;
 	tSirMacEdcaParamRecord acvi;
 	tSirMacEdcaParamRecord acvo;
-	bool mu_edca_params;
 } tEdcaParams, *tpEdcaParams;
 
 /**
@@ -1155,7 +1121,7 @@ typedef struct sMaxTxPowerParams {
 	 * power == tx power used for management frames.
 	 */
 	int8_t power;
-	enum QDF_OPMODE dev_mode;
+	enum tQDF_ADAPTER_MODE dev_mode;
 } tMaxTxPowerParams, *tpMaxTxPowerParams;
 
 /**
@@ -1164,7 +1130,7 @@ typedef struct sMaxTxPowerParams {
  * @power: power in dbm
  */
 typedef struct sMaxTxPowerPerBandParams {
-	enum band_info bandInfo;
+	tSirRFBand bandInfo;
 	int8_t power;
 } tMaxTxPowerPerBandParams, *tpMaxTxPowerPerBandParams;
 
@@ -1183,20 +1149,15 @@ typedef struct sMaxTxPowerPerBandParams {
  * @enable_bcast_probe_rsp: enable broadcast probe response
  * @fils_max_chan_guard_time: FILS max channel guard time
  * @pkt_err_disconn_th: packet drop threshold
- * @tx_aggr_sw_retry_threshold_be: aggr sw retry threshold for be
- * @tx_aggr_sw_retry_threshold_bk: aggr sw retry threshold for bk
- * @tx_aggr_sw_retry_threshold_vi: aggr sw retry threshold for vi
- * @tx_aggr_sw_retry_threshold_vo: aggr sw retry threshold for vo
- * @tx_aggr_sw_retry_threshold: aggr sw retry threshold
- * @tx_non_aggr_sw_retry_threshold_be: non aggr sw retry threshold for be
- * @tx_non_aggr_sw_retry_threshold_bk: non aggr sw retry threshold for bk
- * @tx_non_aggr_sw_retry_threshold_vi: non aggr sw retry threshold for vi
- * @tx_non_aggr_sw_retry_threshold_vo: non aggr sw retry threshold for vo
- * @tx_non_aggr_sw_retry_threshold: non aggr sw retry threshold
+ * @tx_aggr_sw_retry_threshold_be: sw retry threshold for be
+ * @tx_aggr_sw_retry_threshold_bk: sw retry threshold for bk
+ * @tx_aggr_sw_retry_threshold_vi: sw retry threshold for vi
+ * @tx_aggr_sw_retry_threshold_vo: sw retry threshold for vo
+ * @disable_4way_hs_offload: enable/disable 4 way handshake offload to firmware
  */
 struct add_sta_self_params {
 	tSirMacAddr self_mac_addr;
-	enum QDF_OPMODE curr_device_mode;
+	enum tQDF_ADAPTER_MODE curr_device_mode;
 	uint32_t type;
 	uint32_t sub_type;
 	uint8_t session_id;
@@ -1217,12 +1178,7 @@ struct add_sta_self_params {
 	uint32_t tx_aggr_sw_retry_threshold_bk;
 	uint32_t tx_aggr_sw_retry_threshold_vi;
 	uint32_t tx_aggr_sw_retry_threshold_vo;
-	uint32_t tx_aggr_sw_retry_threshold;
-	uint32_t tx_non_aggr_sw_retry_threshold_be;
-	uint32_t tx_non_aggr_sw_retry_threshold_bk;
-	uint32_t tx_non_aggr_sw_retry_threshold_vi;
-	uint32_t tx_non_aggr_sw_retry_threshold_vo;
-	uint32_t tx_non_aggr_sw_retry_threshold;
+	bool disable_4way_hs_offload;
 };
 
 /**
@@ -1346,15 +1302,11 @@ typedef struct sAbortScanParams {
  * struct del_sta_self_params - Del Sta Self params
  * @session_id: SME Session ID
  * @status: response status code
- * @sme_callback: callback to be called from WMA to SME
- * @sme_ctx: pointer to context provided by SME
  */
 struct del_sta_self_params {
 	tSirMacAddr self_mac_addr;
 	uint8_t session_id;
 	uint32_t status;
-	csr_session_close_cb sme_callback;
-	void *sme_ctx;
 };
 
 /**
@@ -1422,18 +1374,6 @@ typedef struct sTdlsLinkEstablishParams {
 } tTdlsLinkEstablishParams, *tpTdlsLinkEstablishParams;
 
 /**
- * struct send_peer_unmap_conf_params - Send Peer Unmap Conf param
- * @vdev_id: vdev ID
- * @peer_id_cnt: peer_id count
- * @peer_id_list: list of peer IDs
- */
-struct send_peer_unmap_conf_params {
-	uint8_t vdev_id;
-	uint32_t peer_id_cnt;
-	uint16_t *peer_id_list;
-};
-
-/**
  * struct tHalHiddenSsidVdevRestart - hidden ssid vdev restart params
  * @ssidHidden: is hidden ssid or not
  * @sessionId: session id
@@ -1445,8 +1385,7 @@ typedef struct tHalHiddenSsidVdevRestart {
 } tHalHiddenSsidVdevRestart, *tpHalHiddenSsidVdevRestart;
 
 
-extern void sys_process_mmh_msg(tpAniSirGlobal pMac,
-				struct scheduler_msg *pMsg);
+extern void sys_process_mmh_msg(tpAniSirGlobal pMac, tSirMsgQ *pMsg);
 
 /**
  * struct tBeaconFilterMsg - Beacon Filtering data structure
@@ -1470,7 +1409,7 @@ typedef struct sBeaconFilterMsg {
  * @offset: offset
  * @value: value
  * @bitMask: BIT mask
- * @ref: reference
+ * @ref: refrence
  */
 typedef struct sEidByteInfo {
 	uint8_t offset;
@@ -1528,25 +1467,13 @@ typedef struct sNanRequest {
 #endif /* WLAN_FEATURE_NAN */
 
 /*
- * struct roam_blacklist_timeout - BTM blacklist entry
- * @bssid - bssid that is to be blacklisted
- * @timeout - time duration for which the bssid is blacklisted
- * @received_time - timestamp at which the firmware event was received
- */
-struct roam_blacklist_timeout {
-	struct qdf_mac_addr bssid;
-	uint32_t timeout;
-	qdf_time_t received_time;
-};
-
-/*
- * struct roam_blacklist_event - Blacklist event entries destination structure
+ * struct roam_pmkid_req_event - Pmkid event with entries destination structure
  * @num_entries: total entries sent over the event
- * @roam_blacklist: blacklist details
+ * @ap_bssid: bssid list
  */
-struct roam_blacklist_event {
+struct roam_pmkid_req_event {
 	uint32_t num_entries;
-	struct roam_blacklist_timeout roam_blacklist[];
+	struct qdf_mac_addr ap_bssid[];
 };
 
 #endif /* _HALMSGAPI_H_ */

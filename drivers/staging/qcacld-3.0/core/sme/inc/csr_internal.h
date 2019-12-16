@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -30,7 +30,7 @@
 #include "qdf_mc_timer.h"
 #include "csr_support.h"
 #include "cds_reg_service.h"
-#include "wlan_scan_public_structs.h"
+
 #include "csr_neighbor_roam.h"
 
 #include "sir_types.h"
@@ -89,7 +89,7 @@
 #define CSR_BG_SCAN_OCCUPIED_CHANNEL_LIST_LEN 15
 
 /* Used to determine what to set to the WNI_CFG_DOT11_MODE */
-enum csr_cfgdot11mode {
+typedef enum {
 	eCSR_CFG_DOT11_MODE_ABG,
 	eCSR_CFG_DOT11_MODE_11A,
 	eCSR_CFG_DOT11_MODE_11B,
@@ -101,15 +101,37 @@ enum csr_cfgdot11mode {
 	eCSR_CFG_DOT11_MODE_11AC_ONLY,
 	/* This value can never set to CFG. Its for CSR's internal use */
 	eCSR_CFG_DOT11_MODE_AUTO,
-	eCSR_CFG_DOT11_MODE_11AX,
-	eCSR_CFG_DOT11_MODE_11AX_ONLY,
-};
+} eCsrCfgDot11Mode;
 
-enum csr_scan_reason {
+typedef enum etCsrRoamCommands {
+	eCsrRoamNoCommand,
+	eCsrRoamCommandScan,
+	eCsrRoamCommandRoam,
+	eCsrRoamCommandWmStatusChange,
+	eCsrRoamCommandSetKey,
+	eCsrRoamCommandRemoveKey,
+
+} eCsrRoamCommands;
+
+typedef enum {
+	eCsrScanOther = 1,
+	eCsrScanLostLink1,
+	eCsrScanLostLink2,
+	eCsrScanLostLink3,
+	eCsrScanLostLink4,
+	eCsrScan11d1,           /* First 11d scan */
+	eCsrScan11d2,           /* First 11d scan has failed */
+	eCsrScan11dDone,        /* 11d scan succeed, try rest of the channels */
+	eCsrScanUserRequest,
 	eCsrScanForSsid,
-};
+	eCsrScanIdleScan,
+	eCsrScanProbeBss,       /* direct prb on entry from candidate list-HO */
+	eCsrScanAbortNormalScan,/* aborting a normal scan */
+	eCsrScanP2PFindPeer,
+	eCsrScanCandidateFound,
+} eCsrScanReason;
 
-enum csr_roam_reason {
+typedef enum {
 	/* Roaming because we've not established the initial connection. */
 	eCsrNoConnection,
 	/* roaming because LIM reported a cap change in the associated AP. */
@@ -118,27 +140,37 @@ enum csr_roam_reason {
 	eCsrForcedDisassoc,
 	/* roaming because an 802.11 request was issued to the driver. */
 	eCsrHddIssued,
+	/* roaming because we lost link to an associated AP */
+	eCsrLostLink1,
+	eCsrLostLink2,
+	eCsrLostLink3,
 	/* roaming because we need to force a Disassoc due to MIC failure */
 	eCsrForcedDisassocMICFailure,
 	eCsrHddIssuedReassocToSameAP,
 	eCsrSmeIssuedReassocToSameAP,
-	/* roaming because someone asked us to deauth and stay disassociated. */
+	eCsrSmeIssuedReassocToDiffAP,
+	/* roaming becuase someone asked us to deauth and stay disassociated. */
 	eCsrForcedDeauth,
 	/* will be issued by Handoff logic to disconect from current AP */
 	eCsrSmeIssuedDisassocForHandoff,
 	/* will be issued by Handoff logic to join a new AP with same profile */
 	eCsrSmeIssuedAssocToSimilarAP,
+	/* ibss jointimer fired before any peer showedup, so shutdown network */
+	eCsrSmeIssuedIbssJoinFailure,
 	eCsrForcedIbssLeave,
 	eCsrStopBss,
 	eCsrSmeIssuedFTReassoc,
 	eCsrForcedDisassocSta,
 	eCsrForcedDeauthSta,
 	eCsrPerformPreauth,
+	eCsrLostLink1Abort,
+	eCsrLostLink2Abort,
+	eCsrLostLink3Abort,
 	/* Roaming disabled from driver during connect/start BSS */
-	ecsr_driver_disabled,
-};
+	eCsrDriverDisabled,
+} eCsrRoamReason;
 
-enum csr_roam_substate {
+typedef enum {
 	eCSR_ROAM_SUBSTATE_NONE = 0,
 	eCSR_ROAM_SUBSTATE_START_BSS_REQ,
 	eCSR_ROAM_SUBSTATE_JOIN_REQ,
@@ -160,16 +192,16 @@ enum csr_roam_substate {
 	eCSR_ROAM_SUBSTATE_JOINED_REALTIME_TRAFFIC,
 	eCSR_ROAM_SUBSTATE_DISASSOC_STA_HAS_LEFT,
 	/*  max is 15 unless the bitfield is expanded... */
-};
+} eCsrRoamSubState;
 
-enum csr_roam_state {
+typedef enum {
 	eCSR_ROAMING_STATE_STOP = 0,
 	eCSR_ROAMING_STATE_IDLE,
 	eCSR_ROAMING_STATE_JOINING,
 	eCSR_ROAMING_STATE_JOINED,
-};
+} eCsrRoamState;
 
-enum csr_join_state {
+typedef enum {
 	eCsrContinueRoaming,
 	eCsrStopRoaming,
 	eCsrStartIbss,
@@ -177,36 +209,35 @@ enum csr_join_state {
 	eCsrReassocToSelfNoCapChange,
 	eCsrStopRoamingDueToConcurrency,
 
-};
+} eCsrJoinState;
 
-enum csr_roaming_reason {
+typedef enum {
 	eCsrNotRoaming,
 	eCsrLostlinkRoamingDisassoc,
 	eCsrLostlinkRoamingDeauth,
 	eCsrDynamicRoaming,
 	eCsrReassocRoaming,
-};
+} eCsrRoamingReason;
 
-enum csr_roam_wmstatus_changetypes {
+typedef enum {
 	eCsrDisassociated,
 	eCsrDeauthenticated
-};
+} eCsrRoamWmStatusChangeTypes;
 
-enum csr_roam_stats_classtypes {
+typedef enum {
 	eCsrSummaryStats = 0,
 	eCsrGlobalClassAStats,
 	eCsrGlobalClassDStats,
 	csr_per_chain_rssi_stats,
 	eCsrMaxStats
-};
+} eCsrRoamStatsClassTypes;
 
-#ifdef FEATURE_WLAN_DIAG_SUPPORT
-enum csr_diagwlan_status_eventsubtype {
+typedef enum {
 	eCSR_WLAN_STATUS_CONNECT = 0,
 	eCSR_WLAN_STATUS_DISCONNECT
-};
+} eCsrDiagWlanStatusEventSubtype;
 
-enum csr_diagwlan_status_eventreason {
+typedef enum {
 	eCSR_REASON_UNSPECIFIED = 0,
 	eCSR_REASON_USER_REQUESTED,
 	eCSR_REASON_MIC_ERROR,
@@ -217,16 +248,14 @@ enum csr_diagwlan_status_eventreason {
 	eCSR_REASON_ROAM_SYNCH_CNF,
 	eCSR_REASON_ROAM_HO_FAIL,
 
-};
+} eCsrDiagWlanStatusEventReason;
 
-#endif /* FEATURE_WLAN_DIAG_SUPPORT */
-
-struct csr_channel {
+typedef struct tagCsrChannel {
 	uint8_t numChannels;
 	uint8_t channelList[WNI_CFG_VALID_CHANNEL_LIST_LEN];
-};
+} tCsrChannel;
 
-struct scan_profile       {
+typedef struct tagScanProfile {
 	uint32_t minChnTime;
 	uint32_t maxChnTime;
 	/* In units of milliseconds, ignored when not connected */
@@ -244,15 +273,18 @@ struct scan_profile       {
 	uint8_t fUniqueResult;
 	uint8_t freshScan;
 	struct qdf_mac_addr bssid;
-};
+} tScanProfile;
 
-struct bss_config_param {
+typedef struct tagBssConfigParam {
 	eCsrMediaAccessType qosType;
 	tSirMacSSid SSID;
 	uint32_t uRTSThresh;
 	uint32_t uDeferThresh;
-	enum csr_cfgdot11mode uCfgDot11Mode;
-	enum band_info eBand;
+	eCsrCfgDot11Mode uCfgDot11Mode;
+	tSirRFBand eBand;
+	uint8_t standardRate[CSR_DOT11_SUPPORTED_RATES_MAX];
+	uint8_t extendedRate[CSR_DOT11_EXTENDED_SUPPORTED_RATES_MAX];
+	eCsrExposedTxRate txRate;
 	tAniAuthType authType;
 	eCsrEncryptionType encType;
 	uint32_t uShortSlotTime;
@@ -263,9 +295,9 @@ struct bss_config_param {
 	tSirMacCapabilityInfo BssCap;
 	bool f11hSupport;
 	ePhyChanBondState cbMode;
-};
+} tBssConfigParam;
 
-struct csr_roamstart_bssparams {
+typedef struct tagCsrRoamStartBssParams {
 	tSirMacSSid ssId;
 
 	/*
@@ -278,8 +310,8 @@ struct csr_roamstart_bssparams {
 	tSirMacRateSet operationalRateSet;
 	tSirMacRateSet extendedRateSet;
 	uint8_t operationChn;
-	struct ch_params ch_params;
-	enum csr_cfgdot11mode uCfgDot11Mode;
+	struct ch_params_s ch_params;
+	eCsrCfgDot11Mode uCfgDot11Mode;
 	uint8_t privacy;
 	bool fwdWPSPBCProbeReq;
 	bool protEnabled;
@@ -291,7 +323,7 @@ struct csr_roamstart_bssparams {
 	uint8_t ApUapsdEnable;
 	uint8_t ssidHidden;
 	uint8_t wps_state;
-	enum QDF_OPMODE bssPersona;
+	enum tQDF_ADAPTER_MODE bssPersona;
 	uint16_t nRSNIELength;  /* If 0, pRSNIE is ignored. */
 	uint8_t *pRSNIE;        /* If not null, it has IE byte stream for RSN */
 	/* Flag used to indicate update beaconInterval */
@@ -303,14 +335,30 @@ struct csr_roamstart_bssparams {
 	tSirAddIeParams addIeParams;
 	uint8_t sap_dot11mc;
 	uint16_t beacon_tx_rate;
-	uint32_t cac_duration_ms;
-	uint32_t dfs_regdomain;
-};
+} tCsrRoamStartBssParams;
 
-struct roam_cmd {
+typedef struct tagScanCmd {
+	uint32_t scanID;
+	csr_scan_completeCallback callback;
+	void *pContext;
+	eCsrScanReason reason;
+	eCsrRoamState lastRoamState[CSR_ROAM_SESSION_MAX];
+	tCsrRoamProfile *pToRoamProfile;
+	/* this is the ID related to the pToRoamProfile */
 	uint32_t roamId;
-	enum csr_roam_reason roamReason;
-	struct csr_roam_profile roamProfile;
+	union {
+		tCsrScanRequest scanRequest;
+		/* tCsrBGScanRequest bgScanRequest is no longer used */
+	} u;
+	/* This flag will be set while aborting the scan due to band change */
+	eCsrAbortReason        abort_scan_indication;
+	qdf_mc_timer_t csr_scan_timer;
+} tScanCmd;
+
+typedef struct tagRoamCmd {
+	uint32_t roamId;
+	eCsrRoamReason roamReason;
+	tCsrRoamProfile roamProfile;
 	tScanResultHandle hBSSList;       /* BSS list fits the profile */
 	/*
 	 * point to the current BSS in the list that is roaming.
@@ -333,9 +381,9 @@ struct roam_cmd {
 	tSirMacAddr peerMac;
 	tSirMacReasonCodes reason;
 	eCsrRoamDisconnectReason disconnect_reason;
-};
+} tRoamCmd;
 
-struct setkey_cmd {
+typedef struct tagSetKeyCmd {
 	uint32_t roamId;
 	eCsrEncryptionType encType;
 	eCsrAuthType authType;
@@ -346,34 +394,53 @@ struct setkey_cmd {
 	uint8_t keyLength;      /* Number of bytes containing the key in pKey */
 	uint8_t Key[CSR_MAX_KEY_LEN];
 	uint8_t keyRsc[CSR_MAX_RSC_LEN];
-};
+} tSetKeyCmd;
 
-struct wmstatus_changecmd {
-	enum csr_roam_wmstatus_changetypes Type;
+typedef struct tagWmStatusChangeCmd {
+	eCsrRoamWmStatusChangeTypes Type;
 	union {
 		tSirSmeDeauthInd DeauthIndMsg;
 		tSirSmeDisassocInd DisassocIndMsg;
 	} u;
 
-};
+} tWmStatusChangeCmd;
 
-struct addstafor_sessioncmd {
+typedef struct tagAddStaForSessionCmd {
 	/* Session self mac addr */
 	tSirMacAddr selfMacAddr;
-	enum QDF_OPMODE currDeviceMode;
+	enum tQDF_ADAPTER_MODE currDeviceMode;
 	uint32_t type;
 	uint32_t subType;
 	uint8_t sessionId;
-};
+} tAddStaForSessionCmd;
 
-struct delstafor_sessionCmd {
+typedef struct tagDelStaForSessionCmd {
 	/* Session self mac addr */
 	tSirMacAddr selfMacAddr;
-	csr_session_close_cb session_close_cb;
-	void *context;
-};
+	csr_roamSessionCloseCallback callback;
+	void *pContext;
+} tDelStaForSessionCmd;
 
-struct csr_neighbor_roamconfig {
+/* This structure represents one scan request */
+typedef struct tagCsrCmd {
+	tListElem Link;
+	eCsrRoamCommands command;
+	uint8_t sessionId;      /* Session ID for this command */
+	union {
+		tScanCmd scanCmd;
+		tRoamCmd roamCmd;
+		tWmStatusChangeCmd wmStatusChangeCmd;
+		tSetKeyCmd setKeyCmd;
+		tAddStaForSessionCmd addStaSessionCmd;
+		tDelStaForSessionCmd delStaSessionCmd;
+	} u;
+} tCsrCmd;
+
+typedef struct tagCsr11rConfig {
+	bool IsFTResourceReqSupported;
+} tCsr11rConfig;
+
+typedef struct tagCsrNeighborRoamConfig {
 	uint32_t nNeighborScanTimerPeriod;
 	uint32_t neighbor_scan_min_timer_period;
 	uint8_t nNeighborLookupRssiThreshold;
@@ -394,10 +461,7 @@ struct csr_neighbor_roamconfig {
 	uint32_t nhi_rssi_scan_rssi_delta;
 	uint32_t nhi_rssi_scan_delay;
 	int32_t nhi_rssi_scan_rssi_ub;
-	uint32_t full_roam_scan_period;
-	bool enable_scoring_for_roam;
-	uint8_t roam_rssi_diff;
-};
+} tCsrNeighborRoamConfig;
 
 /*
  * Neighbor Report Params Bitmask
@@ -410,27 +474,31 @@ struct csr_neighbor_roamconfig {
 #define NEIGHBOR_REPORT_PARAMS_MAX_REQ_CAP            0x20
 #define NEIGHBOR_REPORT_PARAMS_ALL                    0x3F
 
-struct csr_config {
+typedef struct tagCsrConfig {
 	uint32_t agingCount;
 	uint32_t FragmentationThreshold;
 	uint32_t channelBondingMode24GHz;
 	uint32_t channelBondingMode5GHz;
 	uint32_t RTSThreshold;
 	eCsrPhyMode phyMode;
-	enum csr_cfgdot11mode uCfgDot11Mode;
-	enum band_info eBand;
+	eCsrCfgDot11Mode uCfgDot11Mode;
+	tSirRFBand eBand;
 	uint32_t HeartbeatThresh50;
 	uint32_t HeartbeatThresh24;
-	enum band_info bandCapability;        /* indicate hw capability */
+	eCsrCBChoice cbChoice;
+	tSirRFBand bandCapability;
 	eCsrRoamWmmUserModeType WMMSupportMode;
 	bool Is11eSupportEnabled;
 	bool Is11dSupportEnabled;
+	bool Is11dSupportEnabledOriginal;
+	bool enable_11d_in_world_mode;
 	bool Is11hSupportEnabled;
 	bool shortSlotTime;
 	bool ProprietaryRatesEnabled;
 	bool fenableMCCMode;
 	bool mcc_rts_cts_prot_enable;
 	bool mcc_bcast_prob_resp_enable;
+	uint16_t TxRate;
 	uint8_t fAllowMCCGODiffBI;
 	uint8_t AdHocChannel24;
 	uint8_t AdHocChannel5G;
@@ -457,6 +525,7 @@ struct csr_config {
 
 	uint32_t nInitialDwellTime;     /* in units of milliseconds */
 	bool initial_scan_no_dfs_chnl;
+#ifdef WLAN_AP_STA_CONCURRENCY
 	uint32_t nPassiveMinChnTimeConc;/* in units of milliseconds */
 	uint32_t nPassiveMaxChnTimeConc;/* in units of milliseconds */
 	uint32_t nActiveMinChnTimeConc; /* in units of milliseconds */
@@ -466,6 +535,8 @@ struct csr_config {
 	uint32_t  min_rest_time_conc;
 	/* In units of milliseconds */
 	uint32_t  idle_time_conc;
+
+#endif
 	/*
 	 * in dBm, the max TX power. The actual TX power is the lesser of this
 	 * value & 11d. If 11d is disable, the lesser of this & default setting.
@@ -476,6 +547,7 @@ struct csr_config {
 	uint32_t statsReqPeriodicityInPS;/* stats req freq while in powersave */
 	uint32_t dtimPeriod;
 	bool ssidHidden;
+	tCsr11rConfig csr11rConfig;
 	uint8_t isFastRoamIniFeatureEnabled;
 	struct mawc_params csr_mawc_config;
 	uint8_t isRoamOffloadScanEnabled;
@@ -493,13 +565,14 @@ struct csr_config {
 	uint8_t nProbes;
 	uint16_t nRoamScanHomeAwayTime;
 
-	struct csr_neighbor_roamconfig neighborRoamConfig;
+	tCsrNeighborRoamConfig neighborRoamConfig;
 
 	/*
 	 * Instead of Reassoc, send ADDTS/DELTS even when ACM is off for
 	 * that AC This is mandated by WMM-AC certification
 	 */
 	bool addTSWhenACMIsOff;
+	bool fValidateList;
 	/*
 	 * Remove this code once SLM_Sessionization is supported
 	 * BMPS_WORKAROUND_NOT_NEEDED
@@ -522,6 +595,7 @@ struct csr_config {
 	uint8_t tx_ldpc_enable;
 	uint8_t rx_ldpc_enable;
 	uint8_t disable_high_ht_mcs_2x2;
+	uint8_t rx_ldpc_support_for_2g;
 	/*
 	 * Enable/Disable heartbeat offload
 	 */
@@ -547,7 +621,14 @@ struct csr_config {
 	uint8_t conc_custom_rule2;
 	uint8_t is_sta_connection_in_5gz_enabled;
 	struct roam_ext_params roam_params;
-	bool send_deauth_before_con;
+	bool sendDeauthBeforeCon;
+#ifdef FEATURE_WLAN_SCAN_PNO
+	bool pno_channel_prediction;
+	uint8_t top_k_num_of_channels;
+	uint8_t stationary_thresh;
+	enum wmi_dwelltime_adaptive_mode pnoscan_adaptive_dwell_mode;
+	uint32_t channel_prediction_full_scan;
+#endif
 	bool early_stop_scan_enable;
 	int8_t early_stop_scan_min_threshold;
 	int8_t early_stop_scan_max_threshold;
@@ -570,9 +651,10 @@ struct csr_config {
 	uint32_t edca_be_aifs;
 	bool enable_fatal_event;
 	bool vendor_vht_sap;
-	enum scan_dwelltime_adaptive_mode scan_adaptive_dwell_mode;
-	enum scan_dwelltime_adaptive_mode scan_adaptive_dwell_mode_nc;
-	enum scan_dwelltime_adaptive_mode roamscan_adaptive_dwell_mode;
+	bool honour_nl_scan_policy_flags;
+	enum wmi_dwelltime_adaptive_mode scan_adaptive_dwell_mode;
+	enum wmi_dwelltime_adaptive_mode scan_adaptive_dwell_mode_nc;
+	enum wmi_dwelltime_adaptive_mode roamscan_adaptive_dwell_mode;
 	struct csr_sta_roam_policy_params sta_roam_policy;
 	uint32_t tx_aggregation_size;
 	uint32_t tx_aggregation_size_be;
@@ -584,60 +666,48 @@ struct csr_config {
 	uint32_t tx_aggr_sw_retry_threshold_bk;
 	uint32_t tx_aggr_sw_retry_threshold_vi;
 	uint32_t tx_aggr_sw_retry_threshold_vo;
-	uint32_t tx_aggr_sw_retry_threshold;
-	uint32_t tx_non_aggr_sw_retry_threshold_be;
-	uint32_t tx_non_aggr_sw_retry_threshold_bk;
-	uint32_t tx_non_aggr_sw_retry_threshold_vi;
-	uint32_t tx_non_aggr_sw_retry_threshold_vo;
-	uint32_t tx_non_aggr_sw_retry_threshold;
 	struct wmi_per_roam_config per_roam_config;
 	bool enable_bcast_probe_rsp;
 	bool is_fils_enabled;
-#ifdef WLAN_FEATURE_11AX
-	bool enable_ul_ofdma;
-	bool enable_ul_mimo;
-#endif
 	bool qcn_ie_support;
 	uint8_t fils_max_chan_guard_time;
 	uint16_t pkt_err_disconn_th;
-	enum force_1x1_type is_force_1x1_enable;
+	bool is_bssid_hint_priority;
+	bool is_force_1x1;
 	uint16_t num_11b_tx_chains;
 	uint16_t num_11ag_tx_chains;
 	uint32_t disallow_duration;
 	uint32_t rssi_channel_penalization;
 	uint32_t num_disallowed_aps;
+	uint32_t scan_probe_repeat_time;
+	uint32_t scan_num_probes;
 	uint16_t wlm_latency_enable;
 	uint16_t wlm_latency_level;
 	uint32_t wlm_latency_flags[CSR_NUM_WLM_LATENCY_LEVEL];
 	struct sir_score_config bss_score_params;
 	uint8_t oce_feature_bitmap;
-	struct csr_mbo_thresholds mbo_thresholds;
+	uint32_t offload_11k_enable_bitmask;
+	struct csr_neighbor_report_offload_params neighbor_report_offload;
+	bool enable_ftopen;
+	bool roam_force_rssi_trigger;
+	bool roaming_scan_policy;
 	uint32_t btm_offload_config;
 	uint32_t btm_solicited_timeout;
 	uint32_t btm_max_attempt_cnt;
 	uint32_t btm_sticky_time;
-	uint32_t offload_11k_enable_bitmask;
-	bool wep_tkip_in_he;
-	struct csr_neighbor_report_offload_params neighbor_report_offload;
-	bool enable_ftopen;
-	bool roam_force_rssi_trigger;
-	uint32_t btm_validity_timer;
-	uint32_t btm_disassoc_timer_threshold;
-	bool enable_bss_load_roam_trigger;
-	uint32_t bss_load_threshold;
-	uint32_t bss_load_sample_time;
-	bool roaming_scan_policy;
-};
+	uint32_t btm_query_bitmask;
+	bool disable_4way_hs_offload;
+} tCsrConfig;
 
-struct csr_channel_powerinfo {
+typedef struct tagCsrChannelPowerInfo {
 	tListElem link;
 	uint8_t firstChannel;
 	uint8_t numChannels;
 	uint8_t txPower;
 	uint8_t interChannelOffset;
-};
+} tCsrChannelPowerInfo;
 
-struct csr_roam_joinstatus {
+typedef struct tagRoamJoinStatus {
 	tSirResultCodes statusCode;
 	/*
 	 * this is set to unspecified if statusCode indicates timeout.
@@ -645,21 +715,37 @@ struct csr_roam_joinstatus {
 	 */
 	uint32_t reasonCode;
 	tSirMacAddr bssId;
-};
+} tCsrRoamJoinStatus;
 
-struct csr_votes11d {
+typedef struct tagCsrOsChannelMask {
+	uint8_t numChannels;
+	bool scanEnabled[WNI_CFG_VALID_CHANNEL_LIST_LEN];
+	uint8_t channelList[WNI_CFG_VALID_CHANNEL_LIST_LEN];
+} tCsrOsChannelMask;
+
+typedef struct tagCsrVotes11d {
 	uint8_t votes;
 	uint8_t countryCode[WNI_CFG_COUNTRY_CODE_LEN];
-};
+} tCsrVotes11d;
 
-struct csr_scanstruct {
-	struct scan_profile scanProfile;
+typedef struct tagCsrScanStruct {
+	tScanProfile scanProfile;
+	tDblLinkList scanResultList;
+	tDblLinkList tempScanResults;
+	bool fScanEnable;
+	bool fFullScanIssued;
+	qdf_mc_timer_t hTimerIdleScan;
+	/*
+	 * changes on every scan, it is used as a flag for whether 11d info is
+	 * found on every scan
+	 */
+	uint8_t channelOf11dInfo;
 	uint8_t scanResultCfgAgingTime;
 	tSirScanType curScanType;
-	struct csr_channel channels11d;
+	tCsrChannel channels11d;
 	struct channel_power defaultPowerTable[WNI_CFG_VALID_CHANNEL_LIST_LEN];
 	uint32_t numChannelsDefault;
-	struct csr_channel base_channels;  /* The channel base to work on */
+	tCsrChannel base_channels;  /* The channel base to work on */
 	tDblLinkList channelPowerInfoList24;
 	tDblLinkList channelPowerInfoList5G;
 	uint32_t nLastAgeTimeOut;
@@ -670,14 +756,30 @@ struct csr_scanstruct {
 	v_REGDOMAIN_t domainIdDefault;  /* default regulatory domain */
 	v_REGDOMAIN_t domainIdCurrent;  /* current regulatory domain */
 
+	/* Bssid for current country code */
+	struct qdf_mac_addr currentCountryBssid;
+
+	int8_t currentCountryRSSI;      /* RSSI for current country code */
+	bool fCancelIdleScan;
 	uint8_t countryCodeCount;
 	/* counts for various advertized country codes */
-	struct csr_votes11d votes11d[CSR_MAX_NUM_COUNTRY_CODE];
+	tCsrVotes11d votes11d[CSR_MAX_NUM_COUNTRY_CODE];
 	/*
 	 * in 11d IE from probe rsp or beacons of neighboring APs
 	 * will use the most popular one (max count)
 	 */
 	uint8_t countryCodeElected[WNI_CFG_COUNTRY_CODE_LEN];
+	bool fRestartIdleScan;
+	uint32_t nIdleScanTimeGap;
+	/* keep a track of channels to be scnned while in traffic condition */
+	tCsrOsChannelMask osScanChannelMask;
+	uint16_t nBssLimit;     /* the maximum number of BSS in scan cache */
+	/*
+	 * channelPowerInfoList24 has been seen corrupted. Set this flag to true
+	 * trying to detect when it happens. Adding this into code because we
+	 * can't reproduce it easily. We don't know when it happens.
+	 */
+	bool fValidateList;
 	/*
 	 * Customer wants to start with an active scan based on the default
 	 * country code. This optimization will minimize the driver load to
@@ -697,21 +799,24 @@ struct csr_scanstruct {
 	bool fFirstScanOnly2GChnl;
 	bool fDropScanCmd;      /* true means we don't accept scan commands */
 
+#ifdef WLAN_AP_STA_CONCURRENCY
+	tDblLinkList scanCmdPendingList;
+#endif
 	/* This includes all channels on which candidate APs are found */
-	struct csr_channel occupiedChannels[CSR_ROAM_SESSION_MAX];
+	tCsrChannel occupiedChannels[CSR_ROAM_SESSION_MAX];
 	int8_t roam_candidate_count[CSR_ROAM_SESSION_MAX];
 	int8_t inScanResultBestAPRssi;
+	csr_scan_completeCallback callback11dScanDone;
 	bool fcc_constraint;
 	uint8_t max_scan_count;
 	bool defer_update_channel_list;
-	wlan_scan_requester requester_id;
-};
+} tCsrScanStruct;
 
 /*
  * Save the connected information. This structure + connectedProfile
  * should contain all information about the connection
  */
-struct csr_roam_connectedinfo {
+typedef struct tagRoamCsrConnectedInfo {
 	uint32_t nBeaconLength;
 	uint32_t nAssocReqLength;
 	uint32_t nAssocRspLength;
@@ -727,48 +832,61 @@ struct csr_roam_connectedinfo {
 	 */
 	uint8_t *pbFrames;
 	uint8_t staId;
-};
+} tCsrRoamConnectedInfo;
 
-#ifndef QCA_SUPPORT_CP_STATS
-struct csr_pestats_reqinfo {
+typedef struct tagCsrLinkQualityIndInfo {
+	csr_roamLinkQualityIndCallback callback;
+	void *context;
+} tCsrLinkQualityIndInfo;
+
+typedef struct tagCsrPeStatsReqInfo {
 	tListElem link;         /* list links */
 	uint32_t statsMask;
+	uint32_t periodicity;
 	bool rspPending;
+	qdf_mc_timer_t hPeStatsTimer;
+	bool timerRunning;
 	uint8_t staId;
 	uint8_t numClient;
 	tpAniSirGlobal pMac;
+	/* To remember if the peStats timer is stopped successfully or not */
+	bool timerStopFailed;
 	uint8_t sessionId;
-};
 
-struct csr_statsclient_reqinfo {
+} tCsrPeStatsReqInfo;
+
+typedef struct tagCsrStatsClientReqInfo {
 	tListElem link;         /* list links */
 	eCsrStatsRequesterType requesterId;
 	tCsrStatsCallback callback;
+	uint32_t periodicity;
 	void *pContext;
 	uint32_t statsMask;
-	struct csr_pestats_reqinfo *pPeStaEntry;
+	tCsrPeStatsReqInfo *pPeStaEntry;
 	uint8_t staId;
 	qdf_mc_timer_t timer;
 	bool timerExpired;
 	tpAniSirGlobal pMac;    /* TODO: Confirm this change BTAMP */
 	uint8_t sessionId;
-};
+} tCsrStatsClientReqInfo;
 
-struct csr_tlstats_reqinfo {
+typedef struct tagCsrTlStatsReqInfo {
+	uint32_t periodicity;
+	bool timerRunning;
+	qdf_mc_timer_t hTlStatsTimer;
 	uint8_t numClient;
-};
-#endif /* QCA_SUPPORT_CP_STATS */
+} tCsrTlStatsReqInfo;
 
 #ifdef WLAN_FEATURE_ROAM_OFFLOAD
-enum csr_roamoffload_authstatus {
+typedef enum {
 	/* reassociation is done but couldn't finish security handshake */
 	eSIR_ROAM_AUTH_STATUS_CONNECTED = 1,
 	/* roam successfully completed by firmware */
 	eSIR_ROAM_AUTH_STATUS_AUTHENTICATED = 2,
 	/* unknown error */
 	eSIR_ROAM_AUTH_STATUS_UNKNOWN = 0xff
-};
-struct csr_roam_offload_synch_params {
+} tCsrRoamOffloadAuthStatus;
+typedef struct tagCsrRoamOffloadSynchStruct {
 	uint8_t roamedVdevId;   /* vdevId after roaming */
 	int8_t txMgmtPower;     /* HAL fills in the tx power used for */
 	uint8_t rssi;           /* RSSI */
@@ -777,7 +895,7 @@ struct csr_roam_offload_synch_params {
 	uint16_t chainMask;     /* chainmask */
 	uint16_t smpsMode;      /* smps.mode */
 	struct qdf_mac_addr bssid;      /* MAC address of roamed AP */
-	enum csr_roamoffload_authstatus authStatus;   /* auth status */
+	tCsrRoamOffloadAuthStatus authStatus;   /* auth status */
 	uint8_t kck[SIR_KCK_KEY_LEN];
 	uint8_t kek[SIR_KEK_KEY_LEN_FILS];
 	uint32_t kek_len;
@@ -788,33 +906,17 @@ struct csr_roam_offload_synch_params {
 	uint16_t next_erp_seq_num;
 	uint8_t replay_ctr[SIR_REPLAY_CTR_LEN];
 	tpSirBssDescription  bss_desc_ptr;      /*BSS descriptor*/
-};
+} csr_roam_offload_synch_params;
 #endif
 
 struct csr_roam_stored_profile {
 	uint32_t session_id;
-	struct csr_roam_profile profile;
+	tCsrRoamProfile profile;
 	tScanResultHandle bsslist_handle;
-	enum csr_roam_reason reason;
+	eCsrRoamReason reason;
 	uint32_t roam_id;
 	bool imediate_flag;
 	bool clear_flag;
-};
-
-/**
- * struct scan_cmd_info - Scan cache entry node
- * @scan_id: scan id
- * @scan_reason: scan reason
- * @profile: roam profile
- * @roam_id: Roam id
- * @roambssentry: scan entries
- */
-struct scan_cmd_info {
-	wlan_scan_id scan_id;
-	enum csr_scan_reason scan_reason;
-	struct csr_roam_profile *profile;
-	uint32_t roam_id;
-	tListElem *roambssentry;
 };
 
 /**
@@ -835,28 +937,19 @@ struct csr_disconnect_stats {
 	uint32_t peer_kickout;
 };
 
-/**
- * struct csr_roam_session - CSR per-vdev context
- * @vdev_id: ID of the vdev for which this entry is applicable
- * @is_bcn_recv_start: Allow to process bcn recv indication
- * @beacon_report_do_not_resume: Do not resume the beacon reporting after scan
- */
-struct csr_roam_session {
+typedef struct tagCsrRoamSession {
 	uint8_t sessionId;      /* Session ID */
 	bool sessionActive;     /* true if it is used */
 
 	/* For BT-AMP station, this serve as BSSID for self-BSS. */
 	struct qdf_mac_addr selfMacAddr;
 
-	csr_session_open_cb  session_open_cb;
-	csr_session_close_cb session_close_cb;
-	csr_roam_complete_cb callback;
+	csr_roam_completeCallback callback;
 	void *pContext;
 	eCsrConnectState connectState;
-	struct rsn_caps rsn_caps;
 	tCsrRoamConnectedProfile connectedProfile;
-	struct csr_roam_connectedinfo connectedInfo;
-	struct csr_roam_profile *pCurRoamProfile;
+	tCsrRoamConnectedInfo connectedInfo;
+	tCsrRoamProfile *pCurRoamProfile;
 	tSirBssDescription *pConnectBssDesc;
 	uint16_t NumPmkidCache; /* valid number of pmkid in the cache*/
 	uint16_t curr_cache_idx; /* the index in pmkidcache to write next to */
@@ -881,7 +974,7 @@ struct csr_roam_session {
 	 * to remember some parameters needed for START_BSS.
 	 * All member must be set every time we try to join or start an IBSS
 	 */
-	struct csr_roamstart_bssparams bssParams;
+	tCsrRoamStartBssParams bssParams;
 	/* the byte count of pWpaRsnIE; */
 	uint32_t nWpaRsnReqIeLength;
 	/* contain the WPA/RSN IE in assoc req or one sent in beacon(IBSS) */
@@ -906,17 +999,13 @@ struct csr_roam_session {
 	uint32_t nAddIEAssocLength;     /* the byte count for pAddIeAssocIE */
 	uint8_t *pAddIEAssoc;
 	tCsrTimerInfo roamingTimerInfo;
-	enum csr_roaming_reason roamingReason;
+	eCsrRoamingReason roamingReason;
 	bool fCancelRoaming;
 	qdf_mc_timer_t hTimerRoaming;
-#ifdef WLAN_BCN_RECV_FEATURE
-	bool is_bcn_recv_start;
-	bool beacon_report_do_not_resume;
-#endif
 	/* the roamResult that is used when the roaming timer fires */
 	eCsrRoamResult roamResult;
 	/* This is the reason code for join(assoc) failure */
-	struct csr_roam_joinstatus joinFailStatusCode;
+	tCsrRoamJoinStatus joinFailStatusCode;
 	/* status from PE for deauth/disassoc(lostlink) or our own dyn roam */
 	uint32_t roamingStatusCode;
 	uint16_t NumPmkidCandidate;
@@ -940,12 +1029,11 @@ struct csr_roam_session {
 	uint8_t bRefAssocStartCnt;      /* Tracking assoc start indication */
 	tSirHTConfig htConfig;
 	struct sir_vht_config vht_config;
-#ifdef WLAN_FEATURE_11AX
-	tDot11fIEhe_cap he_config;
-	uint32_t he_sta_obsspd;
+#ifdef FEATURE_WLAN_SCAN_PNO
+	bool pnoStarted;
 #endif
 #ifdef WLAN_FEATURE_ROAM_OFFLOAD
-	struct csr_roam_offload_synch_params roamOffloadSynchParams;
+	csr_roam_offload_synch_params roamOffloadSynchParams;
 	uint8_t psk_pmk[SIR_ROAM_SCAN_PSK_SIZE];
 	size_t pmk_len;
 	uint8_t RoamKeyMgmtOffloadEnabled;
@@ -966,23 +1054,25 @@ struct csr_roam_session {
 	bool dhcp_done;
 	uint8_t disconnect_reason;
 	uint8_t uapsd_mask;
-	struct scan_cmd_info scan_info;
 	qdf_mc_timer_t roaming_offload_timer;
 	bool is_fils_connection;
 	uint16_t fils_seq_num;
+	bool ignore_assoc_disallowed;
 	bool discon_in_progress;
 	struct csr_disconnect_stats disconnect_stats;
-};
+	struct rsn_caps rsn_caps;
+} tCsrRoamSession;
 
-struct csr_roamstruct {
+typedef struct tagCsrRoamStruct {
 	uint32_t nextRoamId;
+	tDblLinkList roamCmdPendingList;
 	tDblLinkList channelList5G;
 	tDblLinkList channelList24;
-	struct csr_config configParam;
+	tCsrConfig configParam;
 	uint32_t numChannelsEeprom;     /* total channels of eeprom */
-	struct csr_channel baseChannels;  /* The channel base to work on */
-	enum csr_roam_state curState[CSR_ROAM_SESSION_MAX];
-	enum csr_roam_substate curSubState[CSR_ROAM_SESSION_MAX];
+	tCsrChannel baseChannels;  /* The channel base to work on */
+	eCsrRoamState curState[CSR_ROAM_SESSION_MAX];
+	eCsrRoamSubState curSubState[CSR_ROAM_SESSION_MAX];
 	/*
 	 * This may or may not have the up-to-date valid channel list. It is
 	 * used to get WNI_CFG_VALID_CHANNEL_LIST and not alloc mem all time
@@ -991,17 +1081,18 @@ struct csr_roamstruct {
 	uint32_t numValidChannels;       /* total number of channels in CFG */
 	int32_t sPendingCommands;
 	qdf_mc_timer_t hTimerWaitForKey; /* support timeout for WaitForKey */
-#ifndef QCA_SUPPORT_CP_STATS
 	tCsrSummaryStatsInfo summaryStatsInfo;
 	tCsrGlobalClassAStatsInfo classAStatsInfo;
 	tCsrGlobalClassDStatsInfo classDStatsInfo;
 	struct csr_per_chain_rssi_stats_info  per_chain_rssi_stats;
 	tDblLinkList statsClientReqList;
 	tDblLinkList peStatsReqList;
-	struct csr_tlstats_reqinfo tlStatsReqInfo;
-#endif
+	tCsrTlStatsReqInfo tlStatsReqInfo;
+	eCsrRoamLinkQualityInd vccLinkQuality;
+	tCsrLinkQualityIndInfo linkQualityIndInfo;
+	v_CONTEXT_t g_cds_context;      /* used for interaction with TL */
 	tCsrTimerInfo WaitForKeyTimerInfo;
-	struct csr_roam_session *roamSession;
+	tCsrRoamSession *roamSession;
 	uint32_t transactionId;  /* Current transaction ID for internal use. */
 	tCsrNeighborRoamControlInfo neighborRoamInfo[CSR_ROAM_SESSION_MAX];
 	uint8_t isFastRoamIniFeatureEnabled;
@@ -1015,9 +1106,8 @@ struct csr_roamstruct {
 	uint16_t reassocRespLen;        /* length of reassociation response */
 	qdf_mc_timer_t packetdump_timer;
 	qdf_list_t rssi_disallow_bssid;
-	qdf_mutex_t rssi_disallow_bssid_lock;
 	spinlock_t roam_state_lock;
-};
+} tCsrRoamStruct;
 
 #define GET_NEXT_ROAM_ID(pRoamStruct)  (((pRoamStruct)->nextRoamId + 1 == 0) ? \
 			1 : (pRoamStruct)->nextRoamId)
@@ -1098,7 +1188,6 @@ struct csr_roamstruct {
 	((eCSR_DOT11_MODE_abg & (phyMode)) || \
 	 (eCSR_DOT11_MODE_11n & (phyMode)) || \
 	 (eCSR_DOT11_MODE_11ac & (phyMode)) || \
-	 (eCSR_DOT11_MODE_11ax & (phyMode)) || \
 	 (eCSR_DOT11_MODE_AUTO & (phyMode)))
 
 #define CSR_IS_PHY_MODE_11n(phy_mode) \
@@ -1110,33 +1199,32 @@ struct csr_roamstruct {
 #define CSR_IS_PHY_MODE_11ac(phy_mode) \
 	((eCSR_DOT11_MODE_11ac == phy_mode) || \
 	 (eCSR_DOT11_MODE_11ac_ONLY == phy_mode))
-
 /*
  * this function returns true if the NIC is operating exclusively in
  * the 2.4 GHz band, meaning. it is NOT operating in the 5.0 GHz band.
  */
 #define CSR_IS_24_BAND_ONLY(pMac) \
-	(BAND_2G == (pMac)->roam.configParam.eBand)
+	(SIR_BAND_2_4_GHZ == (pMac)->roam.configParam.eBand)
 
 #define CSR_IS_5G_BAND_ONLY(pMac) \
-	(BAND_5G == (pMac)->roam.configParam.eBand)
+	(SIR_BAND_5_GHZ == (pMac)->roam.configParam.eBand)
 
 #define CSR_IS_RADIO_DUAL_BAND(pMac) \
-	(BAND_ALL == (pMac)->roam.configParam.bandCapability)
+	(SIR_BAND_ALL == (pMac)->roam.configParam.bandCapability)
 
 #define CSR_IS_RADIO_BG_ONLY(pMac) \
-	(BAND_2G == (pMac)->roam.configParam.bandCapability)
+	(SIR_BAND_2_4_GHZ == (pMac)->roam.configParam.bandCapability)
 
 /*
  * this function returns true if the NIC is operating exclusively in the 5.0 GHz
  * band, meaning. it is NOT operating in the 2.4 GHz band
  */
 #define CSR_IS_RADIO_A_ONLY(pMac) \
-	(BAND_5G == (pMac)->roam.configParam.bandCapability)
+	(SIR_BAND_5_GHZ == (pMac)->roam.configParam.bandCapability)
 /* this function returns true if the NIC is operating in both bands. */
 #define CSR_IS_OPEARTING_DUAL_BAND(pMac) \
-	((BAND_ALL == (pMac)->roam.configParam.bandCapability) && \
-		(BAND_ALL == (pMac)->roam.configParam.eBand))
+	((SIR_BAND_ALL == (pMac)->roam.configParam.bandCapability) && \
+		(SIR_BAND_ALL == (pMac)->roam.configParam.eBand))
 /*
  * this function returns true if the NIC can operate in the 5.0 GHz band
  * (could operate in the 2.4 GHz band also)
@@ -1153,18 +1241,25 @@ struct csr_roamstruct {
 	(CSR_IS_OPEARTING_DUAL_BAND((pMac)) || \
 		CSR_IS_RADIO_BG_ONLY((pMac)) || CSR_IS_24_BAND_ONLY((pMac)))
 #define CSR_GET_BAND(ch_num) \
-	((WLAN_REG_IS_24GHZ_CH(ch_num)) ? BAND_2G : BAND_5G)
+	((CDS_IS_CHANNEL_24GHZ(ch_num)) ? SIR_BAND_2_4_GHZ : SIR_BAND_5_GHZ)
 #define CSR_IS_11D_INFO_FOUND(pMac) \
 	(0 != (pMac)->scan.channelOf11dInfo)
 #define CSR_IS_ROAMING(pSession) \
 	((CSR_IS_LOSTLINK_ROAMING((pSession)->roamingReason)) || \
 		(eCsrDynamicRoaming == (pSession)->roamingReason)  ||	\
 		(eCsrReassocRoaming == (pSession)->roamingReason))
+#define CSR_IS_SET_KEY_COMMAND(pCommand) \
+	(eSmeCommandSetKey == (pCommand)->command)
 #define CSR_IS_ADDTS_WHEN_ACMOFF_SUPPORTED(pMac) \
 	(pMac->roam.configParam.addTSWhenACMIsOff)
 #define CSR_IS_LOSTLINK_ROAMING(reason) \
 	((eCsrLostlinkRoamingDisassoc == (reason)) || \
 		(eCsrLostlinkRoamingDeauth == (reason)))
+
+#define CSR_IS_ROAMING_COMMAND(pCommand) \
+		((eCsrLostLink1 == (pCommand)->u.roamCmd.roamReason) || \
+			(eCsrLostLink2 == (pCommand)->u.roamCmd.roamReason) || \
+			(eCsrLostLink3 == (pCommand)->u.roamCmd.roamReason))
 
 #ifdef FEATURE_LFR_SUBNET_DETECTION
 /* bit-4 and bit-5 indicate the subnet status */
@@ -1174,6 +1269,7 @@ struct csr_roamstruct {
 #endif
 
 QDF_STATUS csr_get_channel_and_power_list(tpAniSirGlobal pMac);
+QDF_STATUS csrScanFilter11dResult(tpAniSirGlobal pMac);
 
 QDF_STATUS csr_scan_filter_results(tpAniSirGlobal pMac);
 
@@ -1185,22 +1281,17 @@ QDF_STATUS csr_get_modify_profile_fields(tpAniSirGlobal pMac,
 		pModifyProfileFields);
 void csr_set_global_cfgs(tpAniSirGlobal pMac);
 void csr_set_default_dot11_mode(tpAniSirGlobal pMac);
-bool csr_is_conn_state_disconnected(tpAniSirGlobal pMac,
-						   uint32_t sessionId);
-bool csr_is_conn_state_connected_ibss(tpAniSirGlobal pMac,
-						      uint32_t sessionId);
+void csrScanSetChannelMask(tpAniSirGlobal pMac, tCsrChannelInfo *pChannelInfo);
+bool csr_is_conn_state_disconnected(tpAniSirGlobal pMac, uint32_t sessionId);
+bool csr_is_conn_state_connected_ibss(tpAniSirGlobal pMac, uint32_t sessionId);
 bool csr_is_conn_state_disconnected_ibss(tpAniSirGlobal pMac,
-							   uint32_t sessionId);
-bool csr_is_conn_state_connected_infra(tpAniSirGlobal pMac,
-							uint32_t sessionId);
-bool csr_is_conn_state_connected(tpAniSirGlobal pMac,
-					       uint32_t sessionId);
-bool csr_is_conn_state_infra(tpAniSirGlobal pMac,
-					uint32_t sessionId);
+		uint32_t sessionId);
+bool csr_is_conn_state_connected_infra(tpAniSirGlobal pMac, uint32_t sessionId);
+bool csr_is_conn_state_connected(tpAniSirGlobal pMac, uint32_t sessionId);
+bool csr_is_conn_state_infra(tpAniSirGlobal pMac, uint32_t sessionId);
 bool csr_is_conn_state_ibss(tpAniSirGlobal pMac, uint32_t sessionId);
 bool csr_is_conn_state_wds(tpAniSirGlobal pMac, uint32_t sessionId);
-bool csr_is_conn_state_connected_wds(tpAniSirGlobal pMac,
-						    uint32_t sessionId);
+bool csr_is_conn_state_connected_wds(tpAniSirGlobal pMac, uint32_t sessionId);
 bool csr_is_conn_state_disconnected_wds(tpAniSirGlobal pMac,
 		uint32_t sessionId);
 bool csr_is_any_session_in_connect_state(tpAniSirGlobal pMac);
@@ -1225,22 +1316,21 @@ bool csr_is_concurrent_infra_connected(tpAniSirGlobal pMac);
 bool csr_is_concurrent_session_running(tpAniSirGlobal pMac);
 bool csr_is_infra_ap_started(tpAniSirGlobal pMac);
 bool csr_is_ibss_started(tpAniSirGlobal pMac);
-bool csr_is_valid_mc_concurrent_session(tpAniSirGlobal pMac,
-							 uint32_t sessionId,
-						tSirBssDescription *pBssDesc);
+bool csr_is_valid_mc_concurrent_session(tpAniSirGlobal pMac, uint32_t sessionId,
+		tSirBssDescription *pBssDesc);
 bool csr_is_conn_state_connected_infra_ap(tpAniSirGlobal pMac,
 		uint32_t sessionId);
 QDF_STATUS csr_get_statistics(tpAniSirGlobal pMac,
 		eCsrStatsRequesterType requesterId,
 		uint32_t statsMask, tCsrStatsCallback callback,
-		uint8_t staId, void *pContext, uint8_t sessionId);
+		uint32_t periodicity, bool cache, uint8_t staId,
+		void *pContext, uint8_t sessionId);
 QDF_STATUS csr_get_rssi(tpAniSirGlobal pMac, tCsrRssiCallback callback,
 		uint8_t staId, struct qdf_mac_addr bssId, int8_t lastRSSI,
-		void *pContext);
+		void *pContext, void *p_cds_context);
 QDF_STATUS csr_get_snr(tpAniSirGlobal pMac, tCsrSnrCallback callback,
 		uint8_t staId, struct qdf_mac_addr bssId, void *pContext);
-QDF_STATUS csr_get_config_param(tpAniSirGlobal pMac,
-					  tCsrConfigParam *pParam);
+QDF_STATUS csr_get_config_param(tpAniSirGlobal pMac, tCsrConfigParam *pParam);
 QDF_STATUS csr_change_default_config_param(tpAniSirGlobal pMac,
 		tCsrConfigParam *pParam);
 QDF_STATUS csr_msg_processor(tpAniSirGlobal pMac, void *pMsgBuf);
@@ -1248,29 +1338,34 @@ QDF_STATUS csr_open(tpAniSirGlobal pMac);
 QDF_STATUS csr_init_chan_list(tpAniSirGlobal mac, uint8_t *alpha2);
 QDF_STATUS csr_close(tpAniSirGlobal pMac);
 QDF_STATUS csr_start(tpAniSirGlobal pMac);
-QDF_STATUS csr_stop(tpAniSirGlobal pMac);
+QDF_STATUS csr_stop(tpAniSirGlobal pMac, tHalStopType stopType);
 QDF_STATUS csr_ready(tpAniSirGlobal pMac);
 
 #ifdef FEATURE_WLAN_WAPI
+QDF_STATUS csr_scan_get_bkid_candidate_list(tpAniSirGlobal pMac,
+		uint32_t sessionId, tBkidCandidateInfo * pBkidList,
+		uint32_t *pNumItems);
 QDF_STATUS csr_roam_get_wapi_req_ie(tpAniSirGlobal pMac,
 		uint32_t sessionId, uint32_t *pLen, uint8_t *pBuf);
-QDF_STATUS csr_roam_get_wapi_rsp_ie(tpAniSirGlobal pMac,
-						uint32_t sessionId,
+QDF_STATUS csr_roam_get_wapi_rsp_ie(tpAniSirGlobal pMac, uint32_t sessionId,
 		uint32_t *pLen, uint8_t *pBuf);
 uint8_t csr_construct_wapi_ie(tpAniSirGlobal pMac, uint32_t sessionId,
-		struct csr_roam_profile *pProfile,
+		tCsrRoamProfile *pProfile,
 		tSirBssDescription *pSirBssDesc,
 		tDot11fBeaconIEs *pIes, tCsrWapiIe *pWapiIe);
 #endif /* FEATURE_WLAN_WAPI */
 
-void csr_set_cfg_privacy(tpAniSirGlobal pMac,
-			 struct csr_roam_profile *pProfile,
-			 bool fPrivacy);
+QDF_STATUS csr_roam_update_apwpsie(tpAniSirGlobal pMac, uint32_t sessionId,
+		tSirAPWPSIEs * pAPWPSIES);
+QDF_STATUS csr_roam_update_wparsni_es(tpAniSirGlobal pMac, uint32_t sessionId,
+		tSirRSNie *pAPSirRSNie);
+void csr_set_cfg_privacy(tpAniSirGlobal pMac, tCsrRoamProfile *pProfile,
+		bool fPrivacy);
 int8_t csr_get_infra_session_id(tpAniSirGlobal pMac);
-uint8_t csr_get_infra_operation_channel(tpAniSirGlobal pMac,
-							uint8_t sessionId);
+uint8_t csr_get_infra_operation_channel(tpAniSirGlobal pMac, uint8_t sessionId);
 bool csr_is_session_client_and_connected(tpAniSirGlobal pMac,
 		uint8_t sessionId);
+uint8_t csr_get_concurrent_operation_channel(tpAniSirGlobal pMac);
 /**
  * csr_get_concurrent_operation_channel() - To get concurrent operating channel
  * @mac_ctx: Pointer to mac context
@@ -1299,14 +1394,20 @@ uint8_t csr_get_beaconing_concurrent_channel(tpAniSirGlobal mac_ctx,
 					     uint8_t vdev_id_to_skip);
 
 #ifdef FEATURE_WLAN_MCC_TO_SCC_SWITCH
-uint16_t csr_check_concurrent_channel_overlap(
-		tpAniSirGlobal pMac,
+uint16_t csr_check_concurrent_channel_overlap(tpAniSirGlobal pMac,
 		uint16_t sap_ch, eCsrPhyMode sap_phymode,
 		uint8_t cc_switch_mode);
 #endif
 QDF_STATUS csr_roam_copy_connect_profile(tpAniSirGlobal pMac,
 		uint32_t sessionId, tCsrRoamConnectedProfile *pProfile);
 bool csr_is_set_key_allowed(tpAniSirGlobal pMac, uint32_t sessionId);
+
+void csr_set_opposite_band_channel_info(tpAniSirGlobal pMac);
+#ifdef FEATURE_WLAN_SCAN_PNO
+QDF_STATUS csr_scan_save_preferred_network_found(tpAniSirGlobal pMac,
+		tSirPrefNetworkFoundInd *
+		pPrefNetworkFoundInd);
+#endif
 
 /* Returns whether the current association is a 11r assoc or not */
 bool csr_roam_is11r_assoc(tpAniSirGlobal pMac, uint8_t sessionId);
@@ -1319,41 +1420,37 @@ QDF_STATUS csr_get_tsm_stats(tpAniSirGlobal pMac,
 		tCsrTsmStatsCallback callback,
 		uint8_t staId,
 		struct qdf_mac_addr bssId,
-		void *pContext, uint8_t tid);
+		void *pContext, void *p_cds_context, uint8_t tid);
 #endif
 
+/* Remove this code once SLM_Sessionization is supported */
+void csr_disconnect_all_active_sessions(tpAniSirGlobal pMac);
+
 /* Returns whether "Legacy Fast Roaming" is enabled...or not */
-bool csr_roam_is_fast_roam_enabled(tpAniSirGlobal pMac,
-						uint32_t sessionId);
-bool csr_roam_is_roam_offload_scan_enabled(
-	tpAniSirGlobal pMac);
-bool csr_is_channel_present_in_list(uint8_t *pChannelList,
-						   int numChannels,
-						   uint8_t channel);
-QDF_STATUS csr_add_to_channel_list_front(uint8_t *pChannelList,
-							int numChannels,
+bool csr_roam_is_fast_roam_enabled(tpAniSirGlobal pMac, uint32_t sessionId);
+bool csr_roam_is_roam_offload_scan_enabled(tpAniSirGlobal pMac);
+bool csr_is_channel_present_in_list(uint8_t *pChannelList, int numChannels,
+		uint8_t channel);
+QDF_STATUS csr_add_to_channel_list_front(uint8_t *pChannelList, int numChannels,
 		uint8_t channel);
 #if defined(WLAN_FEATURE_HOST_ROAM) || defined(WLAN_FEATURE_ROAM_OFFLOAD)
 QDF_STATUS csr_roam_offload_scan_rsp_hdlr(tpAniSirGlobal pMac,
 		tpSirRoamOffloadScanRsp scanOffloadRsp);
 #else
-static inline QDF_STATUS csr_roam_offload_scan_rsp_hdlr(
-		tpAniSirGlobal pMac,
+static inline QDF_STATUS csr_roam_offload_scan_rsp_hdlr(tpAniSirGlobal pMac,
 		tpSirRoamOffloadScanRsp scanOffloadRsp)
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }
 #endif
 QDF_STATUS csr_handoff_request(tpAniSirGlobal pMac, uint8_t sessionId,
-		tCsrHandoffRequest
-		*pHandoffInfo);
+		tCsrHandoffRequest *pHandoffInfo);
 bool csr_roam_is_sta_mode(tpAniSirGlobal pMac, uint32_t sessionId);
 
 /* Post Channel Change Indication */
-QDF_STATUS csr_roam_channel_change_req(tpAniSirGlobal pMac,
-					struct qdf_mac_addr
-				       bssid, struct ch_params *ch_params,
-				       struct csr_roam_profile *profile);
+QDF_STATUS csr_roam_channel_change_req(tpAniSirGlobal pMac, struct qdf_mac_addr
+				       bssid, struct ch_params_s *ch_params,
+				       tCsrRoamProfile *profile);
 
 /* Post Beacon Tx Start Indication */
 QDF_STATUS csr_roam_start_beacon_req(tpAniSirGlobal pMac,
@@ -1363,16 +1460,14 @@ QDF_STATUS csr_roam_send_chan_sw_ie_request(tpAniSirGlobal pMac,
 					    struct qdf_mac_addr bssid,
 					    uint8_t targetChannel,
 					    uint8_t csaIeReqd,
-					    struct ch_params *ch_params);
-QDF_STATUS csr_roam_modify_add_ies(tpAniSirGlobal pMac,
-					tSirModifyIE *pModifyIE,
+					    struct ch_params_s *ch_params);
+QDF_STATUS csr_roam_modify_add_ies(tpAniSirGlobal pMac, tSirModifyIE *pModifyIE,
 				   eUpdateIEsType updateType);
 QDF_STATUS
 csr_roam_update_add_ies(tpAniSirGlobal pMac,
 		tSirUpdateIE *pUpdateIE, eUpdateIEsType updateType);
 #ifdef WLAN_FEATURE_ROAM_OFFLOAD
-QDF_STATUS csr_scan_save_roam_offload_ap_to_scan_cache(
-		tpAniSirGlobal pMac,
+QDF_STATUS csr_scan_save_roam_offload_ap_to_scan_cache(tpAniSirGlobal pMac,
 		struct sSirSmeRoamOffloadSynchInd *roam_synch_ind_ptr,
 		tpSirBssDescription  bss_desc_ptr);
 void csr_process_ho_fail_ind(tpAniSirGlobal pMac, void *pMsgBuf);
@@ -1380,17 +1475,16 @@ void csr_process_ho_fail_ind(tpAniSirGlobal pMac, void *pMsgBuf);
 #ifdef FEATURE_WLAN_DIAG_SUPPORT_CSR
 void csr_roaming_report_diag_event(tpAniSirGlobal mac_ctx,
 		roam_offload_synch_ind *roam_synch_ind_ptr,
-		enum csr_diagwlan_status_eventreason reason);
+		eCsrDiagWlanStatusEventReason reason);
 #else
-static inline void csr_roaming_report_diag_event(
-		tpAniSirGlobal mac_ctx,
+static inline void csr_roaming_report_diag_event(tpAniSirGlobal mac_ctx,
 		roam_offload_synch_ind *roam_synch_ind_ptr,
-		enum csr_diagwlan_status_eventreason reason)
+		eCsrDiagWlanStatusEventReason reason)
 {}
 #endif
 
 bool csr_store_joinreq_param(tpAniSirGlobal mac_ctx,
-		struct csr_roam_profile *profile,
+		tCsrRoamProfile *profile,
 		tScanResultHandle scan_cache,
 		uint32_t *roam_id,
 		uint32_t session_id);
@@ -1401,105 +1495,43 @@ QDF_STATUS csr_issue_stored_joinreq(tpAniSirGlobal mac_ctx,
 		uint32_t session_id);
 QDF_STATUS csr_get_channels_and_power(tpAniSirGlobal pMac);
 
-void csr_nonscan_pending_ll_unlock(struct sAniSirGlobal *mac_ctx);
-void csr_nonscan_active_ll_unlock(struct sAniSirGlobal *mac_ctx);
-void csr_nonscan_pending_ll_lock(struct sAniSirGlobal *mac_ctx);
-void csr_nonscan_active_ll_lock(struct sAniSirGlobal *mac_ctx);
-bool csr_nonscan_active_ll_is_list_empty(
-			struct sAniSirGlobal *mac_ctx,
-			bool inter_locked);
-bool csr_nonscan_pending_ll_is_list_empty(
-			struct sAniSirGlobal *mac_ctx,
-			bool inter_locked);
-bool csr_nonscan_active_ll_remove_entry(
-			struct sAniSirGlobal *mac_ctx,
-			tListElem *pEntryToRemove, bool inter_locked);
-tListElem *csr_nonscan_active_ll_peek_head(
-			struct sAniSirGlobal *mac_ctx,
-			bool inter_locked);
-tListElem *csr_nonscan_pending_ll_peek_head(
-			struct sAniSirGlobal *mac_ctx,
-			bool inter_locked);
-tListElem *csr_nonscan_active_ll_remove_head(
-			struct sAniSirGlobal *mac_ctx,
-			bool inter_locked);
-tListElem *csr_nonscan_pending_ll_remove_head(
-			struct sAniSirGlobal *mac_ctx,
-			bool inter_locked);
-uint32_t csr_nonscan_pending_ll_count(
-			struct sAniSirGlobal *mac_ctx);
-void csr_nonscan_pending_ll_insert_head(
-			struct sAniSirGlobal *mac_ctx,
-		tListElem *entry, bool inter_locked);
-void csr_nonscan_pending_ll_insert_tail(
-			struct sAniSirGlobal *mac_ctx,
-		tListElem *entry, bool inter_locked);
-uint32_t csr_nonscan_active_ll_count(
-			struct sAniSirGlobal *mac_ctx);
-void csr_nonscan_active_ll_insert_head(
-			struct sAniSirGlobal *mac_ctx,
-		tListElem *entry, bool inter_locked);
-tListElem *csr_nonscan_pending_ll_next(
-			struct sAniSirGlobal *mac_ctx,
-		tListElem *entry, bool inter_locked);
-
-/**
- * csr_purge_vdev_pending_ser_cmd_list() - purge all scan and non-scan
- * pending cmds for the vdev id
- * @mac_ctx: pointer to global MAC context
- * @vdev_id : vdev id for which the pending cmds need to be purged
+/* csr_scan_process_single_bssdescr() - Add a bssdescriptor to scan table
  *
- * Return : none
- */
-void csr_purge_vdev_pending_ser_cmd_list(struct sAniSirGlobal *mac_ctx,
-					 uint32_t vdev_id);
-
-/**
- * csr_purge_vdev_all_ser_cmd_list() - purge all scan and non-scan
- * active and pending cmds for the vdev id
- * @mac_ctx: pointer to global MAC context
- * @vdev_id : vdev id for which cmds need to be purged
+ * @mac_ctx - MAC context
+ * @bssdescr - Pointer to BSS description structure that contains
+ *             everything from beacon/probe response frame and additional
+ *             information.
+ * @scan_id - Scan identifier of the scan request that was running
+ *            when this beacon was received. Reserved for future when
+ *            firmware provides that information.
+ * @flags - Reserved for future use.
  *
- * Return : none
- */
-void csr_purge_vdev_all_ser_cmd_list(struct sAniSirGlobal *mac_ctx,
-				     uint32_t vdev_id);
-
-/**
- * csr_purge_pdev_all_ser_cmd_list() - purge all scan and non-scan
- * active and pending cmds for all vdevs in pdev
- * @mac_ctx: pointer to global MAC context
+ * Callback routine called by LIM when it receives a beacon or probe response
+ * from the device. 802.11 frame is already converted to internal
+ * tSirBssDescription data structure.
  *
- * Return : none
+ * Return: 0 or other error codes.
  */
-void csr_purge_pdev_all_ser_cmd_list(struct sAniSirGlobal *mac_ctx);
+
+QDF_STATUS csr_scan_process_single_bssdescr(tpAniSirGlobal pMac,
+		tSirBssDescription *pSirBssDescription,
+		uint32_t scan_id, uint32_t flags);
 
 bool csr_wait_for_connection_update(tpAniSirGlobal mac,
 		bool do_release_reacquire_lock);
-enum QDF_OPMODE csr_get_session_persona(tpAniSirGlobal pmac,
-					uint32_t session_id);
-void csr_roam_substate_change(
-			tpAniSirGlobal pMac, enum csr_roam_substate
-					NewSubstate, uint32_t sessionId);
+enum tQDF_ADAPTER_MODE csr_get_session_persona(tpAniSirGlobal pmac,
+						uint32_t session_id);
+void csr_roam_substate_change(tpAniSirGlobal pMac, eCsrRoamSubState NewSubstate,
+			      uint32_t sessionId);
 
-void csr_neighbor_roam_process_scan_results(
-		tpAniSirGlobal mac_ctx,
+void csr_neighbor_roam_process_scan_results(tpAniSirGlobal mac_ctx,
 		uint8_t sessionid, tScanResultHandle *scan_results_list);
 
 void csr_neighbor_roam_trigger_handoff(tpAniSirGlobal mac_ctx,
 					uint8_t session_id);
 bool csr_is_ndi_started(tpAniSirGlobal mac_ctx, uint32_t session_id);
 
-QDF_STATUS csr_roam_update_config(
-			tpAniSirGlobal mac_ctx, uint8_t session_id,
+QDF_STATUS csr_roam_update_config(tpAniSirGlobal mac_ctx, uint8_t session_id,
 				  uint16_t capab, uint32_t value);
 
-/**
- * csr_is_mcc_channel() - check if using the channel results into MCC
- * @mac_ctx: pointer to global MAC context
- * @channel : channel number to check for MCC scenario
- *
- * Return : true if channel causes MCC, else false
- */
-bool csr_is_mcc_channel(tpAniSirGlobal mac_ctx, uint8_t channel);
 #endif

@@ -99,13 +99,14 @@ lim_process_disassoc_frame(tpAniSirGlobal pMac, uint8_t *pRxPacketInfo,
 	if (LIM_IS_STA_ROLE(psessionEntry) &&
 		((eLIM_SME_WT_DISASSOC_STATE == psessionEntry->limSmeState) ||
 		(eLIM_SME_WT_DEAUTH_STATE == psessionEntry->limSmeState))) {
-		if (!(pMac->lim.disassocMsgCnt & 0xF)) {
+		if (!(psessionEntry->disassocmsgcnt & 0xF)) {
 			pe_debug("received Disassoc frame in %s"
-				"already processing previously received Disassoc frame, dropping this %d",
-				 lim_sme_state_str(psessionEntry->limSmeState),
-				 ++pMac->lim.disassocMsgCnt);
+				"(already processing previously received Disassoc frame)"
+				"Dropping this.. Disassoc Failed %d",
+				lim_sme_state_str(psessionEntry->limSmeState),
+					   ++psessionEntry->disassocmsgcnt);
 		} else {
-			pMac->lim.disassocMsgCnt++;
+			psessionEntry->disassocmsgcnt++;
 		}
 		return;
 	}
@@ -146,12 +147,12 @@ lim_process_disassoc_frame(tpAniSirGlobal pMac, uint8_t *pRxPacketInfo,
 	reasonCode = sir_read_u16(pBody);
 
 	pe_debug("Received Disassoc frame for Addr: " MAC_ADDRESS_STR
-		 "(mlm state=%s, sme state=%d RSSI=%d),"
-		 "with reason code %d [%s] from " MAC_ADDRESS_STR,
-		 MAC_ADDR_ARRAY(pHdr->da),
-		 lim_mlm_state_str(psessionEntry->limMlmState),
-		 psessionEntry->limSmeState, frame_rssi, reasonCode,
-		 lim_dot11_reason_str(reasonCode), MAC_ADDR_ARRAY(pHdr->sa));
+			  "(mlm state=%s, sme state=%d RSSI=%d),"
+			  "with reason code %d [%s] from " MAC_ADDRESS_STR,
+		       MAC_ADDR_ARRAY(pHdr->da),
+		       lim_mlm_state_str(psessionEntry->limMlmState),
+		       psessionEntry->limSmeState, frame_rssi, reasonCode,
+		       lim_dot11_reason_str(reasonCode), MAC_ADDR_ARRAY(pHdr->sa));
 	lim_diag_event_report(pMac, WLAN_PE_DIAG_DISASSOC_FRAME_EVENT,
 		psessionEntry, 0, reasonCode);
 
@@ -189,9 +190,8 @@ lim_process_disassoc_frame(tpAniSirGlobal pMac, uint8_t *pRxPacketInfo,
 		return;
 	}
 
-	if (pMac->lim.disassocMsgCnt != 0) {
-		pMac->lim.disassocMsgCnt = 0;
-	}
+	if (psessionEntry->disassocmsgcnt != 0)
+		psessionEntry->disassocmsgcnt = 0;
 
 	/** If we are in the Wait for ReAssoc Rsp state */
 	if (lim_is_reassoc_in_progress(pMac, psessionEntry)) {
@@ -309,9 +309,6 @@ lim_process_disassoc_frame(tpAniSirGlobal pMac, uint8_t *pRxPacketInfo,
 
 	} /* if (pStaDs->mlmStaContext.mlmState != eLIM_MLM_LINK_ESTABLISHED_STATE) */
 
-	lim_extract_ies_from_deauth_disassoc(pMac, psessionEntry->peSessionId,
-					     (uint8_t *)pHdr,
-					WMA_GET_RX_MPDU_LEN(pRxPacketInfo));
 	lim_perform_disassoc(pMac, frame_rssi, reasonCode,
 			     psessionEntry, pHdr->sa);
 

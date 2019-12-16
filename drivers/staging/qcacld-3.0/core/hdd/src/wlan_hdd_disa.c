@@ -24,13 +24,10 @@
  */
 
 #include "wlan_hdd_disa.h"
-#include "wlan_disa_ucfg_api.h"
-#include "wlan_osif_request_manager.h"
 #include "sme_api.h"
-#include <qca_vendor.h>
+#include "wlan_hdd_request_manager.h"
 
 #define WLAN_WAIT_TIME_ENCRYPT_DECRYPT 1000
-
 
 /**
  * hdd_encrypt_decrypt_msg_context - hdd encrypt/decrypt message context
@@ -41,86 +38,93 @@
  */
 struct hdd_encrypt_decrypt_msg_context {
 	int status;
-	struct disa_encrypt_decrypt_req_params request;
-	struct disa_encrypt_decrypt_resp_params response;
+	struct encrypt_decrypt_req_params request;
+	struct sir_encrypt_decrypt_rsp_params response;
 };
 
 /**
  * hdd_encrypt_decrypt_msg_cb () - encrypt/decrypt response message handler
  * @cookie: hdd request cookie
- * @resp: encrypt/decrypt response parameters
+ * @encrypt_decrypt_rsp_params: encrypt/decrypt response parameters
  *
  * Return: none
  */
 static void hdd_encrypt_decrypt_msg_cb(void *cookie,
-	struct disa_encrypt_decrypt_resp_params *resp)
+				       struct sir_encrypt_decrypt_rsp_params
+						*encrypt_decrypt_rsp_params)
 {
-	struct osif_request *request;
+	struct hdd_request *request;
 	struct hdd_encrypt_decrypt_msg_context *context;
 
-	hdd_enter();
+	ENTER();
 
-	if (!resp) {
+	if (!encrypt_decrypt_rsp_params) {
 		hdd_err("rsp params is NULL");
 		return;
 	}
 
-	request = osif_request_get(cookie);
+	request = hdd_request_get(cookie);
 	if (!request) {
-		hdd_err("Obsolete request");
+		hdd_err("obsolete request");
 		return;
 	}
 
 	print_hex_dump(KERN_INFO, "Data in hdd_encrypt_decrypt_msg_cb: ",
 		DUMP_PREFIX_NONE, 16, 1,
-		resp->data,
-		resp->data_len, 0);
+		encrypt_decrypt_rsp_params->data,
+		encrypt_decrypt_rsp_params->data_length, 0);
 
 	hdd_debug("vdev_id: %d status:%d data_length: %d",
-		resp->vdev_id,
-		resp->status,
-		resp->data_len);
+		encrypt_decrypt_rsp_params->vdev_id,
+		encrypt_decrypt_rsp_params->status,
+		encrypt_decrypt_rsp_params->data_length);
 
-	context = osif_request_priv(request);
-	context->response = *resp;
-	context->status = 0;
-	if (resp->data_len) {
+	context = hdd_request_priv(request);
+
+	context->response = *encrypt_decrypt_rsp_params;
+
+	if (encrypt_decrypt_rsp_params->data_length) {
 		context->response.data =
 			qdf_mem_malloc(sizeof(uint8_t) *
-				resp->data_len);
+				encrypt_decrypt_rsp_params->data_length);
 		if (!context->response.data) {
 			hdd_err("memory allocation failed");
 			context->status = -ENOMEM;
+			hdd_request_complete(request);
+			hdd_request_put(request);
+			return;
 		} else {
 			qdf_mem_copy(context->response.data,
-				     resp->data,
-				     resp->data_len);
+				     encrypt_decrypt_rsp_params->data,
+				     encrypt_decrypt_rsp_params->data_length);
 		}
 	} else {
 		/* make sure we don't have a rogue pointer */
 		context->response.data = NULL;
 	}
 
-	osif_request_complete(request);
-	osif_request_put(request);
-	hdd_exit();
+	hdd_request_complete(request);
+	hdd_request_put(request);
+
+	EXIT();
 }
 
 /**
- * hdd_post_encrypt_decrypt_msg_rsp () - send encrypt/decrypt data to user space
+ * hdd_post_encrypt_decrypt_msg_rsp () - sends encrypt/decrypt msg to user space
+ * @hdd_ctx: pointer to hdd context
  * @encrypt_decrypt_rsp_params: encrypt/decrypt response parameters
  *
- * Return: none
+ * Return: 0 on success, negative errno on failure
  */
-static int hdd_post_encrypt_decrypt_msg_rsp(struct hdd_context *hdd_ctx,
-	struct disa_encrypt_decrypt_resp_params *resp)
+static int hdd_post_encrypt_decrypt_msg_rsp(hdd_context_t *hdd_ctx,
+	struct sir_encrypt_decrypt_rsp_params *encrypt_decrypt_rsp_params)
 {
 	struct sk_buff *skb;
 	uint32_t nl_buf_len;
 
-	hdd_enter();
+	ENTER();
 
-	nl_buf_len = resp->data_len + NLA_HDRLEN;
+	nl_buf_len = encrypt_decrypt_rsp_params->data_length + NLA_HDRLEN;
 
 	skb = cfg80211_vendor_cmd_alloc_reply_skb(hdd_ctx->wiphy, nl_buf_len);
 	if (!skb) {
@@ -128,16 +132,17 @@ static int hdd_post_encrypt_decrypt_msg_rsp(struct hdd_context *hdd_ctx,
 		return -ENOMEM;
 	}
 
-	if (resp->data_len) {
+	if (encrypt_decrypt_rsp_params->data_length) {
 		if (nla_put(skb, QCA_WLAN_VENDOR_ATTR_ENCRYPTION_TEST_DATA,
-				resp->data_len, resp->data)) {
+				encrypt_decrypt_rsp_params->data_length,
+				encrypt_decrypt_rsp_params->data)) {
 			hdd_err("put fail");
 			goto nla_put_failure;
 		}
 	}
 
 	cfg80211_vendor_cmd_reply(skb);
-	hdd_exit();
+	EXIT();
 	return 0;
 
 nla_put_failure:
@@ -149,10 +154,10 @@ static const struct nla_policy
 encrypt_decrypt_policy[QCA_WLAN_VENDOR_ATTR_ENCRYPTION_TEST_MAX + 1] = {
 	[QCA_WLAN_VENDOR_ATTR_ENCRYPTION_TEST_NEEDS_DECRYPTION] = {
 		.type = NLA_FLAG},
-	[QCA_WLAN_VENDOR_ATTR_ENCRYPTION_TEST_CIPHER] = {
-		.type = NLA_U32},
 	[QCA_WLAN_VENDOR_ATTR_ENCRYPTION_TEST_KEYID] = {
 		.type = NLA_U8},
+	[QCA_WLAN_VENDOR_ATTR_ENCRYPTION_TEST_CIPHER] = {
+		.type = NLA_U32},
 };
 
 /**
@@ -165,26 +170,24 @@ encrypt_decrypt_policy[QCA_WLAN_VENDOR_ATTR_ENCRYPTION_TEST_MAX + 1] = {
  *
  Return: 0 on success, negative errno on failure
  */
-static int
-hdd_fill_encrypt_decrypt_params(struct disa_encrypt_decrypt_req_params
-				*encrypt_decrypt_params,
-				struct hdd_adapter *adapter,
-				const void *data,
-				int data_len)
+static int hdd_fill_encrypt_decrypt_params(struct encrypt_decrypt_req_params
+						*encrypt_decrypt_params,
+						hdd_adapter_t *adapter,
+						const void *data,
+						int data_len)
 {
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_ENCRYPTION_TEST_MAX + 1];
 	uint8_t len, mac_hdr_len;
 	uint8_t *tmp;
 	uint8_t fc[2];
 
-	if (wlan_cfg80211_nla_parse(tb,
-				    QCA_WLAN_VENDOR_ATTR_ENCRYPTION_TEST_MAX,
-				    data, data_len, encrypt_decrypt_policy)) {
+	if (hdd_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_ENCRYPTION_TEST_MAX,
+			  data, data_len, encrypt_decrypt_policy)) {
 		hdd_err("Invalid ATTR");
 		return -EINVAL;
 	}
 
-	encrypt_decrypt_params->vdev_id = adapter->session_id;
+	encrypt_decrypt_params->vdev_id = adapter->sessionId;
 	hdd_debug("vdev_id: %d", encrypt_decrypt_params->vdev_id);
 
 	if (!tb[QCA_WLAN_VENDOR_ATTR_ENCRYPTION_TEST_NEEDS_DECRYPTION]) {
@@ -336,12 +339,25 @@ hdd_fill_encrypt_decrypt_params(struct disa_encrypt_decrypt_req_params
 	return 0;
 }
 
+/**
+ * hdd_encrypt_decrypt_context_dealloc() - deallocate memory allocated for data
+ * @priv: Pointer to private data
+ *
+ * Return: None
+ */
 static void hdd_encrypt_decrypt_context_dealloc(void *priv)
 {
 	struct hdd_encrypt_decrypt_msg_context *context = priv;
 
-	qdf_mem_free(context->request.data);
-	qdf_mem_free(context->response.data);
+	if (context->request.data) {
+		qdf_mem_free(context->request.data);
+		context->request.data = NULL;
+	}
+
+	if (context->response.data) {
+		qdf_mem_free(context->response.data);
+		context->response.data = NULL;
+	}
 }
 
 /**
@@ -351,69 +367,88 @@ static void hdd_encrypt_decrypt_context_dealloc(void *priv)
  * @data: Pointer to data
  * @data_len: Data length
  *
- Return: 0 on success, negative errno on failure
+ * Return: 0 on success, negative errno on failure
  */
-static int hdd_encrypt_decrypt_msg(struct hdd_adapter *adapter,
-				   struct hdd_context *hdd_ctx,
+static int hdd_encrypt_decrypt_msg(hdd_adapter_t *adapter,
+				   hdd_context_t *hdd_ctx,
 				   const void *data,
 				   int data_len)
 {
 	QDF_STATUS qdf_status;
 	int ret;
 	void *cookie;
-	struct osif_request *request;
+	struct hdd_request *request;
 	struct hdd_encrypt_decrypt_msg_context *context;
-	static const struct osif_request_params params = {
+	static const struct hdd_request_params params = {
 		.priv_size = sizeof(*context),
 		.timeout_ms = WLAN_WAIT_TIME_ENCRYPT_DECRYPT,
 		.dealloc = hdd_encrypt_decrypt_context_dealloc,
 	};
 
-	request = osif_request_alloc(&params);
+	request = hdd_request_alloc(&params);
 	if (!request) {
-		hdd_err("Request allocation failure");
+		hdd_err("Request Allocation Failure");
 		return -ENOMEM;
 	}
-	context = osif_request_priv(request);
+	context = hdd_request_priv(request);
 
-	ret = hdd_fill_encrypt_decrypt_params(&context->request, adapter,
-					      data, data_len);
+	ret = hdd_fill_encrypt_decrypt_params(&context->request,
+					      adapter, data, data_len);
 	if (ret)
-		goto cleanup;
+		goto clean_up;
 
-	cookie = osif_request_cookie(request);
+	cookie = hdd_request_cookie(request);
 
-	qdf_status = ucfg_disa_encrypt_decrypt_req(hdd_ctx->psoc,
-				&context->request,
-				hdd_encrypt_decrypt_msg_cb,
-				cookie);
+	qdf_status = sme_encrypt_decrypt_msg_register_callback(hdd_ctx->hHal,
+					hdd_encrypt_decrypt_msg_cb);
+	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
+		hdd_err("Encrypt/Decrypt callback failed %d", qdf_status);
+		ret = -EINVAL;
+		goto clean_up;
+	}
+
+	qdf_status = sme_encrypt_decrypt_msg(hdd_ctx->hHal,
+					     &context->request,
+					     cookie);
 
 	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
 		hdd_err("Unable to post encrypt/decrypt message");
 		ret = -EINVAL;
-		goto cleanup;
+		goto deregister_cb;
 	}
 
-	ret = osif_request_wait_for_response(request);
+	ret = hdd_request_wait_for_response(request);
 	if (ret) {
 		hdd_err("Target response timed out");
-		goto cleanup;
+		goto deregister_cb;
 	}
 
 	ret = context->status;
 	if (ret) {
 		hdd_err("Target response processing failed");
-		goto cleanup;
+		goto deregister_cb;
 	}
 
 	ret = hdd_post_encrypt_decrypt_msg_rsp(hdd_ctx, &context->response);
 	if (ret)
 		hdd_err("Failed to post encrypt/decrypt message response");
 
-cleanup:
-	osif_request_put(request);
+deregister_cb:
+	qdf_status = sme_encrypt_decrypt_msg_deregister_callback(hdd_ctx->hHal);
+	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
+		hdd_err("De-register encrypt/decrypt callback failed: %d",
+			qdf_status);
+		ret = -EINVAL;
+	}
+clean_up:
+	/*
+	 * either we never sent a request, we sent a request and
+	 * received a response or we sent a request and timed out.
+	 * regardless we are done with the request.
+	 */
+	hdd_request_put(request);
 
-	hdd_exit();
+	EXIT();
 	return ret;
 }
 
@@ -431,12 +466,12 @@ static int __wlan_hdd_cfg80211_encrypt_decrypt_msg(struct wiphy *wiphy,
 						const void *data,
 						int data_len)
 {
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
+	hdd_context_t *hdd_ctx = wiphy_priv(wiphy);
 	struct net_device *dev = wdev->netdev;
-	struct hdd_adapter *adapter = NULL;
+	hdd_adapter_t *adapter = NULL;
 	int ret;
 
-	hdd_enter_dev(dev);
+	ENTER_DEV(dev);
 
 	ret = wlan_hdd_validate_context(hdd_ctx);
 	if (ret)

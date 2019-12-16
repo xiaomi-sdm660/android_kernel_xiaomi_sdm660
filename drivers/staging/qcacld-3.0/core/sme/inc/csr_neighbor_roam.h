@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -46,7 +46,7 @@ typedef struct sCsrNeighborRoamCfgParams {
 	uint8_t maxNeighborRetries;
 	uint32_t neighborScanPeriod;
 	uint32_t neighbor_scan_min_period;
-	tCsrChannelInfo specific_chan_info;
+	tCsrChannelInfo channelInfo;
 	uint8_t neighborLookupThreshold;
 	int8_t rssi_thresh_offset_5g;
 	uint8_t neighborReassocThreshold;
@@ -64,12 +64,6 @@ typedef struct sCsrNeighborRoamCfgParams {
 	uint32_t hi_rssi_scan_rssi_delta;
 	uint32_t hi_rssi_scan_delay;
 	int32_t hi_rssi_scan_rssi_ub;
-	tCsrChannelInfo pref_chan_info;
-	uint32_t full_roam_scan_period;
-	bool enable_scoring_for_roam;
-	uint8_t roam_rssi_diff;
-	uint16_t roam_scan_home_away_time;
-	uint8_t roam_scan_n_probes;
 } tCsrNeighborRoamCfgParams, *tpCsrNeighborRoamCfgParams;
 
 #define CSR_NEIGHBOR_ROAM_INVALID_CHANNEL_INDEX    255
@@ -135,15 +129,7 @@ typedef enum {
 	SPLIT_SCAN_OCCUPIED_LIST = 1,
 } eNeighborRoamScanMode;
 
-/**
- * struct sCsr11rAssocNeighborInfo - Control info for neighbor roam algorithm
- * @roam_control_enable: Flag used to cache the status of roam control
- *			 configuration. This will be set only if the
- *			 corresponding vendor command data is configured to
- *			 driver/firmware successfully. The same shall be
- *			 returned to userspace whenever queried for roam
- *			 control config status.
- */
+/* Complete control information for neighbor roam algorithm */
 typedef struct sCsrNeighborRoamControlInfo {
 	eCsrNeighborRoamState neighborRoamState;
 	eCsrNeighborRoamState prevNeighborRoamState;
@@ -155,7 +141,7 @@ typedef struct sCsrNeighborRoamControlInfo {
 	uint8_t currentOpportunisticThresholdDiff;
 	uint8_t currentRoamRescanRssiDiff;
 	tDblLinkList roamableAPList;    /* List of current FT candidates */
-	struct csr_roam_profile csrNeighborRoamProfile;
+	tCsrRoamProfile csrNeighborRoamProfile;
 	bool is11rAssoc;
 	tCsr11rAssocNeighborInfo FTRoamInfo;
 #ifdef FEATURE_WLAN_ESE
@@ -178,7 +164,6 @@ typedef struct sCsrNeighborRoamControlInfo {
 	uint8_t currentRoamBeaconRssiWeight;
 	uint8_t last_sent_cmd;
 	bool b_roam_scan_offload_started;
-	bool roam_control_enable;
 } tCsrNeighborRoamControlInfo, *tpCsrNeighborRoamControlInfo;
 
 /* All the necessary Function declarations are here */
@@ -194,7 +179,7 @@ QDF_STATUS csrNeighborRoamTransitionToPreauthDone(tpAniSirGlobal pMac);
 QDF_STATUS csr_neighbor_roam_prepare_scan_profile_filter(tpAniSirGlobal pMac,
 		tCsrScanResultFilter *pScanFilter, uint8_t sessionId);
 QDF_STATUS csr_neighbor_roam_preauth_rsp_handler(tpAniSirGlobal pMac,
-		uint8_t sessionId, QDF_STATUS limStatus);
+		uint8_t sessionId, tSirRetStatus limStatus);
 bool csr_neighbor_roam_is11r_assoc(tpAniSirGlobal pMac, uint8_t sessionId);
 #ifdef WLAN_FEATURE_HOST_ROAM
 void csr_neighbor_roam_tranistion_preauth_done_to_disconnected(
@@ -209,7 +194,7 @@ bool csr_neighbor_roam_get_handoff_ap_info(tpAniSirGlobal pMac,
 		tpCsrNeighborRoamBSSInfo pHandoffNode, uint8_t sessionId);
 QDF_STATUS csr_roam_issue_reassociate(tpAniSirGlobal pMac,
 		uint32_t sessionId, tSirBssDescription *pSirBssDesc,
-		tDot11fBeaconIEs *pIes, struct csr_roam_profile *pProfile);
+		tDot11fBeaconIEs *pIes, tCsrRoamProfile *pProfile);
 void csr_neighbor_roam_request_handoff(tpAniSirGlobal pMac, uint8_t sessionId);
 QDF_STATUS csr_neighbor_roam_candidate_found_ind_hdlr(tpAniSirGlobal pMac,
 		void *pMsg);
@@ -233,7 +218,7 @@ static inline QDF_STATUS csr_roam_issue_reassociate_cmd(tpAniSirGlobal pMac,
 }
 static inline QDF_STATUS csr_roam_issue_reassociate(tpAniSirGlobal pMac,
 		uint32_t sessionId, tSirBssDescription *pSirBssDesc,
-		tDot11fBeaconIEs *pIes, struct csr_roam_profile *pProfile)
+		tDot11fBeaconIEs *pIes, tCsrRoamProfile *pProfile)
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }
@@ -340,9 +325,6 @@ void csr_roam_reset_roam_params(tpAniSirGlobal mac_ptr);
 #define REASON_FILS_PARAMS_CHANGED                  41
 #define REASON_SME_ISSUED                           42
 #define REASON_DRIVER_ENABLED                       43
-#define REASON_ROAM_FULL_SCAN_PERIOD_CHANGED        44
-#define REASON_SCORING_CRITERIA_CHANGED             45
-#define REASON_ROAM_CONTROL_CONFIG_RESTORED         46
 
 #if defined(WLAN_FEATURE_HOST_ROAM) || defined(WLAN_FEATURE_ROAM_OFFLOAD)
 QDF_STATUS csr_roam_offload_scan(tpAniSirGlobal pMac, uint8_t sessionId,
@@ -381,7 +363,7 @@ uint8_t csr_get_roam_enabled_sta_sessionid(
  * Return: QDF_STATUS
  */
 QDF_STATUS csr_update_fils_config(tpAniSirGlobal mac, uint8_t session_id,
-				  struct csr_roam_profile *src_profile);
+				  tCsrRoamProfile *src_profile);
 #endif
 
 QDF_STATUS csr_neighbor_roam_handoff_req_hdlr(tpAniSirGlobal pMac, void *pMsg);
@@ -402,10 +384,52 @@ QDF_STATUS csr_roam_read_tsf(tpAniSirGlobal pMac, uint8_t *pTimestamp,
 QDF_STATUS csr_roam_synch_callback(tpAniSirGlobal mac,
 	roam_offload_synch_ind *roam_synch_data,
 	tpSirBssDescription  bss_desc_ptr, enum sir_roam_op_code reason);
+
+#ifdef WLAN_FEATURE_FIPS
+/**
+ * csr_roam_pmkid_req_callback() - Registered CSR Callback function to handle
+ * roam event from firmware for pmkid generation fallback.
+ * @vdev_id: Vdev id
+ * @bss_list: candidate AP bssid list
+ */
+QDF_STATUS
+csr_roam_pmkid_req_callback(uint8_t vdev_id,
+			    struct roam_pmkid_req_event *bss_list);
+
+/**
+ * csr_process_roam_pmkid_req_callback() - API to trigger the pmkid
+ * generation fallback event for candidate AP received from firmware.
+ * @mac_ctx: Global mac context pointer
+ * @vdev_id: Vdev id
+ * @roam_bsslist: roam candidate AP bssid list
+ *
+ * This function calls the hdd_sme_roam_callback with reason
+ * eCSR_ROAM_FIPS_PMK_REQUEST to trigger pmkid generation in supplicant.
+ */
+QDF_STATUS
+csr_process_roam_pmkid_req_callback(tpAniSirGlobal mac_ctx,
+				    uint8_t vdev_id,
+				    struct roam_pmkid_req_event *roam_bsslist);
+#else
+static inline QDF_STATUS
+csr_roam_pmkid_req_callback(uint8_t vdev_id,
+			    struct roam_pmkid_req_event *bss_list)
+{
+	return QDF_STATUS_SUCCESS;
+}
+#endif /* WLAN_FEATURE_FIPS */
+
 #else
 static inline QDF_STATUS csr_roam_synch_callback(tpAniSirGlobal mac,
 	roam_offload_synch_ind *roam_synch_data,
 	tpSirBssDescription  bss_desc_ptr, enum sir_roam_op_code reason)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline QDF_STATUS
+csr_roam_pmkid_req_callback(tpAniSirGlobal mac_ctx, uint8_t vdev_id,
+			    struct roam_pmkid_req_event *bss_list)
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }
@@ -435,7 +459,7 @@ static inline void csr_neighbor_roam_send_lfr_metric_event(
 #endif
 QDF_STATUS csr_roam_stop_wait_for_key_timer(tpAniSirGlobal pMac);
 QDF_STATUS csr_roam_copy_connected_profile(tpAniSirGlobal pMac,
-		uint32_t sessionId, struct csr_roam_profile *pDstProfile);
+		uint32_t sessionId, tCsrRoamProfile *pDstProfile);
 
 /**
  * csr_invoke_neighbor_report_request - Send neighbor report invoke command to

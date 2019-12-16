@@ -20,7 +20,6 @@
 #include "osdep.h"
 #endif /* EXTERNAL_USE_ONLY */
 #include "cds_ieee80211_common_i.h"
-#include "cdp_txrx_mob_def.h"
 
 #ifndef CDS_COMMON_IEEE80211_H_
 #define CDS_COMMON_IEEE80211_H_
@@ -28,6 +27,9 @@
 /*
  * 802.11 protocol definitions.
  */
+
+/* is 802.11 address multicast/broadcast? */
+#define IEEE80211_IS_MULTICAST(_a)  (*(_a) & 0x01)
 
 #define IEEE80211_IS_IPV4_MULTICAST(_a)  (*(_a) == 0x01)
 
@@ -224,7 +226,7 @@ struct ieee80211_ctlframe_addr2 {
 #define IEEE80211_SEQ_SEQ_SHIFT             4
 #define IEEE80211_SEQ_MAX                   4096
 
-#define IEEE80211_SEQ_LEQ(a, b)  ((int)((a) - (b)) <= 0)
+#define IEEE80211_SEQ_LEQ(a, b)  ((int)((a)-(b)) <= 0)
 
 #define IEEE80211_QOS_TXOP                  0x00ff
 
@@ -453,7 +455,7 @@ struct ieee80211_wme_param {
 #define WME_CAPINFO_UAPSD_MAXSP_MASK            0x3
 #define WME_CAPINFO_IE_OFFSET                   8
 #define WME_UAPSD_MAXSP(_qosinfo) (((_qosinfo) >> WME_CAPINFO_UAPSD_MAXSP_SHIFT) & WME_CAPINFO_UAPSD_MAXSP_MASK)
-#define WME_UAPSD_AC_ENABLED(_ac, _qosinfo) ((1 << (3 - (_ac))) &   \
+#define WME_UAPSD_AC_ENABLED(_ac, _qosinfo) ((1<<(3 - (_ac))) &   \
 					      (((_qosinfo) >> WME_CAPINFO_UAPSD_ACFLAGS_SHIFT) & WME_CAPINFO_UAPSD_ACFLAGS_MASK))
 
 /* Mask used to determined whether all queues are UAPSD-enabled */
@@ -461,10 +463,10 @@ struct ieee80211_wme_param {
 						 WME_CAPINFO_UAPSD_VI |	\
 						 WME_CAPINFO_UAPSD_BK |	\
 						 WME_CAPINFO_UAPSD_BE)
-#define WME_CAPINFO_UAPSD_NONE          0
+#define WME_CAPINFO_UAPSD_NONE                  0
 
 #define WME_UAPSD_AC_MAX_VAL            1
-#define WME_UAPSD_AC_INVAL              (WME_UAPSD_AC_MAX_VAL + 1)
+#define WME_UAPSD_AC_INVAL                      WME_UAPSD_AC_MAX_VAL+1
 
 /*
  * Atheros Advanced Capability information element.
@@ -725,6 +727,51 @@ struct ieee80211_dls_response {
 	uint16_t statuscode;
 	uint8_t dst_addr[IEEE80211_ADDR_LEN];
 	uint8_t src_addr[IEEE80211_ADDR_LEN];
+} __packed;
+
+/* BA actions */
+#define IEEE80211_ACTION_BA_ADDBA_REQUEST       0       /* ADDBA request */
+#define IEEE80211_ACTION_BA_ADDBA_RESPONSE      1       /* ADDBA response */
+#define IEEE80211_ACTION_BA_DELBA               2       /* DELBA */
+
+struct ieee80211_ba_parameterset {
+#if _BYTE_ORDER == _BIG_ENDIAN
+	uint16_t buffersize : 10, /* B6-15  buffer size */
+		 tid : 4,       /* B2-5   TID */
+		 bapolicy : 1,  /* B1   block ack policy */
+		 amsdusupported : 1; /* B0   amsdu supported */
+#else
+	uint16_t amsdusupported : 1,      /* B0   amsdu supported */
+		 bapolicy : 1,  /* B1   block ack policy */
+		 tid : 4,       /* B2-5   TID */
+		 buffersize : 10; /* B6-15  buffer size */
+#endif
+} __packed;
+
+#define  IEEE80211_BA_POLICY_DELAYED      0
+#define  IEEE80211_BA_POLICY_IMMEDIATE    1
+#define  IEEE80211_BA_AMSDU_SUPPORTED     1
+
+struct ieee80211_ba_seqctrl {
+#if _BYTE_ORDER == _BIG_ENDIAN
+	uint16_t startseqnum : 12,        /* B4-15  starting sequence number */
+		 fragnum : 4;   /* B0-3  fragment number */
+#else
+	uint16_t fragnum : 4,     /* B0-3  fragment number */
+		 startseqnum : 12; /* B4-15  starting sequence number */
+#endif
+} __packed;
+
+struct ieee80211_delba_parameterset {
+#if _BYTE_ORDER == _BIG_ENDIAN
+	uint16_t tid : 4,         /* B12-15  tid */
+		 initiator : 1, /* B11     initiator */
+		 reserved0 : 11; /* B0-10   reserved */
+#else
+	uint16_t reserved0 : 11,  /* B0-10   reserved */
+		 initiator : 1, /* B11     initiator */
+		 tid : 4;       /* B12-15  tid */
+#endif
 } __packed;
 
 /* BA - ADDBA request */
@@ -1325,7 +1372,7 @@ struct ieee80211_country_ie {
 struct ieee80211_fh_ie {
 	uint8_t ie;             /* IEEE80211_ELEMID_FHPARMS */
 	uint8_t len;
-	uint16_t dwell_time;    /* endianness?? */
+	uint16_t dwell_time;    /* endianess?? */
 	uint8_t hop_set;
 	uint8_t hop_pattern;
 	uint8_t hop_index;
@@ -1850,7 +1897,7 @@ enum {
 #define IEEE80211_FRAGMT_THRESHOLD_MAX       2346       /* max frag threshold */
 
 /*
- * Regulatory extension identifier for country IE.
+ * Regulatory extention identifier for country IE.
  */
 #define IEEE80211_REG_EXT_ID        201
 
@@ -1910,7 +1957,7 @@ struct ieee80211_ie_ext_cap {
 #define IEEE80211_EXTCAPIE_OP_MODE_NOTIFY   0x40000000  /* bit-62 Operating Mode notification */
 
 /*
- * These caps are populated when we receive beacon/probe response
+ * These caps are populated when we recieve beacon/probe response
  * This is used to maintain local TDLS cap bit masks
  */
 

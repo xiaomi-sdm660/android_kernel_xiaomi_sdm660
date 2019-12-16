@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2017 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -45,7 +45,7 @@ void sme_nan_register_callback(tHalHandle hHal, nan_callback callback)
 		return;
 	}
 	pMac = PMAC_STRUCT(hHal);
-	pMac->sme.nan_callback = callback;
+	pMac->sme.nanCallback = callback;
 }
 
 /**
@@ -66,7 +66,7 @@ void sme_nan_deregister_callback(tHalHandle h_hal)
 		return;
 	}
 	pmac = PMAC_STRUCT(h_hal);
-	pmac->sme.nan_callback = NULL;
+	pmac->sme.nanCallback = NULL;
 }
 
 
@@ -81,7 +81,7 @@ void sme_nan_deregister_callback(tHalHandle h_hal)
  */
 QDF_STATUS sme_nan_request(tpNanRequestReq input)
 {
-	struct scheduler_msg msg = {0};
+	cds_msg_t msg;
 	tpNanRequest data;
 	size_t data_len;
 
@@ -103,10 +103,8 @@ QDF_STATUS sme_nan_request(tpNanRequestReq input)
 	msg.reserved = 0;
 	msg.bodyptr = data;
 
-	if (QDF_STATUS_SUCCESS != scheduler_post_message(QDF_MODULE_ID_SME,
-							 QDF_MODULE_ID_WMA,
-							 QDF_MODULE_ID_WMA,
-							 &msg)) {
+	if (QDF_STATUS_SUCCESS !=
+			cds_mq_post_message(QDF_MODULE_ID_WMA, &msg)) {
 		QDF_TRACE(QDF_MODULE_ID_SME, QDF_TRACE_LEVEL_ERROR,
 			"Not able to post WMA_NAN_REQUEST message to WMA");
 		qdf_mem_free(data);
@@ -138,8 +136,8 @@ QDF_STATUS sme_nan_event(tHalHandle hHal, void *pMsg)
 	} else {
 		QDF_TRACE(QDF_MODULE_ID_SME, QDF_TRACE_LEVEL_DEBUG,
 			  FL("SME: Received sme_nan_event"));
-		if (pMac->sme.nan_callback) {
-			pMac->sme.nan_callback(pMac->hdd_handle,
+		if (pMac->sme.nanCallback) {
+			pMac->sme.nanCallback(pMac->hHdd,
 					      (tSirNanEvent *) pMsg);
 		}
 	}

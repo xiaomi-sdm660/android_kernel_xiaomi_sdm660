@@ -27,6 +27,7 @@
 /* Include files */
 #include <sme_api.h>
 #include <wlan_defs.h>
+#include "ol_txrx_ctrl_api.h"
 #include "cdp_txrx_peer_ops.h"
 #include <net/cfg80211.h>
 #include <linux/ieee80211.h>
@@ -39,10 +40,9 @@
 #define HDD_MAX_NUM_TDLS_STA_P_UAPSD_OFFCHAN  1
 #define TDLS_STA_INDEX_VALID(staId) \
 	(((staId) >= 0) && ((staId) < 0xFF))
-#else
-#define HDD_MAX_NUM_TDLS_STA          0
-
 #endif
+#define TKIP_COUNTER_MEASURE_STARTED 1
+#define TKIP_COUNTER_MEASURE_STOPED  0
 /* Timeout (in ms) for Link to Up before Registering Station */
 #define ASSOC_LINKUP_TIMEOUT 60
 
@@ -139,7 +139,7 @@ struct hdd_conn_flag {
 #define ANTENNA_SEL_INFO_RSVD			0x80
 
 /**
- * struct hdd_connection_info - structure to store connection information
+ * typedef connection_info_t - structure to store connection information
  * @connState: connection state of the NIC
  * @bssId: BSSID
  * @SSID: SSID Info
@@ -159,7 +159,6 @@ struct hdd_conn_flag {
  * @rate_flags: rate flags for current connection
  * @freq: channel frequency
  * @txrate: txrate structure holds nss & datarate info
- * @rxrate: rx rate info
  * @noise: holds noise information
  * @ht_caps: holds ht capabilities info
  * @vht_caps: holds vht capabilities info
@@ -173,9 +172,8 @@ struct hdd_conn_flag {
  * @last_auth_type: holds last auth type
  * @auth_time: last authentication established time
  * @connect_time: last association established time
- * @ch_width: channel width of operating channel
  */
-struct hdd_connection_info {
+typedef struct connection_info_s {
 	eConnectionState connState;
 	struct qdf_mac_addr bssId;
 	tCsrSSIDInfo SSID;
@@ -195,7 +193,6 @@ struct hdd_connection_info {
 	uint32_t rate_flags;
 	uint32_t freq;
 	struct rate_info txrate;
-	struct rate_info rxrate;
 	int8_t noise;
 	struct ieee80211_ht_cap ht_caps;
 	struct ieee80211_vht_cap vht_caps;
@@ -212,12 +209,13 @@ struct hdd_connection_info {
 	char auth_time[HDD_TIME_STRING_LEN];
 	char connect_time[HDD_TIME_STRING_LEN];
 	enum phy_ch_width ch_width;
-};
+} connection_info_t;
 
 /* Forward declarations */
-struct hdd_adapter;
-struct hdd_station_ctx;
-struct hdd_context;
+typedef struct hdd_adapter_s hdd_adapter_t;
+typedef struct hdd_context_s hdd_context_t;
+typedef struct hdd_station_ctx hdd_station_ctx_t;
+typedef struct hdd_ap_ctx_s hdd_ap_ctx_t;
 
 /**
  * hdd_is_connecting() - Function to check connection progress
@@ -225,7 +223,15 @@ struct hdd_context;
  *
  * Return: true if connecting, false otherwise
  */
-bool hdd_is_connecting(struct hdd_station_ctx *hdd_sta_ctx);
+bool hdd_is_connecting(hdd_station_ctx_t *hdd_sta_ctx);
+
+/**
+ * hdd_is_disconnecting() - Function to check disconnection progress
+ * @hdd_sta_ctx:    pointer to global HDD Station context
+ *
+ * Return: true if disconnecting, false otherwise
+ */
+bool hdd_is_disconnecting(hdd_station_ctx_t *hdd_sta_ctx);
 
 /*
  * hdd_is_fils_connection: API to determine if connection is FILS
@@ -233,32 +239,25 @@ bool hdd_is_connecting(struct hdd_station_ctx *hdd_sta_ctx);
  *
  * Return: true if fils connection else false
  */
-bool hdd_is_fils_connection(struct hdd_adapter *adapter);
+bool hdd_is_fils_connection(hdd_adapter_t *adapter);
+
 
 /**
  * hdd_conn_is_connected() - Function to check connection status
- * @sta_ctx:    pointer to global HDD Station context
+ * @pHddStaCtx:    pointer to global HDD Station context
  *
  * Return: false if any errors encountered, true otherwise
  */
-bool hdd_conn_is_connected(struct hdd_station_ctx *sta_ctx);
-
-/**
- * hdd_adapter_is_connected_sta() - check if @adapter is a connected station
- * @adapter: the adapter to check
- *
- * Return: true if @adapter is a connected station
- */
-bool hdd_adapter_is_connected_sta(struct hdd_adapter *adapter);
+bool hdd_conn_is_connected(hdd_station_ctx_t *pHddStaCtx);
 
 /**
  * hdd_conn_get_connected_band() - get current connection radio band
- * @sta_ctx:    pointer to global HDD Station context
+ * @pHddStaCtx:    pointer to global HDD Station context
  *
- * Return: BAND_2G or BAND_5G based on current AP connection
- *      BAND_ALL if not connected
+ * Return: SIR_BAND_2_4_GHZ or SIR_BAND_5_GHZ based on current AP connection
+ *      SIR_BAND_ALL if not connected
  */
-enum band_info hdd_conn_get_connected_band(struct hdd_station_ctx *sta_ctx);
+tSirRFBand hdd_conn_get_connected_band(hdd_station_ctx_t *pHddStaCtx);
 
 /**
  * hdd_get_sta_connection_in_progress() - get STA for which connection
@@ -267,8 +266,7 @@ enum band_info hdd_conn_get_connected_band(struct hdd_station_ctx *sta_ctx);
  *
  * Return: hdd adpater for which connection is in progress
  */
-struct hdd_adapter *hdd_get_sta_connection_in_progress(
-			struct hdd_context *hdd_ctx);
+hdd_adapter_t *hdd_get_sta_connection_in_progress(hdd_context_t *hdd_ctx);
 
 /**
  * hdd_abort_ongoing_sta_connection() - Disconnect the sta for which the
@@ -278,77 +276,73 @@ struct hdd_adapter *hdd_get_sta_connection_in_progress(
  *
  * Return: none
  */
-void hdd_abort_ongoing_sta_connection(struct hdd_context *hdd_ctx);
+void hdd_abort_ongoing_sta_connection(hdd_context_t *hdd_ctx);
 
 /**
  * hdd_sme_roam_callback() - hdd sme roam callback
  * @pContext: pointer to adapter context
- * @roam_info: pointer to roam info
+ * @pRoamInfo: pointer to roam info
  * @roamId: roam id
  * @roamStatus: roam status
  * @roamResult: roam result
  *
  * Return: QDF_STATUS enumeration
  */
-QDF_STATUS hdd_sme_roam_callback(void *pContext,
-				 struct csr_roam_info *roam_info,
+QDF_STATUS hdd_sme_roam_callback(void *pContext, tCsrRoamInfo *pRoamInfo,
 				 uint32_t roamId,
 				 eRoamCmdStatus roamStatus,
 				 eCsrRoamResult roamResult);
 
 /**
  * hdd_set_genie_to_csr() - set genie to csr
- * @adapter: pointer to adapter
+ * @pAdapter: pointer to adapter
  * @RSNAuthType: pointer to auth type
  *
  * Return: 0 on success, error number otherwise
  */
-int hdd_set_genie_to_csr(struct hdd_adapter *adapter,
-			 eCsrAuthType *RSNAuthType);
+int hdd_set_genie_to_csr(hdd_adapter_t *pAdapter, eCsrAuthType *RSNAuthType);
 
 /**
  * hdd_set_csr_auth_type() - set csr auth type
- * @adapter: pointer to adapter
+ * @pAdapter: pointer to adapter
  * @RSNAuthType: auth type
  *
  * Return: 0 on success, error number otherwise
  */
-int hdd_set_csr_auth_type(struct hdd_adapter *adapter,
-			  eCsrAuthType RSNAuthType);
+int hdd_set_csr_auth_type(hdd_adapter_t *pAdapter, eCsrAuthType RSNAuthType);
 
 #ifdef FEATURE_WLAN_TDLS
 /**
  * hdd_roam_register_tdlssta() - register new TDLS station
- * @adapter: pointer to adapter
+ * @pAdapter: pointer to adapter
  * @peerMac: pointer to peer MAC address
  * @staId: station identifier
- * @qos: Quality of service
+ * @ucastSig: unicast signature
  *
- * Construct the staDesc and register the new STA with the Data Plane.
+ * Construct the staDesc and register with TL the new STA.
  * This is called as part of ADD_STA in the TDLS setup.
  *
  * Return: QDF_STATUS enumeration
  */
-QDF_STATUS hdd_roam_register_tdlssta(struct hdd_adapter *adapter,
+QDF_STATUS hdd_roam_register_tdlssta(hdd_adapter_t *pAdapter,
 				     const uint8_t *peerMac, uint16_t staId,
-				     uint8_t qos);
+				     uint8_t ucastSig, uint8_t qos);
 #endif
 
-QDF_STATUS hdd_roam_deregister_tdlssta(struct hdd_adapter *adapter,
-				       uint8_t staId);
+QDF_STATUS hdd_roam_deregister_tdlssta(hdd_adapter_t *pAdapter, uint8_t staId);
 
 /**
  * hdd_perform_roam_set_key_complete() - perform set key complete
- * @adapter: pointer to adapter
+ * @pAdapter: pointer to adapter
  *
  * Return: none
  */
-void hdd_perform_roam_set_key_complete(struct hdd_adapter *adapter);
+void hdd_perform_roam_set_key_complete(hdd_adapter_t *pAdapter);
 
 #ifdef FEATURE_WLAN_ESE
 /**
  * hdd_indicate_ese_bcn_report_no_results() - beacon report no scan results
- * @adapter: pointer to adapter
+ * @pAdapter: pointer to adapter
  * @measurementToken: measurement token
  * @flag: flag
  * @numBss: number of bss
@@ -359,45 +353,40 @@ void hdd_perform_roam_set_key_complete(struct hdd_adapter *adapter);
  * Return: none
  */
 void
-hdd_indicate_ese_bcn_report_no_results(const struct hdd_adapter *adapter,
+hdd_indicate_ese_bcn_report_no_results(const hdd_adapter_t *pAdapter,
 					    const uint16_t measurementToken,
 					    const bool flag,
 					    const uint8_t numBss);
 #endif /* FEATURE_WLAN_ESE */
 
-QDF_STATUS hdd_change_peer_state(struct hdd_adapter *adapter,
+QDF_STATUS hdd_change_peer_state(hdd_adapter_t *pAdapter,
 				 uint8_t sta_id,
 				 enum ol_txrx_peer_state sta_state,
 				 bool roam_synch_in_progress);
 #ifdef WLAN_FEATURE_ROAM_OFFLOAD
-bool hdd_is_roam_sync_in_progress(struct csr_roam_info *roaminfo);
+bool hdd_is_roam_sync_in_progress(tCsrRoamInfo *roaminfo);
 #else
-static inline bool hdd_is_roam_sync_in_progress(struct csr_roam_info *roaminfo)
+static inline bool hdd_is_roam_sync_in_progress(tCsrRoamInfo *roaminfo)
 {
 	return false;
 }
 #endif
 
-QDF_STATUS hdd_update_dp_vdev_flags(void *cbk_data,
-				    uint8_t sta_id,
-				    uint32_t vdev_param,
-				    bool is_link_up);
+QDF_STATUS hdd_roam_register_sta(struct hdd_adapter_s *adapter,
+					struct tagCsrRoamInfo *roam_info,
+					uint8_t sta_id,
+					struct qdf_mac_addr *peer_mac_addr,
+					struct sSirBssDescription *bss_desc);
 
-QDF_STATUS hdd_roam_register_sta(struct hdd_adapter *adapter,
-				 struct csr_roam_info *roam_info,
-				 uint8_t sta_id,
-				 struct qdf_mac_addr *peer_mac_addr,
-				 struct bss_description *bss_desc);
-
-bool hdd_save_peer(struct hdd_station_ctx *sta_ctx, uint8_t sta_id,
+bool hdd_save_peer(hdd_station_ctx_t *sta_ctx, uint8_t sta_id,
 		   struct qdf_mac_addr *peer_mac_addr);
-void hdd_delete_peer(struct hdd_station_ctx *sta_ctx, uint8_t sta_id);
-QDF_STATUS hdd_roam_deregister_sta(struct hdd_adapter *adapter, uint8_t sta_id);
+void hdd_delete_peer(hdd_station_ctx_t *sta_ctx, uint8_t sta_id);
+int hdd_get_peer_idx(hdd_station_ctx_t *sta_ctx, struct qdf_mac_addr *addr);
+QDF_STATUS hdd_roam_deregister_sta(hdd_adapter_t *adapter, uint8_t sta_id);
 
 #ifdef WLAN_FEATURE_ROAM_OFFLOAD
-QDF_STATUS
-hdd_wma_send_fastreassoc_cmd(struct hdd_adapter *adapter,
-			     const tSirMacAddr bssid, int channel);
+QDF_STATUS hdd_wma_send_fastreassoc_cmd(hdd_adapter_t *adapter,
+				  const tSirMacAddr bssid, int channel);
 /**
  * hdd_save_gtk_params() - Save GTK offload params
  * @adapter: HDD adapter
@@ -406,45 +395,35 @@ hdd_wma_send_fastreassoc_cmd(struct hdd_adapter *adapter,
  *
  * Return: None
  */
-void hdd_save_gtk_params(struct hdd_adapter *adapter,
-			 struct csr_roam_info *csr_roam_info, bool is_reassoc);
+void hdd_save_gtk_params(hdd_adapter_t *adapter,
+			 tCsrRoamInfo *csr_roam_info, bool is_reassoc);
 #else
-static inline QDF_STATUS
-hdd_wma_send_fastreassoc_cmd(struct hdd_adapter *adapter,
-			     const tSirMacAddr bssid, int channel)
+static inline QDF_STATUS hdd_wma_send_fastreassoc_cmd(hdd_adapter_t *adapter,
+		const tSirMacAddr bssid, int channel)
 {
 	return QDF_STATUS_SUCCESS;
 }
-static inline void hdd_save_gtk_params(struct hdd_adapter *adapter,
-				       struct csr_roam_info *csr_roam_info,
+static inline void hdd_save_gtk_params(hdd_adapter_t *adapter,
+				       tCsrRoamInfo *csr_roam_info,
 				       bool is_reassoc)
 {
 }
 #endif
 
 /**
- * hdd_copy_ht_caps()- copy ht caps info from roam ht caps
- * info to source ht_cap info of type ieee80211_ht_cap.
+ * hdd_copy_ht_caps()- copy ht caps info from roam info to
+ *  hdd station context.
  * @hdd_ht_cap: pointer to Source ht_cap info of type ieee80211_ht_cap
  * @roam_ht_cap: pointer to roam ht_caps info
  *
  * Return: None
  */
-
 void hdd_copy_ht_caps(struct ieee80211_ht_cap *hdd_ht_cap,
 		      tDot11fIEHTCaps *roam_ht_cap);
 
 /**
- * hdd_add_beacon_filter() - add beacon filter
- * @adapter: Pointer to the hdd adapter
- *
- * Return: 0 on success and errno on failure
- */
-int hdd_add_beacon_filter(struct hdd_adapter *adapter);
-
-/**
- * hdd_copy_vht_caps()- copy vht caps info from roam vht caps
- * info to source vht_cap info of type ieee80211_vht_cap.
+ * hdd_copy_vht_caps()- copy vht caps info from roam info to
+ *  hdd station context.
  * @hdd_vht_cap: pointer to Source vht_cap info of type ieee80211_vht_cap
  * @roam_vht_cap: pointer to roam vht_caps info
  *
@@ -452,16 +431,5 @@ int hdd_add_beacon_filter(struct hdd_adapter *adapter);
  */
 void hdd_copy_vht_caps(struct ieee80211_vht_cap *hdd_vht_cap,
 		       tDot11fIEVHTCaps *roam_vht_cap);
-
-/**
- * hdd_roam_profile_init() - initialize adapter roam profile
- * @adapter: The HDD adapter being initialized
- *
- * This function initializes the roam profile that is embedded within
- * the adapter.
- *
- * Return: void
- */
-void hdd_roam_profile_init(struct hdd_adapter *adapter);
 
 #endif

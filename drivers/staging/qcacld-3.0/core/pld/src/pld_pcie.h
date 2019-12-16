@@ -20,11 +20,11 @@
 #define __PLD_PCIE_H__
 
 #ifdef CONFIG_PLD_PCIE_CNSS
-#include <net/cnss2.h>
+#include <net/cnss.h>
 #endif
 #include "pld_internal.h"
 
-#ifndef HIF_PCI
+#ifndef CONFIG_PCI
 static inline int pld_pcie_register_driver(void)
 {
 	return 0;
@@ -34,342 +34,231 @@ static inline void pld_pcie_unregister_driver(void)
 {
 }
 
-static inline int pld_pcie_get_ce_id(struct device *dev, int irq)
+static inline int pld_pcie_get_ce_id(int irq)
 {
 	return 0;
 }
 #else
 int pld_pcie_register_driver(void);
 void pld_pcie_unregister_driver(void);
-int pld_pcie_get_ce_id(struct device *dev, int irq);
+int pld_pcie_get_ce_id(int irq);
 #endif
 
-#ifndef CONFIG_PLD_PCIE_CNSS
-static inline int pld_pcie_wlan_enable(struct device *dev,
-				       struct pld_wlan_enable_cfg *config,
-				       enum pld_driver_mode mode,
-				       const char *host_version)
+#if (!defined(CONFIG_PLD_PCIE_CNSS)) || (!defined(QCA_WIFI_3_0_ADRASTEA))
+static inline int pld_pcie_wlan_enable(struct pld_wlan_enable_cfg *config,
+		    enum pld_driver_mode mode, const char *host_version)
 {
 	return 0;
 }
-
-static inline int pld_pcie_wlan_disable(struct device *dev,
-					enum pld_driver_mode mode)
+static inline int pld_pcie_wlan_disable(enum pld_driver_mode mode)
 {
 	return 0;
+}
+static inline int pld_pcie_set_fw_log_mode(u8 fw_log_mode)
+{
+	return 0;
+}
+static inline void pld_pcie_intr_notify_q6(void)
+{
 }
 #else
-int pld_pcie_wlan_enable(struct device *dev, struct pld_wlan_enable_cfg *config,
+int pld_pcie_wlan_enable(struct pld_wlan_enable_cfg *config,
 			 enum pld_driver_mode mode, const char *host_version);
-int pld_pcie_wlan_disable(struct device *dev, enum pld_driver_mode mode);
-#endif
-
-#if defined(CONFIG_PLD_PCIE_CNSS) && defined(QCA_WIFI_3_0_ADRASTEA)
-static inline int pld_pcie_set_fw_log_mode(struct device *dev, u8 fw_log_mode)
+int pld_pcie_wlan_disable(enum pld_driver_mode mode);
+static inline int pld_pcie_set_fw_log_mode(u8 fw_log_mode)
 {
 	return cnss_set_fw_debug_mode(fw_log_mode);
 }
-
-static inline void pld_pcie_intr_notify_q6(struct device *dev)
+static inline void pld_pcie_intr_notify_q6(void)
 {
 	cnss_intr_notify_q6();
-}
-#elif defined(CONFIG_PLD_PCIE_CNSS)
-static inline int pld_pcie_set_fw_log_mode(struct device *dev, u8 fw_log_mode)
-{
-	return cnss_set_fw_log_mode(dev, fw_log_mode);
-}
-
-static inline void pld_pcie_intr_notify_q6(struct device *dev)
-{
-}
-#else
-static inline int pld_pcie_set_fw_log_mode(struct device *dev, u8 fw_log_mode)
-{
-	return 0;
-}
-
-static inline void pld_pcie_intr_notify_q6(struct device *dev)
-{
 }
 #endif
 
 #if (!defined(CONFIG_PLD_PCIE_CNSS)) || (!defined(CONFIG_CNSS_SECURE_FW))
-static inline int pld_pcie_get_sha_hash(struct device *dev, const u8 *data,
+static inline int pld_pcie_get_sha_hash(const u8 *data,
 					u32 data_len, u8 *hash_idx, u8 *out)
 {
 	return 0;
 }
-
-static inline void *pld_pcie_get_fw_ptr(struct device *dev)
+static inline void *pld_pcie_get_fw_ptr(void)
 {
 	return NULL;
 }
 #else
-static inline int pld_pcie_get_sha_hash(struct device *dev, const u8 *data,
+static inline int pld_pcie_get_sha_hash(const u8 *data,
 					u32 data_len, u8 *hash_idx, u8 *out)
 {
 	return cnss_get_sha_hash(data, data_len, hash_idx, out);
 }
-
-static inline void *pld_pcie_get_fw_ptr(struct device *dev)
+static inline void *pld_pcie_get_fw_ptr(void)
 {
 	return cnss_get_fw_ptr();
 }
 #endif
 
 #if (!defined(CONFIG_PLD_PCIE_CNSS)) || (!defined(CONFIG_PCI_MSM))
-static inline int pld_pcie_wlan_pm_control(struct device *dev, bool vote)
+static inline int pld_pcie_wlan_pm_control(bool vote)
 {
 	return 0;
 }
 #else
-static inline int pld_pcie_wlan_pm_control(struct device *dev, bool vote)
+static inline int pld_pcie_wlan_pm_control(bool vote)
 {
-	return cnss_wlan_pm_control(dev, vote);
+	return cnss_wlan_pm_control(vote);
 }
 #endif
 
 #ifndef CONFIG_PLD_PCIE_CNSS
+static inline void *pld_pcie_smmu_get_mapping(void)
+{
+	return NULL;
+}
+static inline int pld_pcie_smmu_map(phys_addr_t paddr,
+				    uint32_t *iova_addr, size_t size)
+{
+	return 0;
+}
 static inline int
-pld_pcie_get_fw_files_for_target(struct device *dev,
-				 struct pld_fw_files *pfw_files,
+pld_pcie_get_fw_files_for_target(struct pld_fw_files *pfw_files,
 				 u32 target_type, u32 target_version)
 {
 	pld_get_default_fw_files(pfw_files);
 	return 0;
 }
-
-static inline void pld_pcie_link_down(struct device *dev)
+static inline void pld_pcie_link_down(void)
 {
 }
-
-static inline int pld_pcie_athdiag_read(struct device *dev, uint32_t offset,
-					uint32_t memtype, uint32_t datalen,
-					uint8_t *output)
+static inline int pld_pcie_shadow_control(bool enable)
 {
 	return 0;
 }
-
-static inline int pld_pcie_athdiag_write(struct device *dev, uint32_t offset,
-					 uint32_t memtype, uint32_t datalen,
-					 uint8_t *input)
-{
-	return 0;
-}
-
-static inline void
-pld_pcie_schedule_recovery_work(struct device *dev,
-				enum pld_recovery_reason reason)
+static inline void pld_pcie_schedule_recovery_work(void)
 {
 }
-
-static inline void *pld_pcie_get_virt_ramdump_mem(struct device *dev,
-						  unsigned long *size)
+static inline void *pld_pcie_get_virt_ramdump_mem(unsigned long *size)
 {
 	return NULL;
 }
-
-static inline void pld_pcie_device_crashed(struct device *dev)
+static inline void pld_pcie_device_crashed(void)
 {
 }
-
-static inline void pld_pcie_device_self_recovery(struct device *dev,
-					 enum pld_recovery_reason reason)
+static inline void pld_pcie_device_self_recovery(void)
 {
 }
-
-static inline void pld_pcie_request_pm_qos(struct device *dev, u32 qos_val)
+static inline void pld_pcie_request_pm_qos(u32 qos_val)
 {
 }
-
-static inline void pld_pcie_remove_pm_qos(struct device *dev)
+static inline void pld_pcie_remove_pm_qos(void)
 {
 }
-
-static inline int pld_pcie_request_bus_bandwidth(struct device *dev,
-						 int bandwidth)
+static inline int pld_pcie_request_bus_bandwidth(int bandwidth)
 {
 	return 0;
 }
-
-static inline int pld_pcie_get_platform_cap(struct device *dev,
-					    struct pld_platform_cap *cap)
+static inline int pld_pcie_get_platform_cap(struct pld_platform_cap *cap)
 {
 	return 0;
 }
-
-static inline int pld_pcie_get_soc_info(struct device *dev,
-					struct pld_soc_info *info)
+static inline void pld_pcie_set_driver_status(enum pld_driver_status status)
+{
+}
+static inline int pld_pcie_auto_suspend(void)
 {
 	return 0;
 }
-
-static inline int pld_pcie_auto_suspend(struct device *dev)
+static inline int pld_pcie_auto_resume(void)
 {
 	return 0;
 }
-
-static inline int pld_pcie_auto_resume(struct device *dev)
-{
-	return 0;
-}
-
-static inline void pld_pcie_lock_pm_sem(struct device *dev)
+static inline void pld_pcie_lock_pm_sem(void)
 {
 }
-
-static inline void pld_pcie_release_pm_sem(struct device *dev)
+static inline void pld_pcie_release_pm_sem(void)
 {
 }
-
 static inline int pld_pcie_power_on(struct device *dev)
 {
 	return 0;
 }
-
 static inline int pld_pcie_power_off(struct device *dev)
 {
 	return 0;
 }
-
-static inline int pld_pcie_force_assert_target(struct device *dev)
-{
-	return -EINVAL;
-}
-
-static inline int pld_pcie_get_user_msi_assignment(struct device *dev,
-						   char *user_name,
-						   int *num_vectors,
-						   uint32_t *user_base_data,
-						   uint32_t *base_vector)
-{
-	return 0;
-}
-
-static inline int pld_pcie_get_msi_irq(struct device *dev, unsigned int vector)
-{
-	return 0;
-}
-
-static inline void pld_pcie_get_msi_address(struct device *dev,
-					    uint32_t *msi_addr_low,
-					    uint32_t *msi_addr_high)
-{
-	return;
-}
 #else
-int pld_pcie_get_fw_files_for_target(struct device *dev,
-				     struct pld_fw_files *pfw_files,
+static inline void *pld_pcie_smmu_get_mapping(void)
+{
+	return cnss_smmu_get_mapping();
+}
+static inline int pld_pcie_smmu_map(phys_addr_t paddr,
+				    uint32_t *iova_addr, size_t size)
+{
+	return cnss_smmu_map(paddr, iova_addr, size);
+}
+int pld_pcie_get_fw_files_for_target(struct pld_fw_files *pfw_files,
 				     u32 target_type, u32 target_version);
-int pld_pcie_get_platform_cap(struct device *dev, struct pld_platform_cap *cap);
-int pld_pcie_get_soc_info(struct device *dev, struct pld_soc_info *info);
-void pld_pcie_schedule_recovery_work(struct device *dev,
-				     enum pld_recovery_reason reason);
-void pld_pcie_device_self_recovery(struct device *dev,
-				   enum pld_recovery_reason reason);
+int pld_pcie_get_platform_cap(struct pld_platform_cap *cap);
+void pld_pcie_set_driver_status(enum pld_driver_status status);
 
-static inline void pld_pcie_link_down(struct device *dev)
+static inline void pld_pcie_link_down(void)
 {
-	cnss_pci_link_down(dev);
+	cnss_wlan_pci_link_down();
 }
-
-static inline int pld_pcie_athdiag_read(struct device *dev, uint32_t offset,
-					uint32_t memtype, uint32_t datalen,
-					uint8_t *output)
+static inline int pld_pcie_shadow_control(bool enable)
 {
-	return cnss_athdiag_read(dev, offset, memtype, datalen, output);
+	return 0;
 }
-
-static inline int pld_pcie_athdiag_write(struct device *dev, uint32_t offset,
-					 uint32_t memtype, uint32_t datalen,
-					 uint8_t *input)
+static inline void pld_pcie_schedule_recovery_work(void)
 {
-	return cnss_athdiag_write(dev, offset, memtype, datalen, input);
+	cnss_schedule_recovery_work();
 }
-
-static inline void *pld_pcie_get_virt_ramdump_mem(struct device *dev,
-						  unsigned long *size)
+static inline void *pld_pcie_get_virt_ramdump_mem(unsigned long *size)
 {
-	return cnss_get_virt_ramdump_mem(dev, size);
+	return cnss_get_virt_ramdump_mem(size);
 }
-
-static inline void pld_pcie_device_crashed(struct device *dev)
+static inline void pld_pcie_device_crashed(void)
 {
-	cnss_device_crashed(dev);
+	cnss_device_crashed();
 }
-
-static inline void pld_pcie_request_pm_qos(struct device *dev, u32 qos_val)
+static inline void pld_pcie_device_self_recovery(void)
 {
-	cnss_request_pm_qos(dev, qos_val);
+	cnss_device_self_recovery();
 }
-
-static inline void pld_pcie_remove_pm_qos(struct device *dev)
+static inline void pld_pcie_request_pm_qos(u32 qos_val)
 {
-	cnss_remove_pm_qos(dev);
+	cnss_request_pm_qos(qos_val);
 }
-
-static inline int pld_pcie_request_bus_bandwidth(struct device *dev,
-						 int bandwidth)
+static inline void pld_pcie_remove_pm_qos(void)
 {
-	return cnss_request_bus_bandwidth(dev, bandwidth);
+	cnss_remove_pm_qos();
 }
-
-static inline int pld_pcie_auto_suspend(struct device *dev)
+static inline int pld_pcie_request_bus_bandwidth(int bandwidth)
 {
-	return cnss_auto_suspend(dev);
+	return cnss_request_bus_bandwidth(bandwidth);
 }
-
-static inline int pld_pcie_auto_resume(struct device *dev)
+static inline int pld_pcie_auto_suspend(void)
 {
-	return cnss_auto_resume(dev);
+	return cnss_auto_suspend();
 }
-
-static inline void pld_pcie_lock_pm_sem(struct device *dev)
+static inline int pld_pcie_auto_resume(void)
 {
-	cnss_lock_pm_sem(dev);
+	return cnss_auto_resume();
 }
-
-static inline void pld_pcie_release_pm_sem(struct device *dev)
+static inline void pld_pcie_lock_pm_sem(void)
 {
-	cnss_release_pm_sem(dev);
+	cnss_lock_pm_sem();
 }
-
+static inline void pld_pcie_release_pm_sem(void)
+{
+	cnss_release_pm_sem();
+}
 static inline int pld_pcie_power_on(struct device *dev)
 {
 	return cnss_power_up(dev);
 }
-
 static inline int pld_pcie_power_off(struct device *dev)
 {
 	return cnss_power_down(dev);
-}
-
-static inline int pld_pcie_force_assert_target(struct device *dev)
-{
-	return cnss_force_fw_assert(dev);
-}
-
-static inline int pld_pcie_get_user_msi_assignment(struct device *dev,
-						   char *user_name,
-						   int *num_vectors,
-						   uint32_t *user_base_data,
-						   uint32_t *base_vector)
-{
-	return cnss_get_user_msi_assignment(dev, user_name, num_vectors,
-					    user_base_data, base_vector);
-}
-
-static inline int pld_pcie_get_msi_irq(struct device *dev, unsigned int vector)
-{
-	return cnss_get_msi_irq(dev, vector);
-}
-
-static inline void pld_pcie_get_msi_address(struct device *dev,
-					    uint32_t *msi_addr_low,
-					    uint32_t *msi_addr_high)
-{
-	cnss_get_msi_address(dev, msi_addr_low, msi_addr_high);
 }
 #endif
 #endif

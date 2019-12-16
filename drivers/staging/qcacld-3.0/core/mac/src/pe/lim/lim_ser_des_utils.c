@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2017 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -76,16 +76,16 @@ lim_get_session_info(tpAniSirGlobal pMac, uint8_t *pBuf, uint8_t *sessionId,
  *
  * function send's disassoc frame request on receiving SME_DISASSOC_REQ
  *
- * return: QDF_STATUS_SUCCESS:Success Error value: Failure
+ * return: eSIR_SUCCESS:Success Error value: Failure
  */
-QDF_STATUS lim_send_disassoc_frm_req_ser_des(tpAniSirGlobal mac_ctx,
+tSirRetStatus lim_send_disassoc_frm_req_ser_des(tpAniSirGlobal mac_ctx,
 			struct sme_send_disassoc_frm_req *disassoc_frm_req,
 			uint8_t *buf)
 {
 	A_INT16 len = 0;
 
 	if (!disassoc_frm_req || !buf)
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 
 	disassoc_frm_req->msg_type = lim_get_u16(buf);
 	buf += sizeof(A_UINT16);
@@ -94,19 +94,19 @@ QDF_STATUS lim_send_disassoc_frm_req_ser_des(tpAniSirGlobal mac_ctx,
 	buf += sizeof(A_UINT16);
 
 	if (len < (A_INT16) sizeof(A_UINT32))
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 
 	/* skip message header */
 	len -= sizeof(A_UINT32);
 	if (len < 0)
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 
 	/* Extract sessionID */
 	disassoc_frm_req->session_id = *buf;
 	buf += sizeof(A_UINT8);
 	len -= sizeof(A_UINT8);
 	if (len < 0)
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 
 	/* Extract transactionid */
 	disassoc_frm_req->trans_id = lim_get_u16(buf);
@@ -114,7 +114,7 @@ QDF_STATUS lim_send_disassoc_frm_req_ser_des(tpAniSirGlobal mac_ctx,
 	len -= sizeof(A_UINT16);
 
 	if (len < 0)
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 
 	/* Extract peerMacAddr */
 	qdf_mem_copy(disassoc_frm_req->peer_mac, buf, sizeof(tSirMacAddr));
@@ -122,7 +122,7 @@ QDF_STATUS lim_send_disassoc_frm_req_ser_des(tpAniSirGlobal mac_ctx,
 	len  -= sizeof(tSirMacAddr);
 
 	if (len < 0)
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 
 	/* Extract reasonCode */
 	disassoc_frm_req->reason = lim_get_u16(buf);
@@ -130,11 +130,11 @@ QDF_STATUS lim_send_disassoc_frm_req_ser_des(tpAniSirGlobal mac_ctx,
 	len  -= sizeof(A_UINT16);
 
 	if (len < 0)
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 
 	disassoc_frm_req->wait_for_ack = *buf;
 	buf += sizeof(A_UINT8);
 	len -= sizeof(A_UINT8);
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }

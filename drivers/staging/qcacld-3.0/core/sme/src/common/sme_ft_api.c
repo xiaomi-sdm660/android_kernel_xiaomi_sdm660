@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017,2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -20,18 +20,17 @@
 #include <ani_global.h>
 #include <csr_inside_api.h>
 #include <csr_neighbor_roam.h>
-#include <sir_api.h>
 
 /* Initialize the FT context. */
 void sme_ft_open(tHalHandle hHal, uint32_t sessionId)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
-	struct csr_roam_session *pSession = CSR_GET_SESSION(pMac, sessionId);
+	tCsrRoamSession *pSession = CSR_GET_SESSION(pMac, sessionId);
 
 	if (NULL != pSession) {
 		/* Clean up the context */
-		qdf_mem_zero(&pSession->ftSmeContext, sizeof(tftSMEContext));
+		qdf_mem_set(&pSession->ftSmeContext, sizeof(tftSMEContext), 0);
 
 		pSession->ftSmeContext.pUsrCtx =
 			qdf_mem_malloc(sizeof(tFTRoamCallbackUsrCtx));
@@ -63,7 +62,7 @@ void sme_ft_open(tHalHandle hHal, uint32_t sessionId)
 void sme_ft_close(tHalHandle hHal, uint32_t sessionId)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
-	struct csr_roam_session *pSession = NULL;
+	tCsrRoamSession *pSession = NULL;
 
 	/* Clear the FT Context */
 	sme_ft_reset(hHal, sessionId);
@@ -79,7 +78,7 @@ void sme_ft_close(tHalHandle hHal, uint32_t sessionId)
 		}
 
 		qdf_mc_timer_destroy(&pSession->ftSmeContext.
-					preAuthReassocIntvlTimer);
+					 preAuthReassocIntvlTimer);
 
 		if (pSession->ftSmeContext.pUsrCtx != NULL) {
 			qdf_mem_free(pSession->ftSmeContext.pUsrCtx);
@@ -91,7 +90,7 @@ void sme_ft_close(tHalHandle hHal, uint32_t sessionId)
 void sme_set_ft_pre_auth_state(tHalHandle hHal, uint32_t sessionId, bool state)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
-	struct csr_roam_session *pSession = CSR_GET_SESSION(pMac, sessionId);
+	tCsrRoamSession *pSession = CSR_GET_SESSION(pMac, sessionId);
 
 	if (pSession)
 		pSession->ftSmeContext.setFTPreAuthState = state;
@@ -100,7 +99,7 @@ void sme_set_ft_pre_auth_state(tHalHandle hHal, uint32_t sessionId, bool state)
 bool sme_get_ft_pre_auth_state(tHalHandle hHal, uint32_t sessionId)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
-	struct csr_roam_session *pSession = CSR_GET_SESSION(pMac, sessionId);
+	tCsrRoamSession *pSession = CSR_GET_SESSION(pMac, sessionId);
 
 	if (pSession)
 		return pSession->ftSmeContext.setFTPreAuthState;
@@ -116,7 +115,7 @@ bool sme_get_ft_pre_auth_state(tHalHandle hHal, uint32_t sessionId)
  * @ft_ies_length: length of FT IEs
  *
  * Each time the supplicant sends down the FT IEs to the driver. This function
- * is called in SME. This function packages and sends the FT IEs to PE.
+ * is called in SME. This fucntion packages and sends the FT IEs to PE.
  *
  * Return: none
  */
@@ -124,7 +123,7 @@ void sme_set_ft_ies(tHalHandle hal_ptr, uint32_t session_id,
 		const uint8_t *ft_ies, uint16_t ft_ies_length)
 {
 	tpAniSirGlobal mac_ctx = PMAC_STRUCT(hal_ptr);
-	struct csr_roam_session *session = CSR_GET_SESSION(mac_ctx, session_id);
+	tCsrRoamSession *session = CSR_GET_SESSION(mac_ctx, session_id);
 	QDF_STATUS status = QDF_STATUS_E_FAILURE;
 
 	if (NULL == session || NULL == ft_ies) {
@@ -226,7 +225,7 @@ void sme_set_ft_ies(tHalHandle hal_ptr, uint32_t session_id,
 
 /**
  * sme_ft_send_update_key_ind() - To send key update indication for FT session
- * @mac: pointer to MAC context
+ * @hal: pointer to HAL
  * @session_id: sme session id
  * @ftkey_info: FT key information
  *
@@ -235,7 +234,7 @@ void sme_set_ft_ies(tHalHandle hal_ptr, uint32_t session_id,
  * Return: QDF_STATUS
  */
 static
-QDF_STATUS sme_ft_send_update_key_ind(tpAniSirGlobal mac, uint32_t session_id,
+QDF_STATUS sme_ft_send_update_key_ind(tHalHandle hal, uint32_t session_id,
 				      tCsrRoamSetKey *ftkey_info)
 {
 	tSirFTUpdateKeyInfo *msg;
@@ -280,7 +279,7 @@ QDF_STATUS sme_ft_send_update_key_ind(tpAniSirGlobal mac, uint32_t session_id,
 	qdf_copy_macaddr(&msg->bssid, &ftkey_info->peerMac);
 	msg->smeSessionId = session_id;
 	sme_debug("BSSID = " MAC_ADDRESS_STR, MAC_ADDR_ARRAY(msg->bssid.bytes));
-	status = umac_send_mb_message_to_mac(msg);
+	status = cds_send_mb_message_to_mac(msg);
 
 	return status;
 }
@@ -288,7 +287,7 @@ QDF_STATUS sme_ft_send_update_key_ind(tpAniSirGlobal mac, uint32_t session_id,
 bool sme_get_ftptk_state(tHalHandle hHal, uint32_t sessionId)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
-	struct csr_roam_session *pSession = CSR_GET_SESSION(pMac, sessionId);
+	tCsrRoamSession *pSession = CSR_GET_SESSION(pMac, sessionId);
 
 	if (!pSession) {
 		sme_err("pSession is NULL");
@@ -300,7 +299,7 @@ bool sme_get_ftptk_state(tHalHandle hHal, uint32_t sessionId)
 void sme_set_ftptk_state(tHalHandle hHal, uint32_t sessionId, bool state)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
-	struct csr_roam_session *pSession = CSR_GET_SESSION(pMac, sessionId);
+	tCsrRoamSession *pSession = CSR_GET_SESSION(pMac, sessionId);
 
 	if (!pSession) {
 		sme_err("pSession is NULL");
@@ -313,7 +312,7 @@ QDF_STATUS sme_ft_update_key(tHalHandle hHal, uint32_t sessionId,
 			     tCsrRoamSetKey *pFTKeyInfo)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
-	struct csr_roam_session *pSession = CSR_GET_SESSION(pMac, sessionId);
+	tCsrRoamSession *pSession = CSR_GET_SESSION(pMac, sessionId);
 	QDF_STATUS status = QDF_STATUS_E_FAILURE;
 
 	if (!pSession) {
@@ -357,7 +356,7 @@ QDF_STATUS sme_ft_update_key(tHalHandle hHal, uint32_t sessionId,
 		break;
 
 	default:
-		sme_debug("Unhandled state:%d", pSession->ftSmeContext.FTState);
+		sme_warn("Unhandled state: %d", pSession->ftSmeContext.FTState);
 		status = QDF_STATUS_E_FAILURE;
 		break;
 	}
@@ -376,7 +375,7 @@ void sme_get_ft_pre_auth_response(tHalHandle hHal, uint32_t sessionId,
 				  uint16_t *ft_ies_length)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
-	struct csr_roam_session *pSession = CSR_GET_SESSION(pMac, sessionId);
+	tCsrRoamSession *pSession = CSR_GET_SESSION(pMac, sessionId);
 	QDF_STATUS status = QDF_STATUS_E_FAILURE;
 
 	if (!pSession) {
@@ -425,7 +424,7 @@ void sme_get_rici_es(tHalHandle hHal, uint32_t sessionId, uint8_t *ric_ies,
 		     uint32_t ric_ies_ip_len, uint32_t *ric_ies_length)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
-	struct csr_roam_session *pSession = CSR_GET_SESSION(pMac, sessionId);
+	tCsrRoamSession *pSession = CSR_GET_SESSION(pMac, sessionId);
 	QDF_STATUS status = QDF_STATUS_E_FAILURE;
 
 	if (!pSession) {
@@ -473,21 +472,10 @@ void sme_preauth_reassoc_intvl_timer_callback(void *context)
 						  pUsrCtx->sessionId);
 }
 
-#ifdef WLAN_FEATURE_ROAM_OFFLOAD
-#ifdef FEATURE_WLAN_ESE
-static void sme_reset_esecckm_info(struct csr_roam_session *session)
-{
-	qdf_mem_zero(&session->eseCckmInfo, sizeof(session->eseCckmInfo));
-}
-#else
-static void sme_reset_esecckm_info(struct csr_roam_session *session)
-{
-}
-#endif
-void sme_reset_key(mac_handle_t mac_handle, uint32_t vdev_id)
+void sme_reset_key(tHalHandle mac_handle, uint32_t vdev_id)
 {
 	tpAniSirGlobal mac = PMAC_STRUCT(mac_handle);
-	struct csr_roam_session *session = NULL;
+	tCsrRoamSession *session = NULL;
 
 	if (!mac) {
 		sme_err("mac is NULL");
@@ -499,14 +487,14 @@ void sme_reset_key(mac_handle_t mac_handle, uint32_t vdev_id)
 		return;
 	qdf_mem_zero(&session->psk_pmk, sizeof(session->psk_pmk));
 	session->pmk_len = 0;
-	sme_reset_esecckm_info(session);
+	qdf_mem_zero(&session->eseCckmInfo, sizeof(session->eseCckmInfo));
 }
-#endif
+
 /* Reset the FT context. */
 void sme_ft_reset(tHalHandle hHal, uint32_t sessionId)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
-	struct csr_roam_session *pSession = NULL;
+	tCsrRoamSession *pSession = NULL;
 
 	if (pMac == NULL) {
 		QDF_TRACE(QDF_MODULE_ID_SME, QDF_TRACE_LEVEL_ERROR,

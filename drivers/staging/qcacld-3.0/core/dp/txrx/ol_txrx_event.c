@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -17,6 +17,8 @@
  */
 
 #include "ol_txrx_types.h"
+
+#ifdef WDI_EVENT_ENABLE
 
 static inline wdi_event_subscribe *wdi_event_next_sub(wdi_event_subscribe *
 						      wdi_sub)
@@ -59,20 +61,17 @@ wdi_event_iter_sub(struct ol_txrx_pdev_t *pdev,
 
 	if (wdi_sub) {
 		do {
-			wdi_sub->callback(pdev, event, data, 0, 0);
+			wdi_sub->callback(pdev, event, data);
 		} while ((wdi_sub = wdi_event_next_sub(wdi_sub)));
 	}
 }
 
 void
 wdi_event_handler(enum WDI_EVENT event,
-		  struct cdp_pdev *ppdev, void *data)
+		  struct ol_txrx_pdev_t *txrx_pdev, void *data)
 {
 	uint32_t event_index;
 	wdi_event_subscribe *wdi_sub;
-	struct ol_txrx_pdev_t *txrx_pdev =
-				(struct ol_txrx_pdev_t *)ppdev;
-
 	/*
 	 * Input validation
 	 */
@@ -98,33 +97,28 @@ wdi_event_handler(enum WDI_EVENT event,
 	wdi_event_iter_sub(txrx_pdev, event_index, wdi_sub, data);
 }
 
-int
-wdi_event_sub(struct cdp_pdev *ppdev,
-	      void *pevent_cb_sub, uint32_t event)
+A_STATUS
+wdi_event_sub(struct ol_txrx_pdev_t *txrx_pdev,
+	      wdi_event_subscribe *event_cb_sub, enum WDI_EVENT event)
 {
 	uint32_t event_index;
 	wdi_event_subscribe *wdi_sub;
-	struct ol_txrx_pdev_t *txrx_pdev =
-				(struct ol_txrx_pdev_t *)ppdev;
-	wdi_event_subscribe *event_cb_sub =
-				(wdi_event_subscribe *)pevent_cb_sub;
-
 	/* Input validation */
 	if (!txrx_pdev || !txrx_pdev->wdi_event_list) {
 		QDF_TRACE(QDF_MODULE_ID_TXRX, QDF_TRACE_LEVEL_ERROR,
 			  "Invalid txrx_pdev or wdi_event_list in %s",
 			  __func__);
-		return -EINVAL;
+		return A_ERROR;
 	}
 	if (!event_cb_sub) {
 		QDF_TRACE(QDF_MODULE_ID_TXRX, QDF_TRACE_LEVEL_ERROR,
 			  "Invalid callback in %s", __func__);
-		return -EINVAL;
+		return A_ERROR;
 	}
 	if ((!event) || (event >= WDI_EVENT_LAST) || (event < WDI_EVENT_BASE)) {
 		QDF_TRACE(QDF_MODULE_ID_TXRX, QDF_TRACE_LEVEL_ERROR,
 			  "Invalid event in %s", __func__);
-		return -EINVAL;
+		return A_ERROR;
 	}
 	/* Input validation */
 	event_index = event - WDI_EVENT_BASE;
@@ -138,33 +132,27 @@ wdi_event_sub(struct cdp_pdev *ppdev,
 		wdi_sub->priv.next = NULL;
 		wdi_sub->priv.prev = NULL;
 		txrx_pdev->wdi_event_list[event_index] = wdi_sub;
-		return 0;
+		return A_OK;
 	}
 	event_cb_sub->priv.next = wdi_sub;
 	event_cb_sub->priv.prev = NULL;
 	wdi_sub->priv.prev = event_cb_sub;
 	txrx_pdev->wdi_event_list[event_index] = event_cb_sub;
 
-	return 0;
+	return A_OK;
 }
 
-int
-wdi_event_unsub(struct cdp_pdev *ppdev,
-		void *pevent_cb_sub, uint32_t event)
+A_STATUS
+wdi_event_unsub(struct ol_txrx_pdev_t *txrx_pdev,
+		wdi_event_subscribe *event_cb_sub, enum WDI_EVENT event)
 {
 	uint32_t event_index = event - WDI_EVENT_BASE;
-
-	struct ol_txrx_pdev_t *txrx_pdev =
-				(struct ol_txrx_pdev_t *)ppdev;
-
-	wdi_event_subscribe *event_cb_sub =
-				(wdi_event_subscribe *)pevent_cb_sub;
 
 	/* Input validation */
 	if (!event_cb_sub) {
 		QDF_TRACE(QDF_MODULE_ID_TXRX, QDF_TRACE_LEVEL_ERROR,
 			  "Invalid callback in %s", __func__);
-		return -EINVAL;
+		return A_ERROR;
 	}
 	if (!event_cb_sub->priv.prev) {
 		txrx_pdev->wdi_event_list[event_index] =
@@ -177,7 +165,7 @@ wdi_event_unsub(struct cdp_pdev *ppdev,
 
 	/* qdf_mem_free(event_cb_sub); */
 
-	return 0;
+	return A_OK;
 }
 
 A_STATUS wdi_event_attach(struct ol_txrx_pdev_t *txrx_pdev)
@@ -231,3 +219,5 @@ A_STATUS wdi_event_detach(struct ol_txrx_pdev_t *txrx_pdev)
 	txrx_pdev->wdi_event_list = NULL;
 	return A_OK;
 }
+
+#endif /* WDI_EVENT_ENABLE */

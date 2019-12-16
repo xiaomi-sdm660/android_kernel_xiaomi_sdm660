@@ -44,7 +44,7 @@
 
 #include <cds_utils.h>
 
-/* IPA Micro controller TX data packet HTT Header Preset
+/* IPA Micro controler TX data packet HTT Header Preset
  * 31 | 30  29 | 28 | 27 | 26  22  | 21   16 | 15  13   | 12  8      | 7 0
  ***----------------------------------------------------------------------------
  * R  | CS  OL | R  | PP | ext TID | vdev ID | pkt type | pkt subtyp | msg type
@@ -473,7 +473,7 @@ int htt_tx_credit_update(struct htt_pdev_t *pdev)
 /**
  * htt_tx_get_paddr() - get physical address for htt desc
  *
- * Get HTT descriptor physical address from virtual address
+ * Get HTT descriptor physical address from virtaul address
  * Find page first and find offset
  * Not required for HL systems
  *
@@ -797,7 +797,6 @@ int htt_tx_send_std(htt_pdev_handle pdev, qdf_nbuf_t msdu, uint16_t msdu_id)
 
 	QDF_NBUF_UPDATE_TX_PKT_COUNT(msdu, QDF_NBUF_TX_PKT_HTT);
 	DPTRACE(qdf_dp_trace(msdu, QDF_DP_TRACE_HTT_PACKET_PTR_RECORD,
-				QDF_TRACE_DEFAULT_PDEV_ID,
 				qdf_nbuf_data_addr(msdu),
 				sizeof(qdf_nbuf_data(msdu)), QDF_TX));
 	if (qdf_nbuf_queue_len(&pdev->txnbufq) > 0) {
@@ -838,7 +837,7 @@ htt_tx_resume_handler(void *context) { }
 qdf_nbuf_t
 htt_tx_send_batch(htt_pdev_handle pdev, qdf_nbuf_t head_msdu, int num_msdus)
 {
-	qdf_print("*** %s currently only applies for HL systems\n", __func__);
+	qdf_print("*** %s curently only applies for HL systems\n", __func__);
 	qdf_assert(0);
 	return head_msdu;
 
@@ -940,7 +939,6 @@ htt_tx_send_base(htt_pdev_handle pdev,
 
 	QDF_NBUF_UPDATE_TX_PKT_COUNT(msdu, QDF_NBUF_TX_PKT_HTT);
 	DPTRACE(qdf_dp_trace(msdu, QDF_DP_TRACE_HTT_PACKET_PTR_RECORD,
-				QDF_TRACE_DEFAULT_PDEV_ID,
 				qdf_nbuf_data_addr(msdu),
 				sizeof(qdf_nbuf_data(msdu)), QDF_TX));
 	htc_send_data_pkt(pdev->htc_pdev, &pkt->htc_pkt, more_data);
@@ -1030,13 +1028,13 @@ void htt_tx_desc_display(void *tx_desc)
 #if HTT_PADDR64
 	qdf_debug("  frag desc addr.lo = %#x",
 		  htt_tx_desc->frags_desc_ptr.lo);
-	qdf_debug("  frag desc addr.hi = %#x",
+	qdf_print("  frag desc addr.hi = %#x",
 		  htt_tx_desc->frags_desc_ptr.hi);
 #else /* ! HTT_PADDR64 */
-	qdf_debug("  frag desc addr = %#x", htt_tx_desc->frags_desc_ptr);
+	qdf_print("  frag desc addr = %#x", htt_tx_desc->frags_desc_ptr);
 #endif /* HTT_PADDR64 */
-	qdf_debug("  peerid = %d", htt_tx_desc->peerid);
-	qdf_debug("  chanfreq = %d", htt_tx_desc->chanfreq);
+	qdf_print("  peerid = %d", htt_tx_desc->peerid);
+	qdf_print("  chanfreq = %d", htt_tx_desc->chanfreq);
 }
 #endif
 
@@ -1087,8 +1085,9 @@ static int htt_tx_ipa_uc_wdi_tx_buf_alloc(struct htt_pdev_t *pdev,
 							    uc_tx_buf_sz);
 		if (!shared_tx_buffer || !shared_tx_buffer->vaddr) {
 			qdf_print("IPA WDI TX buffer alloc fail %d allocated\n",
-				tx_buffer_count);
-			goto pwr2;
+				  tx_buffer_count);
+			tx_buffer_count_pwr2 = tx_buffer_count;
+			goto free_mem_map_table;
 		}
 
 		header_ptr = shared_tx_buffer->vaddr;
@@ -1139,7 +1138,6 @@ static int htt_tx_ipa_uc_wdi_tx_buf_alloc(struct htt_pdev_t *pdev,
 		}
 	}
 
-pwr2:
 	/*
 	 * Tx complete ring buffer count should be power of 2.
 	 * So, allocated Tx buffer count should be one less than ring buffer
@@ -1164,6 +1162,7 @@ pwr2:
 		}
 	}
 
+free_mem_map_table:
 	if (qdf_mem_smmu_s1_enabled(pdev->osdev)) {
 		cds_smmu_map_unmap(true, tx_buffer_count_pwr2,
 				   mem_map_table);
@@ -1253,7 +1252,8 @@ static int htt_tx_ipa_uc_wdi_tx_buf_alloc(struct htt_pdev_t *pdev,
 		if (!shared_tx_buffer || !shared_tx_buffer->vaddr) {
 			qdf_print("%s: TX BUF alloc fail, loop index: %d",
 				  __func__, tx_buffer_count);
-			goto pwr2;
+			tx_buffer_count_pwr2 = tx_buffer_count;
+			goto free_mem_map_table;
 		}
 
 		/* Init buffer */
@@ -1294,7 +1294,6 @@ static int htt_tx_ipa_uc_wdi_tx_buf_alloc(struct htt_pdev_t *pdev,
 		}
 	}
 
-pwr2:
 	/*
 	 * Tx complete ring buffer count should be power of 2.
 	 * So, allocated Tx buffer count should be one less than ring buffer
@@ -1319,6 +1318,7 @@ pwr2:
 		}
 	}
 
+free_mem_map_table:
 	if (qdf_mem_smmu_s1_enabled(pdev->osdev)) {
 		cds_smmu_map_unmap(true, tx_buffer_count_pwr2,
 				   mem_map_table);
@@ -1430,9 +1430,11 @@ int htt_tx_ipa_uc_attach(struct htt_pdev_t *pdev,
 free_tx_comp_base:
 	qdf_mem_shared_mem_free(pdev->osdev,
 				pdev->ipa_uc_tx_rsc.tx_comp_ring);
+	pdev->ipa_uc_tx_rsc.tx_comp_ring = NULL;
 free_tx_ce_idx:
 	qdf_mem_shared_mem_free(pdev->osdev,
 				pdev->ipa_uc_tx_rsc.tx_ce_idx);
+	pdev->ipa_uc_tx_rsc.tx_ce_idx = NULL;
 
 	return return_code;
 }
@@ -1450,8 +1452,11 @@ int htt_tx_ipa_uc_detach(struct htt_pdev_t *pdev)
 {
 	qdf_mem_shared_mem_free(pdev->osdev,
 				pdev->ipa_uc_tx_rsc.tx_ce_idx);
+	pdev->ipa_uc_tx_rsc.tx_ce_idx = NULL;
+
 	qdf_mem_shared_mem_free(pdev->osdev,
 				pdev->ipa_uc_tx_rsc.tx_comp_ring);
+	pdev->ipa_uc_tx_rsc.tx_comp_ring = NULL;
 
 	/* Free each single buffer */
 	htt_tx_buf_pool_free(pdev);
@@ -1463,7 +1468,7 @@ int htt_tx_ipa_uc_detach(struct htt_pdev_t *pdev)
 }
 #endif /* IPA_OFFLOAD */
 
-#if defined(FEATURE_TSO) && defined(HELIUMPLUS)
+#if defined(FEATURE_TSO)
 void
 htt_tx_desc_fill_tso_info(htt_pdev_handle pdev, void *desc,
 	 struct qdf_tso_info_t *tso_info)
@@ -1476,7 +1481,7 @@ htt_tx_desc_fill_tso_info(htt_pdev_handle pdev, void *desc,
 	word = (u_int32_t *)(desc);
 
 	/* Initialize the TSO flags per MSDU */
-	msdu_ext_desc->tso_flags =
+	((struct msdu_ext_desc_t *)msdu_ext_desc)->tso_flags =
 		 tso_seg->seg.tso_flags;
 
 	/* First 24 bytes (6*4) contain the TSO flags */
@@ -1721,6 +1726,7 @@ htt_tx_desc_init(htt_pdev_handle pdev,
 	bool desc_ext_required = (type != EXT_HEADER_NOT_PRESENT);
 	int channel_freq;
 	void *qdf_ctx = cds_get_context(QDF_MODULE_ID_QDF_DEVICE);
+	qdf_dma_dir_t dir;
 	QDF_STATUS status;
 
 	if (qdf_unlikely(!qdf_ctx)) {
@@ -1850,7 +1856,9 @@ htt_tx_desc_init(htt_pdev_handle pdev,
 					0);
 
 	if (QDF_NBUF_CB_PADDR(msdu) == 0) {
-		status = qdf_nbuf_map_single(qdf_ctx, msdu, QDF_DMA_TO_DEVICE);
+		dir = QDF_NBUF_CB_TX_DMA_BI_MAP(msdu) ?
+			QDF_DMA_BIDIRECTIONAL : QDF_DMA_TO_DEVICE;
+		status = qdf_nbuf_map_single(qdf_ctx, msdu, dir);
 		if (qdf_unlikely(status != QDF_STATUS_SUCCESS)) {
 			QDF_TRACE(QDF_MODULE_ID_TXRX, QDF_TRACE_LEVEL_ERROR,
 				"%s: nbuf map failed", __func__);

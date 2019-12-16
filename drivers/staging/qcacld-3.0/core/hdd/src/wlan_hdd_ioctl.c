@@ -20,22 +20,19 @@
 
 #include <wlan_hdd_includes.h>
 #include <wlan_hdd_wowl.h>
-#include <wlan_hdd_stats.h>
 #include "wlan_hdd_trace.h"
 #include "wlan_hdd_ioctl.h"
 #include "wlan_hdd_power.h"
-#include "wlan_hdd_regulatory.h"
-#include "wlan_osif_request_manager.h"
+#include "wlan_hdd_request_manager.h"
 #include "wlan_hdd_driver_ops.h"
-#include "wlan_policy_mgr_api.h"
+#include "cds_concurrency.h"
 #include "wlan_hdd_hostapd.h"
-#include "scheduler_api.h"
-#include "wlan_reg_ucfg_api.h"
+
 #include "wlan_hdd_p2p.h"
 #include <linux/ctype.h>
 #include "wma.h"
 #include "wlan_hdd_napi.h"
-#include "wlan_mlme_ucfg_api.h"
+#include "wlan_hdd_request_manager.h"
 
 #ifdef FEATURE_WLAN_ESE
 #include <sme_api.h>
@@ -52,13 +49,6 @@
  */
 #define SIZE_OF_SETROAMMODE             11      /* size of SETROAMMODE */
 #define SIZE_OF_GETROAMMODE             11      /* size of GETROAMMODE */
-
-/*
- * Size of GETCOUNTRYREV output = (sizeof("GETCOUNTRYREV") = 14) + one (space) +
- *				  (sizeof("country_code") = 3) +
- *                                one (NULL terminating character)
- */
-#define SIZE_OF_GETCOUNTRYREV_OUTPUT 20
 
 /*
  * Ibss prop IE from command will be of size:
@@ -122,11 +112,11 @@ struct android_wifi_af_params {
  * Define HDD driver command handling entry, each contains a command
  * string and the handler.
  */
-typedef int (*hdd_drv_cmd_handler_t)(struct hdd_adapter *adapter,
-				     struct hdd_context *hdd_ctx,
+typedef int (*hdd_drv_cmd_handler_t)(hdd_adapter_t *adapter,
+				     hdd_context_t *hdd_ctx,
 				     uint8_t *cmd,
 				     uint8_t cmd_name_len,
-				     struct hdd_priv_data *priv_data);
+				     hdd_priv_data_t *priv_data);
 
 /**
  * struct hdd_drv_cmd - Structure to store ioctl command handling info
@@ -173,34 +163,34 @@ struct tsm_priv {
 static void hdd_get_tsm_stats_cb(tAniTrafStrmMetrics tsm_metrics,
 				 const uint32_t staId, void *context)
 {
-	struct osif_request *request;
+	struct hdd_request *request;
 	struct tsm_priv *priv;
 
-	request = osif_request_get(context);
+	request = hdd_request_get(context);
 	if (!request) {
 		hdd_err("Obsolete request");
 		return;
 	}
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(request);
 	priv->tsm_metrics = tsm_metrics;
-	osif_request_complete(request);
-	osif_request_put(request);
-	hdd_exit();
+	hdd_request_complete(request);
+	hdd_request_put(request);
+	EXIT();
 
 }
 
-static int hdd_get_tsm_stats(struct hdd_adapter *adapter,
+static int hdd_get_tsm_stats(hdd_adapter_t *adapter,
 			     const uint8_t tid,
 			     tAniTrafStrmMetrics *tsm_metrics)
 {
-	struct hdd_context *hdd_ctx;
-	struct hdd_station_ctx *hdd_sta_ctx;
+	hdd_context_t *hdd_ctx;
+	hdd_station_ctx_t *hdd_sta_ctx;
 	QDF_STATUS status;
 	int ret;
 	void *cookie;
-	struct osif_request *request;
+	struct hdd_request *request;
 	struct tsm_priv *priv;
-	static const struct osif_request_params params = {
+	static const struct hdd_request_params params = {
 		.priv_size = sizeof(*priv),
 		.timeout_ms = WLAN_WAIT_TIME_STATS,
 	};
@@ -213,34 +203,34 @@ static int hdd_get_tsm_stats(struct hdd_adapter *adapter,
 	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	hdd_sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 
-	request = osif_request_alloc(&params);
+	request = hdd_request_alloc(&params);
 	if (!request) {
 		hdd_err("Request allocation failure");
 		return -ENOMEM;
 	}
-	cookie = osif_request_cookie(request);
+	cookie = hdd_request_cookie(request);
 
-	status = sme_get_tsm_stats(hdd_ctx->mac_handle, hdd_get_tsm_stats_cb,
+	status = sme_get_tsm_stats(hdd_ctx->hHal, hdd_get_tsm_stats_cb,
 				   hdd_sta_ctx->conn_info.staId[0],
 				   hdd_sta_ctx->conn_info.bssId,
-				   cookie, tid);
+				   cookie, hdd_ctx->pcds_context, tid);
 	if (QDF_STATUS_SUCCESS != status) {
 		hdd_err("Unable to retrieve tsm statistics");
 		ret = qdf_status_to_os_return(status);
 		goto cleanup;
 	}
 
-	ret = osif_request_wait_for_response(request);
+	ret = hdd_request_wait_for_response(request);
 	if (ret) {
 		hdd_err("SME timed out while retrieving tsm statistics");
 		goto cleanup;
 	}
 
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(request);
 	*tsm_metrics = priv->tsm_metrics;
 
  cleanup:
-	osif_request_put(request);
+	hdd_request_put(request);
 
 	return ret;
 }
@@ -329,7 +319,7 @@ static int hdd_parse_setrmcactionperiod_command(uint8_t *pValue,
 /* Function header is left blank intentionally */
 static int hdd_parse_setrmcrate_command(uint8_t *pValue,
 					uint32_t *pRate,
-					enum tx_rate_info *pTxFlags)
+					tTxrateinfoflags *pTxFlags)
 {
 	uint8_t *inPtr = pValue;
 	int tempInt;
@@ -372,15 +362,15 @@ static int hdd_parse_setrmcrate_command(uint8_t *pValue,
 	case 36:
 	case 48:
 	case 54:
-		*pTxFlags = TX_RATE_LEGACY;
+		*pTxFlags = eHAL_TX_RATE_LEGACY;
 		*pRate = tempInt * 10;
 		break;
 	case 65:
-		*pTxFlags = TX_RATE_HT20;
+		*pTxFlags = eHAL_TX_RATE_HT20;
 		*pRate = tempInt * 10;
 		break;
 	case 72:
-		*pTxFlags = TX_RATE_HT20 | TX_RATE_SGI;
+		*pTxFlags = eHAL_TX_RATE_HT20 | eHAL_TX_RATE_SGI;
 		*pRate = 722;
 		break;
 	}
@@ -404,8 +394,8 @@ void
 hdd_get_ibss_peer_info_cb(void *pUserData,
 				tSirPeerInfoRspParams *pPeerInfo)
 {
-	struct hdd_adapter *adapter = (struct hdd_adapter *) pUserData;
-	struct hdd_station_ctx *pStaCtx;
+	hdd_adapter_t *adapter = (hdd_adapter_t *) pUserData;
+	hdd_station_ctx_t *pStaCtx;
 	uint8_t i;
 
 	if ((NULL == adapter) ||
@@ -449,19 +439,19 @@ hdd_get_ibss_peer_info_cb(void *pUserData,
  * Return: 0 for success non-zero for failure
  */
 static
-QDF_STATUS hdd_cfg80211_get_ibss_peer_info_all(struct hdd_adapter *adapter)
+QDF_STATUS hdd_cfg80211_get_ibss_peer_info_all(hdd_adapter_t *adapter)
 {
-	QDF_STATUS status;
+	tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(adapter);
+	QDF_STATUS retStatus = QDF_STATUS_E_FAILURE;
 	unsigned long rc;
 
 	INIT_COMPLETION(adapter->ibss_peer_info_comp);
 
-	status = sme_request_ibss_peer_info(adapter->hdd_ctx->mac_handle,
-					    adapter,
-					    hdd_get_ibss_peer_info_cb,
-					    true, 0xFF);
+	retStatus = sme_request_ibss_peer_info(hHal, adapter,
+					hdd_get_ibss_peer_info_cb,
+					true, 0xFF);
 
-	if (QDF_STATUS_SUCCESS == status) {
+	if (QDF_STATUS_SUCCESS == retStatus) {
 		rc = wait_for_completion_timeout
 			     (&adapter->ibss_peer_info_comp,
 			     msecs_to_jiffies(IBSS_PEER_INFO_REQ_TIMOEUT));
@@ -469,13 +459,14 @@ QDF_STATUS hdd_cfg80211_get_ibss_peer_info_all(struct hdd_adapter *adapter)
 		/* status will be 0 if timed out */
 		if (!rc) {
 			hdd_warn("Warning: IBSS_PEER_INFO_TIMEOUT");
-			status = QDF_STATUS_E_FAILURE;
+			retStatus = QDF_STATUS_E_FAILURE;
+			return retStatus;
 		}
 	} else {
 		hdd_warn("Warning: sme_request_ibss_peer_info Request failed");
 	}
 
-	return status;
+	return retStatus;
 }
 
 /**
@@ -488,19 +479,19 @@ QDF_STATUS hdd_cfg80211_get_ibss_peer_info_all(struct hdd_adapter *adapter)
  * Return: 0 for success non-zero for failure
  */
 static QDF_STATUS
-hdd_cfg80211_get_ibss_peer_info(struct hdd_adapter *adapter, uint8_t staIdx)
+hdd_cfg80211_get_ibss_peer_info(hdd_adapter_t *adapter, uint8_t staIdx)
 {
 	unsigned long rc;
-	QDF_STATUS status;
+	tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(adapter);
+	QDF_STATUS retStatus = QDF_STATUS_E_FAILURE;
 
 	INIT_COMPLETION(adapter->ibss_peer_info_comp);
 
-	status = sme_request_ibss_peer_info(adapter->hdd_ctx->mac_handle,
-					    adapter,
-					    hdd_get_ibss_peer_info_cb,
-					    false, staIdx);
+	retStatus = sme_request_ibss_peer_info(hHal, adapter,
+				hdd_get_ibss_peer_info_cb,
+				false, staIdx);
 
-	if (QDF_STATUS_SUCCESS == status) {
+	if (QDF_STATUS_SUCCESS == retStatus) {
 		rc = wait_for_completion_timeout(
 				&adapter->ibss_peer_info_comp,
 				msecs_to_jiffies(IBSS_PEER_INFO_REQ_TIMOEUT));
@@ -508,13 +499,14 @@ hdd_cfg80211_get_ibss_peer_info(struct hdd_adapter *adapter, uint8_t staIdx)
 		/* status = 0 on timeout */
 		if (!rc) {
 			hdd_warn("Warning: IBSS_PEER_INFO_TIMEOUT");
-			status = QDF_STATUS_E_FAILURE;
+			retStatus = QDF_STATUS_E_FAILURE;
+			return retStatus;
 		}
 	} else {
 		hdd_warn("Warning: sme_request_ibss_peer_info Request failed");
 	}
 
-	return status;
+	return retStatus;
 }
 
 /* Function header is left blank intentionally */
@@ -556,27 +548,27 @@ hdd_parse_get_ibss_peer_info(uint8_t *pValue, struct qdf_mac_addr *pPeerMacAddr)
 	return QDF_STATUS_SUCCESS;
 }
 
-static void hdd_get_band_helper(struct hdd_context *hdd_ctx, int *ui_band)
+static void hdd_get_band_helper(hdd_context_t *hdd_ctx, int *pBand)
 {
-	enum band_info band = -1;
+	tSirRFBand band = SIR_BAND_UNKNOWN;
 
-	sme_get_freq_band(hdd_ctx->mac_handle, &band);
+	sme_get_freq_band((tHalHandle) (hdd_ctx->hHal), &band);
 	switch (band) {
-	case BAND_ALL:
-		*ui_band = WLAN_HDD_UI_BAND_AUTO;
+	case SIR_BAND_ALL:
+		*pBand = WLAN_HDD_UI_BAND_AUTO;
 		break;
 
-	case BAND_2G:
-		*ui_band = WLAN_HDD_UI_BAND_2_4_GHZ;
+	case SIR_BAND_2_4_GHZ:
+		*pBand = WLAN_HDD_UI_BAND_2_4_GHZ;
 		break;
 
-	case BAND_5G:
-		*ui_band = WLAN_HDD_UI_BAND_5_GHZ;
+	case SIR_BAND_5_GHZ:
+		*pBand = WLAN_HDD_UI_BAND_5_GHZ;
 		break;
 
 	default:
 		hdd_warn("Invalid Band %d", band);
-		*ui_band = -1;
+		*pBand = -1;
 		break;
 	}
 }
@@ -811,20 +803,20 @@ static int hdd_parse_reassoc_command_v1_data(const uint8_t *pValue,
 }
 
 #ifdef WLAN_FEATURE_ROAM_OFFLOAD
-QDF_STATUS hdd_wma_send_fastreassoc_cmd(struct hdd_adapter *adapter,
-					const tSirMacAddr bssid,
-					int channel)
+QDF_STATUS hdd_wma_send_fastreassoc_cmd(hdd_adapter_t *adapter,
+				const tSirMacAddr bssid, int channel)
 {
-	struct hdd_station_ctx *hdd_sta_ctx =
-			WLAN_HDD_GET_STATION_CTX_PTR(adapter);
-	struct csr_roam_profile *roam_profile;
+	hdd_wext_state_t *wext_state = WLAN_HDD_GET_WEXT_STATE_PTR(adapter);
+	hdd_station_ctx_t *hdd_sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+
+	tCsrRoamProfile *profile = &wext_state->roamProfile;
 	tSirMacAddr connected_bssid;
 
-	roam_profile = hdd_roam_profile(adapter);
 	qdf_mem_copy(connected_bssid, hdd_sta_ctx->conn_info.bssId.bytes,
 		     ETH_ALEN);
-	return sme_fast_reassoc(adapter->hdd_ctx->mac_handle, roam_profile,
-				bssid, channel, adapter->session_id,
+	return sme_fast_reassoc(WLAN_HDD_GET_HAL_CTX(adapter),
+				profile, bssid, channel,
+				adapter->sessionId,
 				connected_bssid);
 }
 #endif
@@ -840,13 +832,12 @@ QDF_STATUS hdd_wma_send_fastreassoc_cmd(struct hdd_adapter *adapter,
  *
  * Return: 0 for success non-zero for failure
  */
-int hdd_reassoc(struct hdd_adapter *adapter, const uint8_t *bssid,
+int hdd_reassoc(hdd_adapter_t *adapter, const uint8_t *bssid,
 		uint8_t channel, const handoff_src src)
 {
-	struct hdd_station_ctx *sta_ctx;
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_station_ctx_t *pHddStaCtx;
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	int ret = 0;
-	QDF_STATUS status;
 
 	if (hdd_ctx == NULL) {
 		hdd_err("Invalid hdd ctx");
@@ -860,7 +851,7 @@ int hdd_reassoc(struct hdd_adapter *adapter, const uint8_t *bssid,
 		return -EINVAL;
 	}
 
-	sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+	pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 
 	/*
 	 * pHddStaCtx->conn_info.connState is set to disconnected only
@@ -871,10 +862,11 @@ int hdd_reassoc(struct hdd_adapter *adapter, const uint8_t *bssid,
 	 * So check both the HDD state and SME state here.
 	 * If not associated, no need to proceed with reassoc
 	 */
-	if ((eConnectionState_Associated != sta_ctx->conn_info.connState) ||
-	    (!sme_is_conn_state_connected(hdd_ctx->mac_handle,
-	    adapter->session_id))) {
+	if ((eConnectionState_Associated != pHddStaCtx->conn_info.connState) ||
+	    (!sme_is_conn_state_connected(WLAN_HDD_GET_HAL_CTX(adapter),
+	    adapter->sessionId))) {
 		hdd_warn("Not associated");
+		hdd_debug("HDD Con state %d", pHddStaCtx->conn_info.connState);
 		ret = -EINVAL;
 		goto exit;
 	}
@@ -883,10 +875,10 @@ int hdd_reassoc(struct hdd_adapter *adapter, const uint8_t *bssid,
 	 * if the target bssid is same as currently associated AP,
 	 * use the current connections's channel.
 	 */
-	if (!memcmp(bssid, sta_ctx->conn_info.bssId.bytes,
+	if (!memcmp(bssid, pHddStaCtx->conn_info.bssId.bytes,
 			QDF_MAC_ADDR_SIZE)) {
 		hdd_warn("Reassoc BSSID is same as currently associated AP bssid");
-		channel = sta_ctx->conn_info.operationChannel;
+		channel = pHddStaCtx->conn_info.operationChannel;
 	}
 
 	/* Check channel number is a valid channel number */
@@ -899,20 +891,18 @@ int hdd_reassoc(struct hdd_adapter *adapter, const uint8_t *bssid,
 
 	/* Proceed with reassoc */
 	if (roaming_offload_enabled(hdd_ctx)) {
-		status = hdd_wma_send_fastreassoc_cmd(adapter,
-						      bssid, (int)channel);
-		if (status != QDF_STATUS_SUCCESS) {
-			hdd_err("Failed to send fast reassoc cmd");
-			ret = -EINVAL;
-		}
+		if (QDF_STATUS_SUCCESS !=
+		    hdd_wma_send_fastreassoc_cmd(adapter, bssid,
+						 (int)channel))
+		    ret = -EINVAL;
 	} else {
-		tCsrHandoffRequest handoff;
+		tCsrHandoffRequest handoffInfo;
 
-		handoff.channel = channel;
-		handoff.src = src;
-		qdf_mem_copy(handoff.bssid.bytes, bssid, QDF_MAC_ADDR_SIZE);
-		sme_handoff_request(hdd_ctx->mac_handle, adapter->session_id,
-				    &handoff);
+		handoffInfo.channel = channel;
+		handoffInfo.src = src;
+		qdf_mem_copy(handoffInfo.bssid.bytes, bssid, QDF_MAC_ADDR_SIZE);
+		sme_handoff_request(hdd_ctx->hHal, adapter->sessionId,
+				    &handoffInfo);
 	}
 exit:
 	return ret;
@@ -935,7 +925,7 @@ exit:
  *
  * Return: 0 for success non-zero for failure
  */
-static int hdd_parse_reassoc_v1(struct hdd_adapter *adapter, const char *command)
+static int hdd_parse_reassoc_v1(hdd_adapter_t *adapter, const char *command)
 {
 	uint8_t channel = 0;
 	tSirMacAddr bssid;
@@ -963,8 +953,7 @@ static int hdd_parse_reassoc_v1(struct hdd_adapter *adapter, const char *command
  *
  * Return: 0 for success non-zero for failure
  */
-static int hdd_parse_reassoc_v2(struct hdd_adapter *adapter,
-				const char *command,
+static int hdd_parse_reassoc_v2(hdd_adapter_t *adapter, const char *command,
 				int total_len)
 {
 	struct android_wifi_reassoc_params params;
@@ -1003,7 +992,7 @@ static int hdd_parse_reassoc_v2(struct hdd_adapter *adapter,
  *
  * Return: 0 for success non-zero for failure
  */
-static int hdd_parse_reassoc(struct hdd_adapter *adapter, const char *command,
+static int hdd_parse_reassoc(hdd_adapter_t *adapter, const char *command,
 			     int total_len)
 {
 	int ret;
@@ -1049,7 +1038,7 @@ static int hdd_parse_reassoc(struct hdd_adapter *adapter, const char *command,
  * Return: 0 for success non-zero for failure
  */
 static int
-hdd_sendactionframe(struct hdd_adapter *adapter, const uint8_t *bssid,
+hdd_sendactionframe(hdd_adapter_t *adapter, const uint8_t *bssid,
 		    const uint8_t channel, const uint8_t dwell_time,
 		    const int payload_len, const uint8_t *payload)
 {
@@ -1058,13 +1047,18 @@ hdd_sendactionframe(struct hdd_adapter *adapter, const uint8_t *bssid,
 	uint8_t *frame;
 	struct ieee80211_hdr_3addr *hdr;
 	u64 cookie;
-	struct hdd_station_ctx *sta_ctx;
-	struct hdd_context *hdd_ctx;
+	hdd_station_ctx_t *pHddStaCtx;
+	hdd_context_t *hdd_ctx;
 	tpSirMacVendorSpecificFrameHdr pVendorSpecific =
 		(tpSirMacVendorSpecificFrameHdr) payload;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0))
 	struct cfg80211_mgmt_tx_params params;
 #endif
+
+	if (payload_len < sizeof(tSirMacVendorSpecificFrameHdr)) {
+		hdd_warn("Invalid payload length: %d", payload_len);
+		return -EINVAL;
+	}
 
 	if (QDF_STA_MODE != adapter->device_mode) {
 		hdd_warn("Unsupported in mode %s(%d)",
@@ -1073,11 +1067,11 @@ hdd_sendactionframe(struct hdd_adapter *adapter, const uint8_t *bssid,
 		return -EINVAL;
 	}
 
-	sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+	pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 
 	/* if not associated, no need to send action frame */
-	if (eConnectionState_Associated != sta_ctx->conn_info.connState) {
+	if (eConnectionState_Associated != pHddStaCtx->conn_info.connState) {
 		hdd_warn("Not associated");
 		ret = -EINVAL;
 		goto exit;
@@ -1087,7 +1081,7 @@ hdd_sendactionframe(struct hdd_adapter *adapter, const uint8_t *bssid,
 	 * if the target bssid is different from currently associated AP,
 	 * then no need to send action frame
 	 */
-	if (memcmp(bssid, sta_ctx->conn_info.bssId.bytes,
+	if (memcmp(bssid, pHddStaCtx->conn_info.bssId.bytes,
 			QDF_MAC_ADDR_SIZE)) {
 		hdd_warn("STA is not associated to this AP");
 		ret = -EINVAL;
@@ -1107,10 +1101,10 @@ hdd_sendactionframe(struct hdd_adapter *adapter, const uint8_t *bssid,
 			 */
 			if (channel != 0) {
 				if (channel !=
-				    sta_ctx->conn_info.operationChannel) {
+				    pHddStaCtx->conn_info.operationChannel) {
 					hdd_warn("channel(%d) is different from operating channel(%d)",
 						  channel,
-						  sta_ctx->conn_info.
+						  pHddStaCtx->conn_info.
 						  operationChannel);
 					ret = -EINVAL;
 					goto exit;
@@ -1123,15 +1117,15 @@ hdd_sendactionframe(struct hdd_adapter *adapter, const uint8_t *bssid,
 				 * may cause long delays in sending action
 				 * frames.
 				 */
-				sme_abort_roam_scan(hdd_ctx->mac_handle,
-						    adapter->session_id);
+				sme_abort_roam_scan(hdd_ctx->hHal,
+						    adapter->sessionId);
 			} else {
 				/*
 				 * 0 is accepted as current home channel,
 				 * delayed transmission of action frame is ok.
 				 */
 				chan.center_freq =
-					sme_chn_to_freq(sta_ctx->conn_info.
+					sme_chn_to_freq(pHddStaCtx->conn_info.
 							operationChannel);
 			}
 		}
@@ -1154,7 +1148,7 @@ hdd_sendactionframe(struct hdd_adapter *adapter, const uint8_t *bssid,
 	hdr->frame_control =
 		cpu_to_le16(IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ACTION);
 	qdf_mem_copy(hdr->addr1, bssid, QDF_MAC_ADDR_SIZE);
-	qdf_mem_copy(hdr->addr2, adapter->mac_addr.bytes,
+	qdf_mem_copy(hdr->addr2, adapter->macAddressCurrent.bytes,
 		     QDF_MAC_ADDR_SIZE);
 	qdf_mem_copy(hdr->addr3, bssid, QDF_MAC_ADDR_SIZE);
 	qdf_mem_copy(hdr + 1, payload, payload_len);
@@ -1201,7 +1195,7 @@ exit:
  * Return: 0 for success non-zero for failure
  */
 static int
-hdd_parse_sendactionframe_v1(struct hdd_adapter *adapter, const char *command)
+hdd_parse_sendactionframe_v1(hdd_adapter_t *adapter, const char *command)
 {
 	uint8_t channel = 0;
 	uint8_t dwell_time = 0;
@@ -1238,7 +1232,7 @@ hdd_parse_sendactionframe_v1(struct hdd_adapter *adapter, const char *command)
  * Return: 0 for success non-zero for failure
  */
 static int
-hdd_parse_sendactionframe_v2(struct hdd_adapter *adapter,
+hdd_parse_sendactionframe_v2(hdd_adapter_t *adapter,
 			     const char *command, int total_len)
 {
 	struct android_wifi_af_params *params;
@@ -1299,7 +1293,7 @@ hdd_parse_sendactionframe_v2(struct hdd_adapter *adapter,
  * Return: 0 for success non-zero for failure
  */
 static int
-hdd_parse_sendactionframe(struct hdd_adapter *adapter, const char *command,
+hdd_parse_sendactionframe(hdd_adapter_t *adapter, const char *command,
 			  int total_len)
 {
 	int ret;
@@ -1461,15 +1455,14 @@ hdd_parse_channellist(const uint8_t *pValue, uint8_t *pChannelList,
  * Return: 0 for success non-zero for failure
  */
 static int
-hdd_parse_set_roam_scan_channels_v1(struct hdd_adapter *adapter,
+hdd_parse_set_roam_scan_channels_v1(hdd_adapter_t *adapter,
 				    const char *command)
 {
 	uint8_t channel_list[WNI_CFG_VALID_CHANNEL_LIST_LEN] = { 0 };
 	uint8_t num_chan = 0;
 	QDF_STATUS status;
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	int ret;
-	mac_handle_t mac_handle;
 
 	ret = hdd_parse_channellist(command, channel_list, &num_chan);
 	if (ret) {
@@ -1477,9 +1470,9 @@ hdd_parse_set_roam_scan_channels_v1(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_SETROAMSCANCHANNELS_IOCTL,
-		   adapter->session_id, num_chan);
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_SETROAMSCANCHANNELS_IOCTL,
+			 adapter->sessionId, num_chan));
 
 	if (num_chan > WNI_CFG_VALID_CHANNEL_LIST_LEN) {
 		hdd_err("number of channels (%d) supported exceeded max (%d)",
@@ -1488,16 +1481,17 @@ hdd_parse_set_roam_scan_channels_v1(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	mac_handle = hdd_ctx->mac_handle;
-	if (!sme_validate_channel_list(mac_handle, channel_list, num_chan)) {
+	if (!sme_validate_channel_list(hdd_ctx->hHal,
+	    channel_list, num_chan)) {
 		hdd_err("List contains invalid channel(s)");
 		ret = -EINVAL;
 		goto exit;
 	}
 
-	status = sme_change_roam_scan_channel_list(mac_handle,
-						   adapter->session_id,
-						   channel_list, num_chan);
+	status =
+		sme_change_roam_scan_channel_list(hdd_ctx->hHal,
+						  adapter->sessionId,
+						  channel_list, num_chan);
 	if (QDF_STATUS_SUCCESS != status) {
 		hdd_err("Failed to update channel list information");
 		ret = -EINVAL;
@@ -1526,7 +1520,7 @@ exit:
  * Return: 0 for success non-zero for failure
  */
 static int
-hdd_parse_set_roam_scan_channels_v2(struct hdd_adapter *adapter,
+hdd_parse_set_roam_scan_channels_v2(hdd_adapter_t *adapter,
 				    const char *command)
 {
 	const uint8_t *value;
@@ -1534,10 +1528,9 @@ hdd_parse_set_roam_scan_channels_v2(struct hdd_adapter *adapter,
 	uint8_t channel;
 	uint8_t num_chan;
 	int i;
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	QDF_STATUS status;
 	int ret = 0;
-	mac_handle_t mac_handle;
 
 	/* array of values begins after "SETROAMSCANCHANNELS " */
 	value = command + 20;
@@ -1550,10 +1543,9 @@ hdd_parse_set_roam_scan_channels_v2(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_SETROAMSCANCHANNELS_IOCTL,
-		   adapter->session_id, num_chan);
-
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_SETROAMSCANCHANNELS_IOCTL,
+			 adapter->sessionId, num_chan));
 
 	for (i = 0; i < num_chan; i++) {
 		channel = *value++;
@@ -1573,16 +1565,17 @@ hdd_parse_set_roam_scan_channels_v2(struct hdd_adapter *adapter,
 		channel_list[i] = channel;
 	}
 
-	mac_handle = hdd_ctx->mac_handle;
-	if (!sme_validate_channel_list(mac_handle, channel_list, num_chan)) {
+	if (!sme_validate_channel_list(hdd_ctx->hHal,
+	    channel_list, num_chan)) {
 		hdd_err("List contains invalid channel(s)");
 		ret = -EINVAL;
 		goto exit;
 	}
 
-	status = sme_change_roam_scan_channel_list(mac_handle,
-						   adapter->session_id,
-						   channel_list, num_chan);
+	status =
+		sme_change_roam_scan_channel_list(hdd_ctx->hHal,
+						  adapter->sessionId,
+						  channel_list, num_chan);
 	if (QDF_STATUS_SUCCESS != status) {
 		hdd_err("Failed to update channel list information");
 		ret = -EINVAL;
@@ -1608,7 +1601,7 @@ exit:
  * Return: 0 for success non-zero for failure
  */
 static int
-hdd_parse_set_roam_scan_channels(struct hdd_adapter *adapter, const char *command)
+hdd_parse_set_roam_scan_channels(hdd_adapter_t *adapter, const char *command)
 {
 	const char *cursor;
 	char ch;
@@ -1930,63 +1923,64 @@ static QDF_STATUS hdd_parse_plm_cmd(uint8_t *pValue, tSirPlmReq *pPlmRequest)
  */
 static void wlan_hdd_ready_to_extwow(void *cookie, bool is_success)
 {
-	struct osif_request *request = NULL;
+	struct hdd_request *request = NULL;
 	struct enable_ext_wow_priv *priv = NULL;
 
-	request = osif_request_get(cookie);
+	request = hdd_request_get(cookie);
 	if (!request) {
 		hdd_err("Obselete request");
 		return;
 	}
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(request);
 	priv->ext_wow_should_suspend = is_success;
 
-	osif_request_complete(request);
-	osif_request_put(request);
+	hdd_request_complete(request);
+	hdd_request_put(request);
 }
 
-static int hdd_enable_ext_wow(struct hdd_adapter *adapter,
+static int hdd_enable_ext_wow(hdd_adapter_t *adapter,
 			      tpSirExtWoWParams arg_params)
 {
 	tSirExtWoWParams params;
-	QDF_STATUS status;
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
-	int rc;
+	QDF_STATUS qdf_ret_status;
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(adapter);
+	int rc = 0;
 	struct enable_ext_wow_priv *priv = NULL;
-	struct osif_request *request = NULL;
+	struct hdd_request *request = NULL;
 	void *cookie = NULL;
-	struct osif_request_params hdd_params = {
+	struct hdd_request_params hdd_params = {
 		.priv_size = sizeof(*priv),
 		.timeout_ms = WLAN_WAIT_TIME_READY_TO_EXTWOW,
 	};
 
 	qdf_mem_copy(&params, arg_params, sizeof(params));
 
-	request = osif_request_alloc(&hdd_params);
+	request = hdd_request_alloc(&hdd_params);
 	if (!request) {
 		hdd_err("Request Allocation Failure");
 		return -ENOMEM;
 	}
-	cookie = osif_request_cookie(request);
+	cookie = hdd_request_cookie(request);
 
-	status = sme_configure_ext_wow(hdd_ctx->mac_handle, &params,
-				       &wlan_hdd_ready_to_extwow,
-				       cookie);
-	if (QDF_STATUS_SUCCESS != status) {
+	qdf_ret_status = sme_configure_ext_wow(hHal, &params,
+					       &wlan_hdd_ready_to_extwow,
+					       cookie);
+	if (QDF_STATUS_SUCCESS != qdf_ret_status) {
 		hdd_err("sme_configure_ext_wow returned failure %d",
-			 status);
+			qdf_ret_status);
 		rc = -EPERM;
 		goto exit;
 	}
 
-	rc = osif_request_wait_for_response(request);
+	rc = hdd_request_wait_for_response(request);
 	if (rc) {
 		hdd_err("Failed to get ready to extwow");
 		rc = -EPERM;
 		goto exit;
 	}
 
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(request);
 	if (!priv->ext_wow_should_suspend) {
 		hdd_err("Received ready to ExtWoW failure");
 		rc = -EPERM;
@@ -1994,7 +1988,10 @@ static int hdd_enable_ext_wow(struct hdd_adapter *adapter,
 	}
 
 	if (hdd_ctx->config->extWowGotoSuspend) {
-		hdd_info("Received ready to ExtWoW. Going to suspend");
+		pm_message_t state;
+
+		state.event = PM_EVENT_SUSPEND;
+		hdd_debug("Received ready to ExtWoW. Going to suspend");
 
 		rc = wlan_hdd_cfg80211_suspend_wlan(hdd_ctx->wiphy, NULL);
 		if (rc < 0) {
@@ -2002,7 +1999,8 @@ static int hdd_enable_ext_wow(struct hdd_adapter *adapter,
 				rc);
 			goto exit;
 		}
-		rc = wlan_hdd_bus_suspend();
+
+		rc = wlan_hdd_bus_suspend(state);
 		if (rc) {
 			hdd_err("wlan_hdd_bus_suspend failed, status = %d",
 				rc);
@@ -2011,15 +2009,15 @@ static int hdd_enable_ext_wow(struct hdd_adapter *adapter,
 		}
 	}
 exit:
-	osif_request_put(request);
+	hdd_request_put(request);
 	return rc;
 }
 
-static int hdd_enable_ext_wow_parser(struct hdd_adapter *adapter, int vdev_id,
+static int hdd_enable_ext_wow_parser(hdd_adapter_t *adapter, int vdev_id,
 				     int value)
 {
 	tSirExtWoWParams params;
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	int rc;
 
 	rc = wlan_hdd_validate_context(hdd_ctx);
@@ -2056,28 +2054,29 @@ static int hdd_enable_ext_wow_parser(struct hdd_adapter *adapter, int vdev_id,
 	return hdd_enable_ext_wow(adapter, &params);
 }
 
-static int hdd_set_app_type1_params(mac_handle_t mac_handle,
+static int hdd_set_app_type1_params(tHalHandle hHal,
 				    tpSirAppType1Params arg_params)
 {
 	tSirAppType1Params params;
-	QDF_STATUS status;
+	QDF_STATUS qdf_ret_status = QDF_STATUS_E_FAILURE;
 
 	qdf_mem_copy(&params, arg_params, sizeof(params));
 
-	status = sme_configure_app_type1_params(mac_handle, &params);
-	if (QDF_STATUS_SUCCESS != status) {
+	qdf_ret_status = sme_configure_app_type1_params(hHal, &params);
+	if (QDF_STATUS_SUCCESS != qdf_ret_status) {
 		hdd_err("sme_configure_app_type1_params returned failure %d",
-			 status);
+			 qdf_ret_status);
 		return -EPERM;
 	}
 
 	return 0;
 }
 
-static int hdd_set_app_type1_parser(struct hdd_adapter *adapter,
+static int hdd_set_app_type1_parser(hdd_adapter_t *adapter,
 				    char *arg, int len)
 {
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(adapter);
 	char id[20], password[20];
 	tSirAppType1Params params;
 	int rc;
@@ -2092,8 +2091,8 @@ static int hdd_set_app_type1_parser(struct hdd_adapter *adapter,
 	}
 
 	memset(&params, 0, sizeof(tSirAppType1Params));
-	params.vdev_id = adapter->session_id;
-	qdf_copy_macaddr(&params.wakee_mac_addr, &adapter->mac_addr);
+	params.vdev_id = adapter->sessionId;
+	qdf_copy_macaddr(&params.wakee_mac_addr, &adapter->macAddressCurrent);
 
 	params.id_length = strlen(id);
 	qdf_mem_copy(params.identification_id, id, params.id_length);
@@ -2105,31 +2104,32 @@ static int hdd_set_app_type1_parser(struct hdd_adapter *adapter,
 		  params.identification_id, params.id_length,
 		  params.password, params.pass_length);
 
-	return hdd_set_app_type1_params(hdd_ctx->mac_handle, &params);
+	return hdd_set_app_type1_params(hHal, &params);
 }
 
-static int hdd_set_app_type2_params(mac_handle_t mac_handle,
+static int hdd_set_app_type2_params(tHalHandle hHal,
 				    tpSirAppType2Params arg_params)
 {
 	tSirAppType2Params params;
-	QDF_STATUS status;
+	QDF_STATUS qdf_ret_status = QDF_STATUS_E_FAILURE;
 
 	qdf_mem_copy(&params, arg_params, sizeof(params));
 
-	status = sme_configure_app_type2_params(mac_handle, &params);
-	if (QDF_STATUS_SUCCESS != status) {
+	qdf_ret_status = sme_configure_app_type2_params(hHal, &params);
+	if (QDF_STATUS_SUCCESS != qdf_ret_status) {
 		hdd_err("sme_configure_app_type2_params returned failure %d",
-			 status);
+			 qdf_ret_status);
 		return -EPERM;
 	}
 
 	return 0;
 }
 
-static int hdd_set_app_type2_parser(struct hdd_adapter *adapter,
+static int hdd_set_app_type2_parser(hdd_adapter_t *adapter,
 				    char *arg, int len)
 {
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(adapter);
 	char mac_addr[20], rc4_key[20];
 	unsigned int gateway_mac[QDF_MAC_ADDR_SIZE];
 	tSirAppType2Params params;
@@ -2180,7 +2180,7 @@ static int hdd_set_app_type2_parser(struct hdd_adapter *adapter,
 	params.rc4_key_len = strlen(rc4_key);
 	qdf_mem_copy(params.rc4_key, rc4_key, params.rc4_key_len);
 
-	params.vdev_id = adapter->session_id;
+	params.vdev_id = adapter->sessionId;
 	params.tcp_src_port = (params.tcp_src_port != 0) ?
 		params.tcp_src_port : hdd_ctx->config->extWowApp2TcpSrcPort;
 	params.tcp_dst_port = (params.tcp_dst_port != 0) ?
@@ -2217,7 +2217,7 @@ static int hdd_set_app_type2_parser(struct hdd_adapter *adapter,
 		  params.keepalive_max, params.keepalive_inc,
 		  params.tcp_tx_timeout_val, params.tcp_rx_timeout_val);
 
-	return hdd_set_app_type2_params(hdd_ctx->mac_handle, &params);
+	return hdd_set_app_type2_params(hHal, &params);
 }
 #endif /* WLAN_FEATURE_EXTWOW_SUPPORT */
 
@@ -2282,23 +2282,19 @@ static int hdd_get_dwell_time(struct hdd_config *pCfg, uint8_t *command,
 		*len = scnprintf(extra, n, "GETDWELLTIME ACTIVE MAX %u\n",
 				 (int)pCfg->nActiveMaxChnTime);
 		return 0;
-	}
-	if (strncmp(command, "GETDWELLTIME ACTIVE MIN", 23) == 0) {
+	} else if (strncmp(command, "GETDWELLTIME ACTIVE MIN", 23) == 0) {
 		*len = scnprintf(extra, n, "GETDWELLTIME ACTIVE MIN %u\n",
 				 (int)pCfg->nActiveMinChnTime);
 		return 0;
-	}
-	if (strncmp(command, "GETDWELLTIME PASSIVE MAX", 24) == 0) {
+	} else if (strncmp(command, "GETDWELLTIME PASSIVE MAX", 24) == 0) {
 		*len = scnprintf(extra, n, "GETDWELLTIME PASSIVE MAX %u\n",
 				 (int)pCfg->nPassiveMaxChnTime);
 		return 0;
-	}
-	if (strncmp(command, "GETDWELLTIME PASSIVE MIN", 24) == 0) {
+	} else if (strncmp(command, "GETDWELLTIME PASSIVE MIN", 24) == 0) {
 		*len = scnprintf(extra, n, "GETDWELLTIME PASSIVE MIN %u\n",
 				 (int)pCfg->nPassiveMinChnTime);
 		return 0;
-	}
-	if (strncmp(command, "GETDWELLTIME", 12) == 0) {
+	} else if (strncmp(command, "GETDWELLTIME", 12) == 0) {
 		*len = scnprintf(extra, n, "GETDWELLTIME %u\n",
 				 (int)pCfg->nActiveMaxChnTime);
 		return 0;
@@ -2307,9 +2303,9 @@ static int hdd_get_dwell_time(struct hdd_config *pCfg, uint8_t *command,
 	return -EINVAL;
 }
 
-static int hdd_set_dwell_time(struct hdd_adapter *adapter, uint8_t *command)
+static int hdd_set_dwell_time(hdd_adapter_t *adapter, uint8_t *command)
 {
-	mac_handle_t mac_handle = hdd_adapter_get_mac_handle(adapter);
+	tHalHandle hHal;
 	struct hdd_config *pCfg;
 	uint8_t *value = command;
 	tSmeConfigParams *sme_config;
@@ -2317,7 +2313,8 @@ static int hdd_set_dwell_time(struct hdd_adapter *adapter, uint8_t *command)
 	int retval = 0;
 
 	pCfg = (WLAN_HDD_GET_CTX(adapter))->config;
-	if (!pCfg || !mac_handle) {
+	hHal = WLAN_HDD_GET_HAL_CTX(adapter);
+	if (!pCfg || !hHal) {
 		hdd_err("argument passed for SETDWELLTIME is incorrect");
 		return -EINVAL;
 	}
@@ -2328,7 +2325,7 @@ static int hdd_set_dwell_time(struct hdd_adapter *adapter, uint8_t *command)
 		return -ENOMEM;
 	}
 	qdf_mem_zero(sme_config, sizeof(*sme_config));
-	sme_get_config_param(mac_handle, sme_config);
+	sme_get_config_param(hHal, sme_config);
 
 	if (strncmp(command, "SETDWELLTIME ACTIVE MAX", 23) == 0) {
 		if (drv_cmd_validate(command, 23)) {
@@ -2345,7 +2342,7 @@ static int hdd_set_dwell_time(struct hdd_adapter *adapter, uint8_t *command)
 		}
 		pCfg->nActiveMaxChnTime = val;
 		sme_config->csrConfig.nActiveMaxChnTime = val;
-		sme_update_config(mac_handle, sme_config);
+		sme_update_config(hHal, sme_config);
 	} else if (strncmp(command, "SETDWELLTIME ACTIVE MIN", 23) == 0) {
 		if (drv_cmd_validate(command, 23)) {
 			retval = -EINVAL;
@@ -2362,7 +2359,7 @@ static int hdd_set_dwell_time(struct hdd_adapter *adapter, uint8_t *command)
 		}
 		pCfg->nActiveMinChnTime = val;
 		sme_config->csrConfig.nActiveMinChnTime = val;
-		sme_update_config(mac_handle, sme_config);
+		sme_update_config(hHal, sme_config);
 	} else if (strncmp(command, "SETDWELLTIME PASSIVE MAX", 24) == 0) {
 		if (drv_cmd_validate(command, 24)) {
 			retval = -EINVAL;
@@ -2379,7 +2376,7 @@ static int hdd_set_dwell_time(struct hdd_adapter *adapter, uint8_t *command)
 		}
 		pCfg->nPassiveMaxChnTime = val;
 		sme_config->csrConfig.nPassiveMaxChnTime = val;
-		sme_update_config(mac_handle, sme_config);
+		sme_update_config(hHal, sme_config);
 	} else if (strncmp(command, "SETDWELLTIME PASSIVE MIN", 24) == 0) {
 		if (drv_cmd_validate(command, 24)) {
 			retval = -EINVAL;
@@ -2396,7 +2393,7 @@ static int hdd_set_dwell_time(struct hdd_adapter *adapter, uint8_t *command)
 		}
 		pCfg->nPassiveMinChnTime = val;
 		sme_config->csrConfig.nPassiveMinChnTime = val;
-		sme_update_config(mac_handle, sme_config);
+		sme_update_config(hHal, sme_config);
 	} else if (strncmp(command, "SETDWELLTIME", 12) == 0) {
 		if (drv_cmd_validate(command, 12)) {
 			retval = -EINVAL;
@@ -2413,7 +2410,7 @@ static int hdd_set_dwell_time(struct hdd_adapter *adapter, uint8_t *command)
 		}
 		pCfg->nActiveMaxChnTime = val;
 		sme_config->csrConfig.nActiveMaxChnTime = val;
-		sme_update_config(mac_handle, sme_config);
+		sme_update_config(hHal, sme_config);
 	} else {
 		retval = -EINVAL;
 		goto free;
@@ -2424,10 +2421,7 @@ free:
 	return retval;
 }
 
-struct link_status_priv {
-	uint8_t link_status;
-};
-
+#ifdef WLAN_AP_STA_CONCURRENCY
 /**
  * hdd_conc_set_dwell_time() - Set Concurrent dwell time parameters
  * @adapter: Adapter upon which the command was received
@@ -2441,18 +2435,18 @@ struct link_status_priv {
  *
  * Return: 0 for success non-zero for failure
  */
-static int hdd_conc_set_dwell_time(struct hdd_adapter *adapter,
-				   uint8_t *command)
+static int hdd_conc_set_dwell_time(hdd_context_t *hdd_ctx, uint8_t *command)
 {
-	mac_handle_t mac_handle = hdd_adapter_get_mac_handle(adapter);
+	tHalHandle hhal;
 	struct hdd_config *p_cfg;
 	u8 *value = command;
 	tSmeConfigParams *sme_config;
 	int val = 0, temp = 0;
 	int retval = 0;
 
-	p_cfg = (WLAN_HDD_GET_CTX(adapter))->config;
-	if (!p_cfg || !mac_handle) {
+	p_cfg = hdd_ctx->config;
+	hhal = hdd_ctx->hHal;
+	if (!p_cfg || !hhal) {
 		hdd_err("Argument passed for CONCSETDWELLTIME is incorrect");
 		return -EINVAL;
 	}
@@ -2464,7 +2458,7 @@ static int hdd_conc_set_dwell_time(struct hdd_adapter *adapter,
 	}
 
 	qdf_mem_zero(sme_config, sizeof(*sme_config));
-	sme_get_config_param(mac_handle, sme_config);
+	sme_get_config_param(hhal, sme_config);
 
 	if (strncmp(command, "CONCSETDWELLTIME ACTIVE MAX", 27) == 0) {
 		if (drv_cmd_validate(command, 27)) {
@@ -2484,7 +2478,7 @@ static int hdd_conc_set_dwell_time(struct hdd_adapter *adapter,
 
 		p_cfg->nActiveMaxChnTimeConc = val;
 		sme_config->csrConfig.nActiveMaxChnTimeConc = val;
-		sme_update_config(mac_handle, sme_config);
+		sme_update_config(hhal, sme_config);
 	} else if (strncmp(command, "CONCSETDWELLTIME ACTIVE MIN", 27) == 0) {
 		if (drv_cmd_validate(command, 27)) {
 			hdd_err("Invalid driver command");
@@ -2503,7 +2497,7 @@ static int hdd_conc_set_dwell_time(struct hdd_adapter *adapter,
 
 		p_cfg->nActiveMinChnTimeConc = val;
 		sme_config->csrConfig.nActiveMinChnTimeConc = val;
-		sme_update_config(mac_handle, sme_config);
+		sme_update_config(hhal, sme_config);
 	} else if (strncmp(command, "CONCSETDWELLTIME PASSIVE MAX", 28) == 0) {
 		if (drv_cmd_validate(command, 28)) {
 			hdd_err("Invalid driver command");
@@ -2522,7 +2516,7 @@ static int hdd_conc_set_dwell_time(struct hdd_adapter *adapter,
 
 		p_cfg->nPassiveMaxChnTimeConc = val;
 		sme_config->csrConfig.nPassiveMaxChnTimeConc = val;
-		sme_update_config(mac_handle, sme_config);
+		sme_update_config(hhal, sme_config);
 	} else if (strncmp(command, "CONCSETDWELLTIME PASSIVE MIN", 28) == 0) {
 		if (drv_cmd_validate(command, 28)) {
 			hdd_err("Invalid driver command");
@@ -2541,7 +2535,7 @@ static int hdd_conc_set_dwell_time(struct hdd_adapter *adapter,
 
 		p_cfg->nPassiveMinChnTimeConc = val;
 		sme_config->csrConfig.nPassiveMinChnTimeConc = val;
-		sme_update_config(mac_handle, sme_config);
+		sme_update_config(hhal, sme_config);
 	} else {
 		retval = -EINVAL;
 	}
@@ -2550,27 +2544,32 @@ sme_config_free:
 	qdf_mem_free(sme_config);
 	return retval;
 }
+#endif
+
+struct link_status_priv {
+	uint8_t link_status;
+};
 
 static void hdd_get_link_status_cb(uint8_t status, void *context)
 {
-	struct osif_request *request;
+	struct hdd_request *request;
 	struct link_status_priv *priv;
 
-	request = osif_request_get(context);
+	request = hdd_request_get(context);
 	if (!request) {
 		hdd_err("Obsolete request");
 		return;
 	}
 
-	priv = osif_request_priv(request);
+	priv = hdd_request_priv(request);
 	priv->link_status = status;
-	osif_request_complete(request);
-	osif_request_put(request);
+	hdd_request_complete(request);
+	hdd_request_put(request);
 }
 
 /**
  * wlan_hdd_get_link_status() - get link status
- * @adapter:     pointer to the adapter
+ * @pAdapter:     pointer to the adapter
  *
  * This function sends a request to query the link status and waits
  * on a timer to invoke the callback. if the callback is invoked then
@@ -2580,15 +2579,17 @@ static void hdd_get_link_status_cb(uint8_t status, void *context)
  * Return: On success, link status shall be returned.
  *         On error or not associated, link status 0 will be returned.
  */
-static int wlan_hdd_get_link_status(struct hdd_adapter *adapter)
+static int wlan_hdd_get_link_status(hdd_adapter_t *adapter)
 {
-	struct hdd_station_ctx *sta_ctx;
-	QDF_STATUS status;
+
+	hdd_station_ctx_t *pHddStaCtx =
+				WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+	QDF_STATUS hstatus;
 	int ret;
 	void *cookie;
-	struct osif_request *request;
+	struct hdd_request *request;
 	struct link_status_priv *priv;
-	static const struct osif_request_params params = {
+	static const struct hdd_request_params params = {
 		.priv_size = sizeof(*priv),
 		.timeout_ms = WLAN_WAIT_TIME_LINK_STATUS,
 	};
@@ -2607,8 +2608,8 @@ static int wlan_hdd_get_link_status(struct hdd_adapter *adapter)
 		return 0;
 	}
 
-	sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
-	if (eConnectionState_Associated != sta_ctx->conn_info.connState) {
+	pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+	if (eConnectionState_Associated != pHddStaCtx->conn_info.connState) {
 		/* If not associated, then expected link status return
 		 * value is 0
 		 */
@@ -2616,29 +2617,29 @@ static int wlan_hdd_get_link_status(struct hdd_adapter *adapter)
 		return 0;
 	}
 
-	request = osif_request_alloc(&params);
+	request = hdd_request_alloc(&params);
 	if (!request) {
 		hdd_err("Request allocation failure");
 		return 0;
 	}
-	cookie = osif_request_cookie(request);
+	cookie = hdd_request_cookie(request);
 
-	status = sme_get_link_status(adapter->hdd_ctx->mac_handle,
-				     hdd_get_link_status_cb,
-				     cookie, adapter->session_id);
-	if (QDF_STATUS_SUCCESS != status) {
+	hstatus = sme_get_link_status(WLAN_HDD_GET_HAL_CTX(adapter),
+				      hdd_get_link_status_cb,
+				      cookie, adapter->sessionId);
+	if (QDF_STATUS_SUCCESS != hstatus) {
 		hdd_err("Unable to retrieve link status");
 		/* return a cached value */
 	} else {
 		/* request is sent -- wait for the response */
-		ret = osif_request_wait_for_response(request);
+		ret = hdd_request_wait_for_response(request);
 		if (ret) {
 			hdd_err("SME timed out while retrieving link status");
 			/* return a cached value */
 		} else {
 			/* update the adapter with the fresh results */
-			priv = osif_request_priv(request);
-			adapter->link_status = priv->link_status;
+			priv = hdd_request_priv(request);
+			adapter->linkStatus = priv->link_status;
 		}
 	}
 
@@ -2647,10 +2648,10 @@ static int wlan_hdd_get_link_status(struct hdd_adapter *adapter)
 	 * received a response or we sent a request and timed out.
 	 * regardless we are done with the request.
 	 */
-	osif_request_put(request);
+	hdd_request_put(request);
 
 	/* either callback updated adapter stats or it has cached data */
-	return adapter->link_status;
+	return adapter->linkStatus;
 }
 
 static void hdd_tx_fail_ind_callback(uint8_t *MacAddr, uint8_t seqNo)
@@ -3001,39 +3002,39 @@ static int hdd_parse_get_cckm_ie(uint8_t *pValue, uint8_t **pCckmIe,
 }
 #endif /* FEATURE_WLAN_ESE */
 
-int wlan_hdd_set_mc_rate(struct hdd_adapter *adapter, int targetRate)
+int wlan_hdd_set_mc_rate(hdd_adapter_t *pAdapter, int targetRate)
 {
 	tSirRateUpdateInd rateUpdate = {0};
 	QDF_STATUS status;
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
-	struct hdd_config *pConfig;
+	hdd_context_t *pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
+	struct hdd_config *pConfig = NULL;
 
-	if (hdd_ctx == NULL) {
+	if (pHddCtx == NULL) {
 		hdd_err("HDD context is null");
 		return -EINVAL;
 	}
-	if ((QDF_IBSS_MODE != adapter->device_mode) &&
-	    (QDF_SAP_MODE != adapter->device_mode) &&
-	    (QDF_STA_MODE != adapter->device_mode)) {
+	if ((QDF_IBSS_MODE != pAdapter->device_mode) &&
+	    (QDF_SAP_MODE != pAdapter->device_mode) &&
+	    (QDF_STA_MODE != pAdapter->device_mode)) {
 		hdd_err("Received SETMCRATE cmd in invalid mode %s(%d)",
-			 hdd_device_mode_to_string(adapter->device_mode),
-			 adapter->device_mode);
+			 hdd_device_mode_to_string(pAdapter->device_mode),
+			 pAdapter->device_mode);
 		hdd_err("SETMCRATE cmd is allowed only in STA, IBSS or SOFTAP mode");
 		return -EINVAL;
 	}
-	pConfig = hdd_ctx->config;
+	pConfig = pHddCtx->config;
 	rateUpdate.nss = (pConfig->enable2x2 == 0) ? 0 : 1;
-	rateUpdate.dev_mode = adapter->device_mode;
+	rateUpdate.dev_mode = pAdapter->device_mode;
 	rateUpdate.mcastDataRate24GHz = targetRate;
 	rateUpdate.mcastDataRate24GHzTxFlag = 1;
 	rateUpdate.mcastDataRate5GHz = targetRate;
 	rateUpdate.bcastDataRate = -1;
-	qdf_copy_macaddr(&rateUpdate.bssid, &adapter->mac_addr);
+	qdf_copy_macaddr(&rateUpdate.bssid, &pAdapter->macAddressCurrent);
 	hdd_debug("MC Target rate %d, mac = %pM, dev_mode %s(%d)",
 		  rateUpdate.mcastDataRate24GHz, rateUpdate.bssid.bytes,
-		  hdd_device_mode_to_string(adapter->device_mode),
-		  adapter->device_mode);
-	status = sme_send_rate_update_ind(hdd_ctx->mac_handle, &rateUpdate);
+		  hdd_device_mode_to_string(pAdapter->device_mode),
+		  pAdapter->device_mode);
+	status = sme_send_rate_update_ind(pHddCtx->hHal, &rateUpdate);
 	if (QDF_STATUS_SUCCESS != status) {
 		hdd_err("SETMCRATE failed");
 		return -EFAULT;
@@ -3041,24 +3042,22 @@ int wlan_hdd_set_mc_rate(struct hdd_adapter *adapter, int targetRate)
 	return 0;
 }
 
-static int drv_cmd_p2p_dev_addr(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_p2p_dev_addr(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
-	struct qdf_mac_addr *addr = &hdd_ctx->p2p_device_address;
-	size_t user_size = qdf_min(sizeof(addr->bytes),
-				   (size_t)priv_data->total_len);
+	struct qdf_mac_addr *addr = &hdd_ctx->p2pDeviceAddress;
+	size_t user_size = QDF_MIN(sizeof(addr->bytes), priv_data->total_len);
 
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_P2P_DEV_ADDR_IOCTL,
-		   adapter->session_id,
-		   (unsigned int)(*(addr->bytes + 2) << 24 |
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_P2P_DEV_ADDR_IOCTL,
+			 adapter->sessionId,
+			 (unsigned int)(*(addr->bytes + 2) << 24 |
 				*(addr->bytes + 3) << 16 |
 				*(addr->bytes + 4) << 8 |
-				*(addr->bytes + 5)));
-
+				*(addr->bytes + 5))));
 
 	if (copy_to_user(priv_data->buf, addr->bytes, user_size)) {
 		hdd_err("failed to copy data to user buffer");
@@ -3076,16 +3075,16 @@ static int drv_cmd_p2p_dev_addr(struct hdd_adapter *adapter,
  * @command_len: Length of @command
  * @priv_data: Pointer to ioctl private data structure
  *
- * This is a trivial command handler function which simply forwards the
+ * This is a trivial command hander function which simply forwards the
  * command to the actual command processor within the P2P module.
  *
  * Return: 0 on success, non-zero on failure
  */
-static int drv_cmd_p2p_set_noa(struct hdd_adapter *adapter,
-			       struct hdd_context *hdd_ctx,
+static int drv_cmd_p2p_set_noa(hdd_adapter_t *adapter,
+			       hdd_context_t *hdd_ctx,
 			       uint8_t *command,
 			       uint8_t command_len,
-			       struct hdd_priv_data *priv_data)
+			       hdd_priv_data_t *priv_data)
 {
 	return hdd_set_p2p_noa(adapter->dev, command);
 }
@@ -3098,123 +3097,129 @@ static int drv_cmd_p2p_set_noa(struct hdd_adapter *adapter,
  * @command_len: Length of @command
  * @priv_data: Pointer to ioctl private data structure
  *
- * This is a trivial command handler function which simply forwards the
+ * This is a trivial command hander function which simply forwards the
  * command to the actual command processor within the P2P module.
  *
  * Return: 0 on success, non-zero on failure
  */
-static int drv_cmd_p2p_set_ps(struct hdd_adapter *adapter,
-			      struct hdd_context *hdd_ctx,
+static int drv_cmd_p2p_set_ps(hdd_adapter_t *adapter,
+			      hdd_context_t *hdd_ctx,
 			      uint8_t *command,
 			      uint8_t command_len,
-			      struct hdd_priv_data *priv_data)
+			      hdd_priv_data_t *priv_data)
 {
 	return hdd_set_p2p_opps(adapter->dev, command);
 }
 
-static int drv_cmd_set_band(struct hdd_adapter *adapter,
-			    struct hdd_context *hdd_ctx,
+static int drv_cmd_set_band(hdd_adapter_t *adapter,
+			    hdd_context_t *hdd_ctx,
 			    uint8_t *command,
 			    uint8_t command_len,
-			    struct hdd_priv_data *priv_data)
+			    hdd_priv_data_t *priv_data)
 {
-	int err;
-	uint8_t band;
+	int ret = 0;
+
+	uint8_t *ptr = command;
+
+	/* Change band request received */
 
 	/*
-	 * Parse the band value passed from userspace. The first 8 bytes
-	 * should be "SETBAND " and the 9th byte should be a UI band value
+	 * First 8 bytes will have "SETBAND " and
+	 * 9 byte will have band setting value
 	 */
-	err = kstrtou8(command + command_len + 1, 10, &band);
-	if (err) {
-		hdd_err("error %d parsing userspace band parameter", err);
-		return err;
-	}
+	hdd_debug("SetBandCommand Info  comm %s UL %d, TL %d",
+		  command, priv_data->used_len,
+		  priv_data->total_len);
 
-	return hdd_reg_set_band(adapter->dev, band);
+	/* Change band request received */
+	ret = hdd_set_band_helper(adapter->dev, ptr);
+
+	return ret;
 }
 
-static int drv_cmd_set_wmmps(struct hdd_adapter *adapter,
-			     struct hdd_context *hdd_ctx,
+static int drv_cmd_set_wmmps(hdd_adapter_t *adapter,
+			     hdd_context_t *hdd_ctx,
 			     uint8_t *command,
 			     uint8_t command_len,
-			     struct hdd_priv_data *priv_data)
+			     hdd_priv_data_t *priv_data)
 {
 	return hdd_wmmps_helper(adapter, command);
 }
 
-static inline int drv_cmd_country(struct hdd_adapter *adapter,
-				  struct hdd_context *hdd_ctx,
-				  uint8_t *command,
-				  uint8_t command_len,
-				  struct hdd_priv_data *priv_data)
+static int drv_cmd_country(hdd_adapter_t *adapter,
+			   hdd_context_t *hdd_ctx,
+			   uint8_t *command,
+			   uint8_t command_len,
+			   hdd_priv_data_t *priv_data)
 {
+	int ret = 0;
+	QDF_STATUS status;
 	char *country_code;
+	int32_t cc_from_db;
 
 	country_code = strnchr(command, strlen(command), ' ');
-	/* no argument after the command */
+	/* no argument after the command*/
 	if (!country_code)
 		return -EINVAL;
 
-	/* no space after the command */
-	if (*country_code != SPACE_ASCII_VALUE)
+	/* no space after the command*/
+	if (SPACE_ASCII_VALUE != *country_code)
 		return -EINVAL;
 
 	country_code++;
 
-	/* removing empty spaces */
-	while ((*country_code == SPACE_ASCII_VALUE) &&
-	       (*country_code != '\0'))
+	/* removing empty spaces*/
+	while ((SPACE_ASCII_VALUE  == *country_code) &&
+		   ('\0' !=  *country_code))
 		country_code++;
 
-	/* no or less than 2  arguments followed by spaces */
+	/* no or less than 2  arguments followed by spaces*/
 	if (*country_code == '\0' || *(country_code + 1) == '\0')
 		return -EINVAL;
 
-	return hdd_reg_set_country(hdd_ctx, country_code);
-}
+	if (!((country_code[0] == 'X' && country_code[1] == 'X') ||
+	    (country_code[0] == '0' && country_code[1] == '0'))) {
+		cc_from_db = cds_get_country_from_alpha2(country_code);
+		if (cc_from_db == CTRY_DEFAULT) {
+			hdd_err("Invalid country code: %c%c",
+				country_code[0], country_code[1]);
+			return -EINVAL;
+		}
+	}
 
-/**
- * drv_cmd_get_country() - Helper function to get current county code
- * @adapter: pointer to adapter on which request is received
- * @hdd_ctx: pointer to hdd context
- * @command: command name
- * @command_len: command buffer length
- * @priv_data: output pointer to hold current country code
- *
- * Return: On success 0, negative value on error.
- */
-static int drv_cmd_get_country(struct hdd_adapter *adapter,
-			       struct hdd_context *hdd_ctx,
-			       uint8_t *command, uint8_t command_len,
-			       struct hdd_priv_data *priv_data)
-{
-	uint8_t buf[SIZE_OF_GETCOUNTRYREV_OUTPUT] = {0};
-	uint8_t cc[REG_ALPHA2_LEN + 1];
-	int ret = 0, len;
+	qdf_event_reset(&adapter->change_country_code);
 
-	qdf_mem_copy(cc, hdd_ctx->reg.alpha2, REG_ALPHA2_LEN);
-	cc[REG_ALPHA2_LEN] = '\0';
-
-	len = scnprintf(buf, sizeof(buf), "%s %s",
-			"GETCOUNTRYREV", cc);
-	hdd_debug("buf = %s", buf);
-	len = QDF_MIN(priv_data->total_len, len + 1);
-	if (copy_to_user(priv_data->buf, buf, len)) {
-		hdd_err("failed to copy data to user buffer");
-		ret = -EFAULT;
+	status = sme_change_country_code(hdd_ctx->hHal,
+			wlan_hdd_change_country_code_callback,
+			country_code,
+			adapter,
+			hdd_ctx->pcds_context,
+			true,
+			true);
+	if (QDF_IS_STATUS_SUCCESS(status)) {
+		status = qdf_wait_for_event_completion(
+					&adapter->change_country_code,
+					WLAN_WAIT_TIME_COUNTRY);
+		if (QDF_IS_STATUS_ERROR(status)) {
+			hdd_err("SME while setting country code timed out");
+			ret = -ETIMEDOUT;
+		}
+	} else {
+		hdd_err("SME Change Country code fail, status %d",
+			 status);
+		ret = -EINVAL;
 	}
 
 	return ret;
 }
 
-static int drv_cmd_set_roam_trigger(struct hdd_adapter *adapter,
-				    struct hdd_context *hdd_ctx,
+static int drv_cmd_set_roam_trigger(hdd_adapter_t *adapter,
+				    hdd_context_t *hdd_ctx,
 				    uint8_t *command,
 				    uint8_t command_len,
-				    struct hdd_priv_data *priv_data)
+				    hdd_priv_data_t *priv_data)
 {
-	int ret;
+	int ret = 0;
 	uint8_t *value = command;
 	int8_t rssi = 0;
 	uint8_t lookUpThreshold = CFG_NEIGHBOR_LOOKUP_RSSI_THRESHOLD_DEFAULT;
@@ -3239,8 +3244,8 @@ static int drv_cmd_set_roam_trigger(struct hdd_adapter *adapter,
 
 	lookUpThreshold = abs(rssi);
 
-	if ((lookUpThreshold < CFG_NEIGHBOR_LOOKUP_RSSI_THRESHOLD_MIN) ||
-	    (lookUpThreshold > CFG_NEIGHBOR_LOOKUP_RSSI_THRESHOLD_MAX)) {
+	if ((lookUpThreshold < CFG_NEIGHBOR_LOOKUP_RSSI_THRESHOLD_MIN)
+	    || (lookUpThreshold > CFG_NEIGHBOR_LOOKUP_RSSI_THRESHOLD_MAX)) {
 		hdd_err("Neighbor lookup threshold value %d is out of range (Min: %d Max: %d)",
 			  lookUpThreshold,
 			  CFG_NEIGHBOR_LOOKUP_RSSI_THRESHOLD_MIN,
@@ -3249,16 +3254,15 @@ static int drv_cmd_set_roam_trigger(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_SETROAMTRIGGER_IOCTL,
-		   adapter->session_id, lookUpThreshold);
-
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_SETROAMTRIGGER_IOCTL,
+			 adapter->sessionId, lookUpThreshold));
 	hdd_debug("Received Command to Set Roam trigger (Neighbor lookup threshold) = %d",
 		  lookUpThreshold);
 
 	hdd_ctx->config->nNeighborLookupRssiThreshold = lookUpThreshold;
-	status = sme_set_neighbor_lookup_rssi_threshold(hdd_ctx->mac_handle,
-							adapter->session_id,
+	status = sme_set_neighbor_lookup_rssi_threshold(hdd_ctx->hHal,
+							adapter->sessionId,
 							lookUpThreshold);
 	if (QDF_STATUS_SUCCESS != status) {
 		hdd_err("Failed to set roam trigger, try again");
@@ -3270,33 +3274,22 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_get_roam_trigger(struct hdd_adapter *adapter,
-				    struct hdd_context *hdd_ctx,
+static int drv_cmd_get_roam_trigger(hdd_adapter_t *adapter,
+				    hdd_context_t *hdd_ctx,
 				    uint8_t *command,
 				    uint8_t command_len,
-				    struct hdd_priv_data *priv_data)
+				    hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
+	uint8_t lookUpThreshold =
+		sme_get_neighbor_lookup_rssi_threshold(hdd_ctx->hHal);
+	int rssi = (-1) * lookUpThreshold;
 	char extra[32];
-	uint8_t lookup_threshold;
-	int rssi;
 	uint8_t len = 0;
-	QDF_STATUS status;
 
-	status = sme_get_neighbor_lookup_rssi_threshold(hdd_ctx->mac_handle,
-							adapter->session_id,
-							&lookup_threshold);
-	if (QDF_IS_STATUS_ERROR(status))
-		return qdf_status_to_os_return(status);
-
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_GETROAMTRIGGER_IOCTL,
-		   adapter->session_id, lookup_threshold);
-
-	hdd_debug("vdev_id: %u, lookup_threshold: %u",
-		  adapter->session_id, lookup_threshold);
-
-	rssi = (-1) * lookup_threshold;
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_GETROAMTRIGGER_IOCTL,
+			 adapter->sessionId, lookUpThreshold));
 
 	len = scnprintf(extra, sizeof(extra), "%s %d", command, rssi);
 	len = QDF_MIN(priv_data->total_len, len + 1);
@@ -3308,11 +3301,11 @@ static int drv_cmd_get_roam_trigger(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_roam_scan_period(struct hdd_adapter *adapter,
-					struct hdd_context *hdd_ctx,
+static int drv_cmd_set_roam_scan_period(hdd_adapter_t *adapter,
+					hdd_context_t *hdd_ctx,
 					uint8_t *command,
 					uint8_t command_len,
-					struct hdd_priv_data *priv_data)
+					hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -3348,10 +3341,9 @@ static int drv_cmd_set_roam_scan_period(struct hdd_adapter *adapter,
 		ret = -EINVAL;
 		goto exit;
 	}
-
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_SETROAMSCANPERIOD_IOCTL,
-		   adapter->session_id, roamScanPeriod);
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_SETROAMSCANPERIOD_IOCTL,
+			 adapter->sessionId, roamScanPeriod));
 	neighborEmptyScanRefreshPeriod = roamScanPeriod * 1000;
 
 	hdd_debug("Received Command to Set roam scan period (Empty Scan refresh period) = %d",
@@ -3359,43 +3351,33 @@ static int drv_cmd_set_roam_scan_period(struct hdd_adapter *adapter,
 
 	hdd_ctx->config->nEmptyScanRefreshPeriod =
 		neighborEmptyScanRefreshPeriod;
-	sme_update_empty_scan_refresh_period(hdd_ctx->mac_handle,
-					     adapter->session_id,
+	sme_update_empty_scan_refresh_period(hdd_ctx->hHal,
+					     adapter->sessionId,
 					     neighborEmptyScanRefreshPeriod);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_roam_scan_period(struct hdd_adapter *adapter,
-					struct hdd_context *hdd_ctx,
+static int drv_cmd_get_roam_scan_period(hdd_adapter_t *adapter,
+					hdd_context_t *hdd_ctx,
 					uint8_t *command,
 					uint8_t command_len,
-					struct hdd_priv_data *priv_data)
+					hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	uint16_t empty_scan_refresh_period;
+	uint16_t nEmptyScanRefreshPeriod =
+		sme_get_empty_scan_refresh_period(hdd_ctx->hHal);
 	char extra[32];
-	uint8_t len;
-	QDF_STATUS status;
+	uint8_t len = 0;
 
-	status = sme_get_empty_scan_refresh_period(hdd_ctx->mac_handle,
-						   adapter->session_id,
-						   &empty_scan_refresh_period);
-	if (QDF_IS_STATUS_ERROR(status))
-		return qdf_status_to_os_return(status);
-
-	hdd_debug("vdev_id: %u, empty_scan_refresh_period: %u",
-		  adapter->session_id, empty_scan_refresh_period);
-
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_GETROAMSCANPERIOD_IOCTL,
-		   adapter->session_id,
-		   empty_scan_refresh_period);
-
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_GETROAMSCANPERIOD_IOCTL,
+			 adapter->sessionId,
+			 nEmptyScanRefreshPeriod));
 	len = scnprintf(extra, sizeof(extra), "%s %d",
 			"GETROAMSCANPERIOD",
-			(empty_scan_refresh_period / 1000));
+			(nEmptyScanRefreshPeriod / 1000));
 	/* Returned value is in units of seconds */
 	len = QDF_MIN(priv_data->total_len, len + 1);
 	if (copy_to_user(priv_data->buf, &extra, len)) {
@@ -3406,13 +3388,13 @@ static int drv_cmd_get_roam_scan_period(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_roam_scan_refresh_period(struct hdd_adapter *adapter,
-						struct hdd_context *hdd_ctx,
+static int drv_cmd_set_roam_scan_refresh_period(hdd_adapter_t *adapter,
+						hdd_context_t *hdd_ctx,
 						uint8_t *command,
 						uint8_t command_len,
-						struct hdd_priv_data *priv_data)
+						hdd_priv_data_t *priv_data)
 {
-	int ret;
+	int ret = 0;
 	uint8_t *value = command;
 	uint8_t roamScanRefreshPeriod = 0;
 	uint16_t neighborScanRefreshPeriod =
@@ -3437,8 +3419,8 @@ static int drv_cmd_set_roam_scan_refresh_period(struct hdd_adapter *adapter,
 	}
 
 	if ((roamScanRefreshPeriod <
-		(CFG_NEIGHBOR_SCAN_RESULTS_REFRESH_PERIOD_MIN / 1000)) ||
-	    (roamScanRefreshPeriod >
+		(CFG_NEIGHBOR_SCAN_RESULTS_REFRESH_PERIOD_MIN / 1000))
+	    || (roamScanRefreshPeriod >
 		(CFG_NEIGHBOR_SCAN_RESULTS_REFRESH_PERIOD_MAX / 1000))) {
 		hdd_err("Neighbor scan results refresh period value %d is out of range (Min: %d Max: %d)",
 			roamScanRefreshPeriod,
@@ -3456,25 +3438,25 @@ static int drv_cmd_set_roam_scan_refresh_period(struct hdd_adapter *adapter,
 
 	hdd_ctx->config->nNeighborResultsRefreshPeriod =
 				neighborScanRefreshPeriod;
-	sme_set_neighbor_scan_refresh_period(hdd_ctx->mac_handle,
-					     adapter->session_id,
+	sme_set_neighbor_scan_refresh_period(hdd_ctx->hHal,
+					     adapter->sessionId,
 					     neighborScanRefreshPeriod);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_roam_scan_refresh_period(struct hdd_adapter *adapter,
-						struct hdd_context *hdd_ctx,
+static int drv_cmd_get_roam_scan_refresh_period(hdd_adapter_t *adapter,
+						hdd_context_t *hdd_ctx,
 						uint8_t *command,
 						uint8_t command_len,
-						struct hdd_priv_data *priv_data)
+						hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint16_t value =
-		sme_get_neighbor_scan_refresh_period(hdd_ctx->mac_handle);
+		sme_get_neighbor_scan_refresh_period(hdd_ctx->hHal);
 	char extra[32];
-	uint8_t len;
+	uint8_t len = 0;
 
 	len = scnprintf(extra, sizeof(extra), "%s %d",
 			"GETROAMSCANREFRESHPERIOD",
@@ -3489,14 +3471,13 @@ static int drv_cmd_get_roam_scan_refresh_period(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_roam_mode(struct hdd_adapter *adapter,
-				 struct hdd_context *hdd_ctx,
+static int drv_cmd_set_roam_mode(hdd_adapter_t *adapter,
+				 hdd_context_t *hdd_ctx,
 				 uint8_t *command,
 				 uint8_t command_len,
-				 struct hdd_priv_data *priv_data)
+				 hdd_priv_data_t *priv_data)
 {
-	mac_handle_t mac_handle;
-	int ret;
+	int ret = 0;
 	uint8_t *value = command;
 	uint8_t roamMode = CFG_LFR_FEATURE_ENABLED_DEFAULT;
 
@@ -3542,19 +3523,24 @@ static int drv_cmd_set_roam_mode(struct hdd_adapter *adapter,
 		roamMode = CFG_LFR_FEATURE_ENABLED_MIN;  /* Roam disable */
 
 	hdd_ctx->config->isFastRoamIniFeatureEnabled = roamMode;
-	mac_handle = hdd_ctx->mac_handle;
 	if (roamMode) {
 		hdd_ctx->config->isRoamOffloadScanEnabled = roamMode;
-		sme_update_roam_scan_offload_enabled(mac_handle, roamMode);
-		sme_update_is_fast_roam_ini_feature_enabled(mac_handle,
-							    adapter->session_id,
-							    roamMode);
+		sme_update_roam_scan_offload_enabled(
+			(tHalHandle)(hdd_ctx->hHal),
+			hdd_ctx->config->isRoamOffloadScanEnabled);
+		sme_update_is_fast_roam_ini_feature_enabled(
+			hdd_ctx->hHal,
+			adapter->sessionId,
+			roamMode);
 	} else {
-		sme_update_is_fast_roam_ini_feature_enabled(mac_handle,
-							    adapter->session_id,
-							    roamMode);
+		sme_update_is_fast_roam_ini_feature_enabled(
+			hdd_ctx->hHal,
+			adapter->sessionId,
+			roamMode);
 		hdd_ctx->config->isRoamOffloadScanEnabled = roamMode;
-		sme_update_roam_scan_offload_enabled(mac_handle, roamMode);
+		sme_update_roam_scan_offload_enabled(
+			(tHalHandle)(hdd_ctx->hHal),
+			hdd_ctx->config->isRoamOffloadScanEnabled);
 	}
 
 
@@ -3562,16 +3548,16 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_get_roam_mode(struct hdd_adapter *adapter,
-				 struct hdd_context *hdd_ctx,
+static int drv_cmd_get_roam_mode(hdd_adapter_t *adapter,
+				 hdd_context_t *hdd_ctx,
 				 uint8_t *command,
 				 uint8_t command_len,
-				 struct hdd_priv_data *priv_data)
+				 hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	bool roamMode = sme_get_is_lfr_feature_enabled(hdd_ctx->mac_handle);
+	bool roamMode = sme_get_is_lfr_feature_enabled(hdd_ctx->hHal);
 	char extra[32];
-	uint8_t len;
+	uint8_t len = 0;
 
 	/*
 	 * roamMode value shall be inverted because the sementics is different.
@@ -3591,13 +3577,13 @@ static int drv_cmd_get_roam_mode(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_roam_delta(struct hdd_adapter *adapter,
-				  struct hdd_context *hdd_ctx,
+static int drv_cmd_set_roam_delta(hdd_adapter_t *adapter,
+				  hdd_context_t *hdd_ctx,
 				  uint8_t *command,
 				  uint8_t command_len,
-				  struct hdd_priv_data *priv_data)
+				  hdd_priv_data_t *priv_data)
 {
-	int ret;
+	int ret = 0;
 	uint8_t *value = command;
 	uint8_t roamRssiDiff = CFG_ROAM_RSSI_DIFF_DEFAULT;
 
@@ -3632,40 +3618,32 @@ static int drv_cmd_set_roam_delta(struct hdd_adapter *adapter,
 		  roamRssiDiff);
 
 	hdd_ctx->config->RoamRssiDiff = roamRssiDiff;
-	sme_update_roam_rssi_diff(hdd_ctx->mac_handle,
-				  adapter->session_id,
+	sme_update_roam_rssi_diff(hdd_ctx->hHal,
+				  adapter->sessionId,
 				  roamRssiDiff);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_roam_delta(struct hdd_adapter *adapter,
-				  struct hdd_context *hdd_ctx,
+static int drv_cmd_get_roam_delta(hdd_adapter_t *adapter,
+				  hdd_context_t *hdd_ctx,
 				  uint8_t *command,
 				  uint8_t command_len,
-				  struct hdd_priv_data *priv_data)
+				  hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	uint8_t rssi_diff;
+	uint8_t roamRssiDiff =
+		sme_get_roam_rssi_diff(hdd_ctx->hHal);
 	char extra[32];
-	uint8_t len;
-	QDF_STATUS status;
+	uint8_t len = 0;
 
-	status = sme_get_roam_rssi_diff(hdd_ctx->mac_handle,
-					adapter->session_id,
-					&rssi_diff);
-	if (QDF_IS_STATUS_ERROR(status))
-		return qdf_status_to_os_return(status);
-
-	hdd_debug("vdev_id: %u, rssi_diff: %u", adapter->session_id, rssi_diff);
-
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_GETROAMDELTA_IOCTL,
-		   adapter->session_id, rssi_diff);
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_GETROAMDELTA_IOCTL,
+			 adapter->sessionId, roamRssiDiff));
 
 	len = scnprintf(extra, sizeof(extra), "%s %d",
-			command, rssi_diff);
+			command, roamRssiDiff);
 	len = QDF_MIN(priv_data->total_len, len + 1);
 
 	if (copy_to_user(priv_data->buf, &extra, len)) {
@@ -3676,11 +3654,11 @@ static int drv_cmd_get_roam_delta(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_get_band(struct hdd_adapter *adapter,
-			    struct hdd_context *hdd_ctx,
+static int drv_cmd_get_band(hdd_adapter_t *adapter,
+			    hdd_context_t *hdd_ctx,
 			    uint8_t *command,
 			    uint8_t command_len,
-			    struct hdd_priv_data *priv_data)
+			    hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	int band = -1;
@@ -3689,9 +3667,9 @@ static int drv_cmd_get_band(struct hdd_adapter *adapter,
 
 	hdd_get_band_helper(hdd_ctx, &band);
 
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_GETBAND_IOCTL,
-		   adapter->session_id, band);
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_GETBAND_IOCTL,
+			 adapter->sessionId, band));
 
 	len = scnprintf(extra, sizeof(extra), "%s %d", command, band);
 	len = QDF_MIN(priv_data->total_len, len + 1);
@@ -3704,20 +3682,20 @@ static int drv_cmd_get_band(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_roam_scan_channels(struct hdd_adapter *adapter,
-					  struct hdd_context *hdd_ctx,
+static int drv_cmd_set_roam_scan_channels(hdd_adapter_t *adapter,
+					  hdd_context_t *hdd_ctx,
 					  uint8_t *command,
 					  uint8_t command_len,
-					  struct hdd_priv_data *priv_data)
+					  hdd_priv_data_t *priv_data)
 {
 	return hdd_parse_set_roam_scan_channels(adapter, command);
 }
 
-static int drv_cmd_get_roam_scan_channels(struct hdd_adapter *adapter,
-					  struct hdd_context *hdd_ctx,
+static int drv_cmd_get_roam_scan_channels(hdd_adapter_t *adapter,
+					  hdd_context_t *hdd_ctx,
 					  uint8_t *command,
 					  uint8_t command_len,
-					  struct hdd_priv_data *priv_data)
+					  hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t ChannelList[WNI_CFG_VALID_CHANNEL_LIST_LEN] = { 0 };
@@ -3727,19 +3705,18 @@ static int drv_cmd_get_roam_scan_channels(struct hdd_adapter *adapter,
 	int len;
 
 	if (QDF_STATUS_SUCCESS !=
-		sme_get_roam_scan_channel_list(hdd_ctx->mac_handle,
+		sme_get_roam_scan_channel_list(hdd_ctx->hHal,
 					       ChannelList,
 					       &numChannels,
-					       adapter->session_id)) {
+					       adapter->sessionId)) {
 		hdd_err("failed to get roam scan channel list");
 		ret = -EFAULT;
 		goto exit;
 	}
 
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_GETROAMSCANCHANNELS_IOCTL,
-		   adapter->session_id, numChannels);
-
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_GETROAMSCANCHANNELS_IOCTL,
+			 adapter->sessionId, numChannels));
 	/*
 	 * output channel list is of the format
 	 * [Number of roam scan channels][Channel1][Channel2]...
@@ -3762,15 +3739,14 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_get_ccx_mode(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_get_ccx_mode(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	mac_handle_t mac_handle = hdd_ctx->mac_handle;
-	bool eseMode = sme_get_is_ese_feature_enabled(mac_handle);
+	bool eseMode = sme_get_is_ese_feature_enabled(hdd_ctx->hHal);
 	char extra[32];
 	uint8_t len = 0;
 	struct pmkid_mode_bits pmkid_modes;
@@ -3782,7 +3758,7 @@ static int drv_cmd_get_ccx_mode(struct hdd_adapter *adapter,
 	 */
 	if (eseMode &&
 	    (pmkid_modes.fw_okc || pmkid_modes.fw_pmksa_cache) &&
-	    sme_get_is_ft_feature_enabled(mac_handle)) {
+	    sme_get_is_ft_feature_enabled(hdd_ctx->hHal)) {
 		hdd_warn("PMKID/ESE/11R are supported simultaneously hence this operation is not permitted!");
 		ret = -EPERM;
 		goto exit;
@@ -3801,17 +3777,16 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_get_okc_mode(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_get_okc_mode(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	struct pmkid_mode_bits pmkid_modes;
 	char extra[32];
 	uint8_t len = 0;
-	mac_handle_t mac_handle = hdd_ctx->mac_handle;
 
 	hdd_get_pmkid_modes(hdd_ctx, &pmkid_modes);
 	/*
@@ -3819,8 +3794,8 @@ static int drv_cmd_get_okc_mode(struct hdd_adapter *adapter,
 	 * then this operation is not permitted (return FAILURE)
 	 */
 	if (pmkid_modes.fw_okc &&
-	    sme_get_is_ese_feature_enabled(mac_handle) &&
-	    sme_get_is_ft_feature_enabled(mac_handle)) {
+	    sme_get_is_ese_feature_enabled(hdd_ctx->hHal) &&
+	    sme_get_is_ft_feature_enabled(hdd_ctx->hHal)) {
 		hdd_warn("PMKID/ESE/11R are supported simultaneously hence this operation is not permitted!");
 		ret = -EPERM;
 		goto exit;
@@ -3840,14 +3815,14 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_get_fast_roam(struct hdd_adapter *adapter,
-				 struct hdd_context *hdd_ctx,
+static int drv_cmd_get_fast_roam(hdd_adapter_t *adapter,
+				 hdd_context_t *hdd_ctx,
 				 uint8_t *command,
 				 uint8_t command_len,
-				 struct hdd_priv_data *priv_data)
+				 hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	bool lfrMode = sme_get_is_lfr_feature_enabled(hdd_ctx->mac_handle);
+	bool lfrMode = sme_get_is_lfr_feature_enabled(hdd_ctx->hHal);
 	char extra[32];
 	uint8_t len = 0;
 
@@ -3863,14 +3838,14 @@ static int drv_cmd_get_fast_roam(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_get_fast_transition(struct hdd_adapter *adapter,
-				       struct hdd_context *hdd_ctx,
+static int drv_cmd_get_fast_transition(hdd_adapter_t *adapter,
+				       hdd_context_t *hdd_ctx,
 				       uint8_t *command,
 				       uint8_t command_len,
-				       struct hdd_priv_data *priv_data)
+				       hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	bool ft = sme_get_is_ft_feature_enabled(hdd_ctx->mac_handle);
+	bool ft = sme_get_is_ft_feature_enabled(hdd_ctx->hHal);
 	char extra[32];
 	uint8_t len = 0;
 
@@ -3886,11 +3861,11 @@ static int drv_cmd_get_fast_transition(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_roam_scan_channel_min_time(struct hdd_adapter *adapter,
-						  struct hdd_context *hdd_ctx,
+static int drv_cmd_set_roam_scan_channel_min_time(hdd_adapter_t *adapter,
+						  hdd_context_t *hdd_ctx,
 						  uint8_t *command,
 						  uint8_t command_len,
-						  struct hdd_priv_data *priv_data)
+						  hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -3923,40 +3898,40 @@ static int drv_cmd_set_roam_scan_channel_min_time(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_SETROAMSCANCHANNELMINTIME_IOCTL,
-		   adapter->session_id, minTime);
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_SETROAMSCANCHANNELMINTIME_IOCTL,
+			 adapter->sessionId, minTime));
 	hdd_debug("Received Command to change channel min time = %d",
 		  minTime);
 
 	hdd_ctx->config->nNeighborScanMinChanTime = minTime;
-	sme_set_neighbor_scan_min_chan_time(hdd_ctx->mac_handle,
+	sme_set_neighbor_scan_min_chan_time(hdd_ctx->hHal,
 					    minTime,
-					    adapter->session_id);
+					    adapter->sessionId);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_send_action_frame(struct hdd_adapter *adapter,
-				     struct hdd_context *hdd_ctx,
+static int drv_cmd_send_action_frame(hdd_adapter_t *adapter,
+				     hdd_context_t *hdd_ctx,
 				     uint8_t *command,
 				     uint8_t command_len,
-				     struct hdd_priv_data *priv_data)
+				     hdd_priv_data_t *priv_data)
 {
 	return hdd_parse_sendactionframe(adapter, command,
 					 priv_data->total_len);
 }
 
-static int drv_cmd_get_roam_scan_channel_min_time(struct hdd_adapter *adapter,
-						  struct hdd_context *hdd_ctx,
+static int drv_cmd_get_roam_scan_channel_min_time(hdd_adapter_t *adapter,
+						  hdd_context_t *hdd_ctx,
 						  uint8_t *command,
 						  uint8_t command_len,
-						  struct hdd_priv_data *priv_data)
+						  hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	uint16_t val = sme_get_neighbor_scan_min_chan_time(hdd_ctx->mac_handle,
-							   adapter->session_id);
+	uint16_t val = sme_get_neighbor_scan_min_chan_time(hdd_ctx->hHal,
+						adapter->sessionId);
 	char extra[32];
 	uint8_t len = 0;
 
@@ -3965,9 +3940,9 @@ static int drv_cmd_get_roam_scan_channel_min_time(struct hdd_adapter *adapter,
 			"GETROAMSCANCHANNELMINTIME", val);
 	len = QDF_MIN(priv_data->total_len, len + 1);
 
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_GETROAMSCANCHANNELMINTIME_IOCTL,
-		   adapter->session_id, val);
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_GETROAMSCANCHANNELMINTIME_IOCTL,
+			 adapter->sessionId, val));
 
 	if (copy_to_user(priv_data->buf, &extra, len)) {
 		hdd_err("failed to copy data to user buffer");
@@ -3977,11 +3952,11 @@ static int drv_cmd_get_roam_scan_channel_min_time(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_scan_channel_time(struct hdd_adapter *adapter,
-					 struct hdd_context *hdd_ctx,
+static int drv_cmd_set_scan_channel_time(hdd_adapter_t *adapter,
+					 hdd_context_t *hdd_ctx,
 					 uint8_t *command,
 					 uint8_t command_len,
-					 struct hdd_priv_data *priv_data)
+					 hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4018,23 +3993,23 @@ static int drv_cmd_set_scan_channel_time(struct hdd_adapter *adapter,
 		  maxTime);
 
 	hdd_ctx->config->nNeighborScanMaxChanTime = maxTime;
-	sme_set_neighbor_scan_max_chan_time(hdd_ctx->mac_handle,
-					    adapter->session_id,
+	sme_set_neighbor_scan_max_chan_time(hdd_ctx->hHal,
+					    adapter->sessionId,
 					    maxTime);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_scan_channel_time(struct hdd_adapter *adapter,
-					 struct hdd_context *hdd_ctx,
+static int drv_cmd_get_scan_channel_time(hdd_adapter_t *adapter,
+					 hdd_context_t *hdd_ctx,
 					 uint8_t *command,
 					 uint8_t command_len,
-					 struct hdd_priv_data *priv_data)
+					 hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	uint16_t val = sme_get_neighbor_scan_max_chan_time(hdd_ctx->mac_handle,
-							   adapter->session_id);
+	uint16_t val = sme_get_neighbor_scan_max_chan_time(hdd_ctx->hHal,
+				adapter->sessionId);
 	char extra[32];
 	uint8_t len = 0;
 
@@ -4051,11 +4026,11 @@ static int drv_cmd_get_scan_channel_time(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_scan_home_time(struct hdd_adapter *adapter,
-				      struct hdd_context *hdd_ctx,
+static int drv_cmd_set_scan_home_time(hdd_adapter_t *adapter,
+				      hdd_context_t *hdd_ctx,
 				      uint8_t *command,
 				      uint8_t command_len,
-				      struct hdd_priv_data *priv_data)
+				      hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4092,22 +4067,23 @@ static int drv_cmd_set_scan_home_time(struct hdd_adapter *adapter,
 		  val);
 
 	hdd_ctx->config->nNeighborScanPeriod = val;
-	sme_set_neighbor_scan_period(hdd_ctx->mac_handle,
-				     adapter->session_id, val);
+	sme_set_neighbor_scan_period(hdd_ctx->hHal,
+				     adapter->sessionId, val);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_scan_home_time(struct hdd_adapter *adapter,
-				      struct hdd_context *hdd_ctx,
+static int drv_cmd_get_scan_home_time(hdd_adapter_t *adapter,
+				      hdd_context_t *hdd_ctx,
 				      uint8_t *command,
 				      uint8_t command_len,
-				      struct hdd_priv_data *priv_data)
+				      hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	uint16_t val = sme_get_neighbor_scan_period(hdd_ctx->mac_handle,
-						    adapter->session_id);
+	uint16_t val = sme_get_neighbor_scan_period(hdd_ctx->hHal,
+						    adapter->
+						    sessionId);
 	char extra[32];
 	uint8_t len = 0;
 
@@ -4124,11 +4100,11 @@ static int drv_cmd_get_scan_home_time(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_roam_intra_band(struct hdd_adapter *adapter,
-				       struct hdd_context *hdd_ctx,
+static int drv_cmd_set_roam_intra_band(hdd_adapter_t *adapter,
+				       hdd_context_t *hdd_ctx,
 				       uint8_t *command,
 				       uint8_t command_len,
-				       struct hdd_priv_data *priv_data)
+				       hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4164,23 +4140,20 @@ static int drv_cmd_set_roam_intra_band(struct hdd_adapter *adapter,
 		  val);
 
 	hdd_ctx->config->nRoamIntraBand = val;
-	sme_set_roam_intra_band(hdd_ctx->mac_handle, val);
-	policy_mgr_set_pcl_for_existing_combo(
-					hdd_ctx->psoc,
-					PM_STA_MODE);
+	sme_set_roam_intra_band(hdd_ctx->hHal, val);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_roam_intra_band(struct hdd_adapter *adapter,
-				       struct hdd_context *hdd_ctx,
+static int drv_cmd_get_roam_intra_band(hdd_adapter_t *adapter,
+				       hdd_context_t *hdd_ctx,
 				       uint8_t *command,
 				       uint8_t command_len,
-				       struct hdd_priv_data *priv_data)
+				       hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	uint16_t val = sme_get_roam_intra_band(hdd_ctx->mac_handle);
+	uint16_t val = sme_get_roam_intra_band(hdd_ctx->hHal);
 	char extra[32];
 	uint8_t len = 0;
 
@@ -4196,11 +4169,11 @@ static int drv_cmd_get_roam_intra_band(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_scan_n_probes(struct hdd_adapter *adapter,
-				     struct hdd_context *hdd_ctx,
+static int drv_cmd_set_scan_n_probes(hdd_adapter_t *adapter,
+				     hdd_context_t *hdd_ctx,
 				     uint8_t *command,
 				     uint8_t command_len,
-				     struct hdd_priv_data *priv_data)
+				     hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4237,33 +4210,23 @@ static int drv_cmd_set_scan_n_probes(struct hdd_adapter *adapter,
 		  nProbes);
 
 	hdd_ctx->config->nProbes = nProbes;
-	sme_update_roam_scan_n_probes(hdd_ctx->mac_handle,
-				      adapter->session_id, nProbes);
+	sme_update_roam_scan_n_probes(hdd_ctx->hHal,
+				      adapter->sessionId, nProbes);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_scan_n_probes(struct hdd_adapter *adapter,
-				     struct hdd_context *hdd_ctx,
+static int drv_cmd_get_scan_n_probes(hdd_adapter_t *adapter,
+				     hdd_context_t *hdd_ctx,
 				     uint8_t *command,
 				     uint8_t command_len,
-				     struct hdd_priv_data *priv_data)
+				     hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	uint8_t val;
+	uint8_t val = sme_get_roam_scan_n_probes(hdd_ctx->hHal);
 	char extra[32];
 	uint8_t len = 0;
-	QDF_STATUS status;
-
-	status = sme_get_roam_scan_n_probes(hdd_ctx->mac_handle,
-					    adapter->session_id,
-					    &val);
-	if (QDF_IS_STATUS_ERROR(status))
-		return qdf_status_to_os_return(status);
-
-	hdd_debug("vdev_id: %u, scan_n_probes: %u",
-		  adapter->session_id, val);
 
 	len = scnprintf(extra, sizeof(extra), "%s %d", command, val);
 	len = QDF_MIN(priv_data->total_len, len + 1);
@@ -4275,11 +4238,11 @@ static int drv_cmd_get_scan_n_probes(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_scan_home_away_time(struct hdd_adapter *adapter,
-					   struct hdd_context *hdd_ctx,
+static int drv_cmd_set_scan_home_away_time(hdd_adapter_t *adapter,
+					   hdd_context_t *hdd_ctx,
 					   uint8_t *command,
 					   uint8_t command_len,
-					   struct hdd_priv_data *priv_data)
+					   hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4317,35 +4280,29 @@ static int drv_cmd_set_scan_home_away_time(struct hdd_adapter *adapter,
 	hdd_debug("Received Command to Set scan away time = %d",
 		  homeAwayTime);
 
-	sme_update_roam_scan_home_away_time(hdd_ctx->mac_handle,
-					    adapter->session_id,
-					    homeAwayTime,
-					    true);
+	if (hdd_ctx->config->nRoamScanHomeAwayTime !=
+	    homeAwayTime) {
+		hdd_ctx->config->nRoamScanHomeAwayTime = homeAwayTime;
+		sme_update_roam_scan_home_away_time(hdd_ctx->hHal,
+						    adapter->sessionId,
+						    homeAwayTime,
+						    true);
+	}
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_scan_home_away_time(struct hdd_adapter *adapter,
-					   struct hdd_context *hdd_ctx,
+static int drv_cmd_get_scan_home_away_time(hdd_adapter_t *adapter,
+					   hdd_context_t *hdd_ctx,
 					   uint8_t *command,
 					   uint8_t command_len,
-					   struct hdd_priv_data *priv_data)
+					   hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	uint16_t val;
+	uint16_t val = sme_get_roam_scan_home_away_time(hdd_ctx->hHal);
 	char extra[32];
 	uint8_t len = 0;
-	QDF_STATUS status;
-
-	status = sme_get_roam_scan_home_away_time(hdd_ctx->mac_handle,
-						  adapter->session_id,
-						  &val);
-	if (QDF_IS_STATUS_ERROR(status))
-		return qdf_status_to_os_return(status);
-
-	hdd_debug("vdev_id: %u, scan home away time: %u",
-		  adapter->session_id, val);
 
 	len = scnprintf(extra, sizeof(extra), "%s %d", command, val);
 	len = QDF_MIN(priv_data->total_len, len + 1);
@@ -4358,20 +4315,20 @@ static int drv_cmd_get_scan_home_away_time(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_reassoc(struct hdd_adapter *adapter,
-			   struct hdd_context *hdd_ctx,
+static int drv_cmd_reassoc(hdd_adapter_t *adapter,
+			   hdd_context_t *hdd_ctx,
 			   uint8_t *command,
 			   uint8_t command_len,
-			   struct hdd_priv_data *priv_data)
+			   hdd_priv_data_t *priv_data)
 {
 	return hdd_parse_reassoc(adapter, command, priv_data->total_len);
 }
 
-static int drv_cmd_set_wes_mode(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_set_wes_mode(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4408,20 +4365,20 @@ static int drv_cmd_set_wes_mode(struct hdd_adapter *adapter,
 		  wesMode);
 
 	hdd_ctx->config->isWESModeEnabled = wesMode;
-	sme_update_wes_mode(hdd_ctx->mac_handle, wesMode, adapter->session_id);
+	sme_update_wes_mode(hdd_ctx->hHal, wesMode, adapter->sessionId);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_wes_mode(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_get_wes_mode(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	bool wesMode = sme_get_wes_mode(hdd_ctx->mac_handle);
+	bool wesMode = sme_get_wes_mode(hdd_ctx->hHal);
 	char extra[32];
 	uint8_t len = 0;
 
@@ -4435,11 +4392,11 @@ static int drv_cmd_get_wes_mode(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_opportunistic_rssi_diff(struct hdd_adapter *adapter,
-					       struct hdd_context *hdd_ctx,
+static int drv_cmd_set_opportunistic_rssi_diff(hdd_adapter_t *adapter,
+					       hdd_context_t *hdd_ctx,
 					       uint8_t *command,
 					       uint8_t command_len,
-					       struct hdd_priv_data *priv_data)
+					       hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4464,23 +4421,23 @@ static int drv_cmd_set_opportunistic_rssi_diff(struct hdd_adapter *adapter,
 	hdd_debug("Received Command to Set Opportunistic Threshold diff = %d",
 		  nOpportunisticThresholdDiff);
 
-	sme_set_roam_opportunistic_scan_threshold_diff(hdd_ctx->mac_handle,
-				adapter->session_id,
+	sme_set_roam_opportunistic_scan_threshold_diff(hdd_ctx->hHal,
+				adapter->sessionId,
 				nOpportunisticThresholdDiff);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_opportunistic_rssi_diff(struct hdd_adapter *adapter,
-					       struct hdd_context *hdd_ctx,
+static int drv_cmd_get_opportunistic_rssi_diff(hdd_adapter_t *adapter,
+					       hdd_context_t *hdd_ctx,
 					       uint8_t *command,
 					       uint8_t command_len,
-					       struct hdd_priv_data *priv_data)
+					       hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	mac_handle_t mac_handle = hdd_ctx->mac_handle;
-	int8_t val = sme_get_roam_opportunistic_scan_threshold_diff(mac_handle);
+	int8_t val = sme_get_roam_opportunistic_scan_threshold_diff(
+			hdd_ctx->hHal);
 	char extra[32];
 	uint8_t len = 0;
 
@@ -4494,11 +4451,11 @@ static int drv_cmd_get_opportunistic_rssi_diff(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_roam_rescan_rssi_diff(struct hdd_adapter *adapter,
-					     struct hdd_context *hdd_ctx,
+static int drv_cmd_set_roam_rescan_rssi_diff(hdd_adapter_t *adapter,
+					     hdd_context_t *hdd_ctx,
 					     uint8_t *command,
 					     uint8_t command_len,
-					     struct hdd_priv_data *priv_data)
+					     hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4522,22 +4479,22 @@ static int drv_cmd_set_roam_rescan_rssi_diff(struct hdd_adapter *adapter,
 	hdd_debug("Received Command to Set Roam Rescan RSSI Diff = %d",
 		  nRoamRescanRssiDiff);
 
-	sme_set_roam_rescan_rssi_diff(hdd_ctx->mac_handle,
-				      adapter->session_id,
+	sme_set_roam_rescan_rssi_diff(hdd_ctx->hHal,
+				      adapter->sessionId,
 				      nRoamRescanRssiDiff);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_roam_rescan_rssi_diff(struct hdd_adapter *adapter,
-					     struct hdd_context *hdd_ctx,
+static int drv_cmd_get_roam_rescan_rssi_diff(hdd_adapter_t *adapter,
+					     hdd_context_t *hdd_ctx,
 					     uint8_t *command,
 					     uint8_t command_len,
-					     struct hdd_priv_data *priv_data)
+					     hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	uint8_t val = sme_get_roam_rescan_rssi_diff(hdd_ctx->mac_handle);
+	uint8_t val = sme_get_roam_rescan_rssi_diff(hdd_ctx->hHal);
 	char extra[32];
 	uint8_t len = 0;
 
@@ -4551,11 +4508,11 @@ static int drv_cmd_get_roam_rescan_rssi_diff(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_fast_roam(struct hdd_adapter *adapter,
-				 struct hdd_context *hdd_ctx,
+static int drv_cmd_set_fast_roam(hdd_adapter_t *adapter,
+				 hdd_context_t *hdd_ctx,
 				 uint8_t *command,
 				 uint8_t command_len,
-				 struct hdd_priv_data *priv_data)
+				 hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4592,19 +4549,20 @@ static int drv_cmd_set_fast_roam(struct hdd_adapter *adapter,
 		  lfrMode);
 
 	hdd_ctx->config->isFastRoamIniFeatureEnabled = lfrMode;
-	sme_update_is_fast_roam_ini_feature_enabled(hdd_ctx->mac_handle,
-						    adapter->session_id,
+	sme_update_is_fast_roam_ini_feature_enabled(hdd_ctx->hHal,
+						    adapter->
+						    sessionId,
 						    lfrMode);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_set_fast_transition(struct hdd_adapter *adapter,
-				       struct hdd_context *hdd_ctx,
+static int drv_cmd_set_fast_transition(hdd_adapter_t *adapter,
+				       hdd_context_t *hdd_ctx,
 				       uint8_t *command,
 				       uint8_t command_len,
-				       struct hdd_priv_data *priv_data)
+				       hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4640,17 +4598,17 @@ static int drv_cmd_set_fast_transition(struct hdd_adapter *adapter,
 	hdd_debug("Received Command to change ft mode = %d", ft);
 
 	hdd_ctx->config->isFastTransitionEnabled = ft;
-	sme_update_fast_transition_enabled(hdd_ctx->mac_handle, ft);
+	sme_update_fast_transition_enabled(hdd_ctx->hHal, ft);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_fast_reassoc(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_fast_reassoc(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4659,8 +4617,7 @@ static int drv_cmd_fast_reassoc(struct hdd_adapter *adapter,
 	uint32_t roamId = INVALID_ROAM_ID;
 	tCsrRoamModifyProfileFields modProfileFields;
 	tCsrHandoffRequest handoffInfo;
-	struct hdd_station_ctx *sta_ctx;
-	mac_handle_t mac_handle;
+	hdd_station_ctx_t *pHddStaCtx;
 
 	if (QDF_STA_MODE != adapter->device_mode) {
 		hdd_warn("Unsupported in mode %s(%d)",
@@ -4669,10 +4626,10 @@ static int drv_cmd_fast_reassoc(struct hdd_adapter *adapter,
 		return -EINVAL;
 	}
 
-	sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+	pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 
 	/* if not associated, no need to proceed with reassoc */
-	if (eConnectionState_Associated != sta_ctx->conn_info.connState) {
+	if (eConnectionState_Associated != pHddStaCtx->conn_info.connState) {
 		hdd_warn("Not associated!");
 		ret = -EINVAL;
 		goto exit;
@@ -4685,25 +4642,23 @@ static int drv_cmd_fast_reassoc(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	mac_handle = hdd_ctx->mac_handle;
-
 	/*
 	 * if the target bssid is same as currently associated AP,
 	 * issue reassoc to same AP
 	 */
 	if (!qdf_mem_cmp(targetApBssid,
-				    sta_ctx->conn_info.bssId.bytes,
+				    pHddStaCtx->conn_info.bssId.bytes,
 				    QDF_MAC_ADDR_SIZE)) {
 		hdd_warn("Reassoc BSSID is same as currently associated AP bssid");
 		if (roaming_offload_enabled(hdd_ctx)) {
 			hdd_wma_send_fastreassoc_cmd(adapter,
 				targetApBssid,
-				sta_ctx->conn_info.operationChannel);
+				pHddStaCtx->conn_info.operationChannel);
 		} else {
-			sme_get_modify_profile_fields(mac_handle,
-				adapter->session_id,
+			sme_get_modify_profile_fields(hdd_ctx->hHal,
+				adapter->sessionId,
 				&modProfileFields);
-			sme_roam_reassoc(mac_handle, adapter->session_id,
+			sme_roam_reassoc(hdd_ctx->hHal, adapter->sessionId,
 				NULL, modProfileFields, &roamId, 1);
 		}
 		return 0;
@@ -4726,17 +4681,17 @@ static int drv_cmd_fast_reassoc(struct hdd_adapter *adapter,
 	handoffInfo.src = FASTREASSOC;
 	qdf_mem_copy(handoffInfo.bssid.bytes, targetApBssid,
 		     sizeof(tSirMacAddr));
-	sme_handoff_request(mac_handle, adapter->session_id,
+	sme_handoff_request(hdd_ctx->hHal, adapter->sessionId,
 			    &handoffInfo);
 exit:
 	return ret;
 }
 
-static int drv_cmd_set_roam_scan_control(struct hdd_adapter *adapter,
-					 struct hdd_context *hdd_ctx,
+static int drv_cmd_set_roam_scan_control(hdd_adapter_t *adapter,
+					 hdd_context_t *hdd_ctx,
 					 uint8_t *command,
 					 uint8_t command_len,
-					 struct hdd_priv_data *priv_data)
+					 hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -4765,25 +4720,24 @@ static int drv_cmd_set_roam_scan_control(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	sme_set_roam_scan_control(hdd_ctx->mac_handle,
-				  adapter->session_id,
+	sme_set_roam_scan_control(hdd_ctx->hHal,
+				  adapter->sessionId,
 				  roamScanControl);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_set_okc_mode(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_set_okc_mode(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
 	uint32_t okc_mode;
 	struct pmkid_mode_bits pmkid_modes;
-	mac_handle_t mac_handle;
 
 	hdd_get_pmkid_modes(hdd_ctx, &pmkid_modes);
 
@@ -4791,10 +4745,9 @@ static int drv_cmd_set_okc_mode(struct hdd_adapter *adapter,
 	 * Check if the features PMKID/ESE/11R are supported simultaneously,
 	 * then this operation is not permitted (return FAILURE)
 	 */
-	mac_handle = hdd_ctx->mac_handle;
-	if (sme_get_is_ese_feature_enabled(mac_handle) &&
+	if (sme_get_is_ese_feature_enabled(hdd_ctx->hHal) &&
 	    pmkid_modes.fw_okc &&
-	    sme_get_is_ft_feature_enabled(mac_handle)) {
+	    sme_get_is_ft_feature_enabled(hdd_ctx->hHal)) {
 		hdd_warn("PMKID/ESE/11R are supported simultaneously hence this operation is not permitted!");
 		ret = -EPERM;
 		goto exit;
@@ -4804,7 +4757,7 @@ static int drv_cmd_set_okc_mode(struct hdd_adapter *adapter,
 	value = value + command_len + 1;
 
 	/* get the current configured value */
-	okc_mode = hdd_ctx->config->pmkid_modes & CFG_PMKID_MODES_OKC;
+	okc_mode = (hdd_ctx->config->pmkid_modes & CFG_PMKID_MODES_OKC) ? 1 : 0;
 
 	/* Convert the value from ascii to integer */
 	ret = kstrtou32(value, 10, &okc_mode);
@@ -4837,14 +4790,14 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_get_roam_scan_control(struct hdd_adapter *adapter,
-					 struct hdd_context *hdd_ctx,
+static int drv_cmd_get_roam_scan_control(hdd_adapter_t *adapter,
+					 hdd_context_t *hdd_ctx,
 					 uint8_t *command,
 					 uint8_t command_len,
-					 struct hdd_priv_data *priv_data)
+					 hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	bool roamScanControl = sme_get_roam_scan_control(hdd_ctx->mac_handle);
+	bool roamScanControl = sme_get_roam_scan_control(hdd_ctx->hHal);
 	char extra[32];
 	uint8_t len = 0;
 
@@ -4859,11 +4812,11 @@ static int drv_cmd_get_roam_scan_control(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_bt_coex_mode(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_bt_coex_mode(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	char *bcMode;
@@ -4871,7 +4824,7 @@ static int drv_cmd_bt_coex_mode(struct hdd_adapter *adapter,
 	bcMode = command + 11;
 	if ('1' == *bcMode) {
 		hdd_debug("BTCOEXMODE %d", *bcMode);
-		hdd_ctx->bt_coex_mode_set = true;
+		hdd_ctx->btCoexModeSet = true;
 		ret = wlan_hdd_scan_abort(adapter);
 		if (ret < 0) {
 			hdd_err("Failed to abort existing scan status: %d",
@@ -4879,37 +4832,37 @@ static int drv_cmd_bt_coex_mode(struct hdd_adapter *adapter,
 		}
 	} else if ('2' == *bcMode) {
 		hdd_debug("BTCOEXMODE %d", *bcMode);
-		hdd_ctx->bt_coex_mode_set = false;
+		hdd_ctx->btCoexModeSet = false;
 	}
 
 	return ret;
 }
 
-static int drv_cmd_scan_active(struct hdd_adapter *adapter,
-			       struct hdd_context *hdd_ctx,
+static int drv_cmd_scan_active(hdd_adapter_t *adapter,
+			       hdd_context_t *hdd_ctx,
 			       uint8_t *command,
 			       uint8_t command_len,
-			       struct hdd_priv_data *priv_data)
+			       hdd_priv_data_t *priv_data)
 {
 	hdd_ctx->ioctl_scan_mode = eSIR_ACTIVE_SCAN;
 	return 0;
 }
 
-static int drv_cmd_scan_passive(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_scan_passive(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
 	hdd_ctx->ioctl_scan_mode = eSIR_PASSIVE_SCAN;
 	return 0;
 }
 
-static int drv_cmd_get_dwell_time(struct hdd_adapter *adapter,
-				  struct hdd_context *hdd_ctx,
+static int drv_cmd_get_dwell_time(hdd_adapter_t *adapter,
+				  hdd_context_t *hdd_ctx,
 				  uint8_t *command,
 				  uint8_t command_len,
-				  struct hdd_priv_data *priv_data)
+				  hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	struct hdd_config *pCfg =
@@ -4930,38 +4883,44 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_set_dwell_time(struct hdd_adapter *adapter,
-				  struct hdd_context *hdd_ctx,
+static int drv_cmd_set_dwell_time(hdd_adapter_t *adapter,
+				  hdd_context_t *hdd_ctx,
 				  uint8_t *command,
 				  uint8_t command_len,
-				  struct hdd_priv_data *priv_data)
+				  hdd_priv_data_t *priv_data)
 {
 	return hdd_set_dwell_time(adapter, command);
 }
 
-static int drv_cmd_conc_set_dwell_time(struct hdd_adapter *adapter,
-				       struct hdd_context *hdd_ctx,
+#ifdef WLAN_AP_STA_CONCURRENCY
+static int drv_cmd_conc_set_dwell_time(hdd_adapter_t *adapter,
+				       hdd_context_t *hdd_ctx,
 				       u8 *command,
 				       u8 command_len,
-				       struct hdd_priv_data *priv_data)
+				       hdd_priv_data_t *priv_data)
 {
-	return hdd_conc_set_dwell_time(adapter, command);
+	return hdd_conc_set_dwell_time(hdd_ctx, command);
 }
+#endif
 
-static int drv_cmd_miracast(struct hdd_adapter *adapter,
-			    struct hdd_context *hdd_ctx,
+static int drv_cmd_miracast(hdd_adapter_t *adapter,
+			    hdd_context_t *hdd_ctx,
 			    uint8_t *command,
 			    uint8_t command_len,
-			    struct hdd_priv_data *priv_data)
+			    hdd_priv_data_t *priv_data)
 {
 	QDF_STATUS ret_status;
 	int ret = 0;
+	tHalHandle hHal;
 	uint8_t filterType = 0;
+	hdd_context_t *pHddCtx = NULL;
 	uint8_t *value;
 
-	if (wlan_hdd_validate_context(hdd_ctx))
+	pHddCtx = WLAN_HDD_GET_CTX(adapter);
+	if (wlan_hdd_validate_context(pHddCtx))
 		return -EINVAL;
 
+	hHal = pHddCtx->hHal;
 	value = command + 9;
 
 	/* Convert the value from ascii to integer */
@@ -4983,22 +4942,16 @@ static int drv_cmd_miracast(struct hdd_adapter *adapter,
 		goto exit;
 	}
 	/* Filtertype value should be either 0-Disabled, 1-Source, 2-sink */
-	hdd_ctx->miracast_value = filterType;
+	pHddCtx->miracast_value = filterType;
 
-	ret_status = sme_set_miracast(hdd_ctx->mac_handle, filterType);
+	ret_status = sme_set_miracast(hHal, filterType);
 	if (QDF_STATUS_SUCCESS != ret_status) {
 		hdd_err("Failed to set miracast");
 		return -EBUSY;
 	}
-	ret_status = ucfg_scan_set_miracast(hdd_ctx->psoc,
-					    filterType ? true : false);
-	if (QDF_IS_STATUS_ERROR(ret_status)) {
-		hdd_err("Failed to set miracastn scan");
-		return -EBUSY;
-	}
 
-	if (policy_mgr_is_mcc_in_24G(hdd_ctx->psoc))
-		return wlan_hdd_set_mas(adapter, filterType);
+	if (cds_is_mcc_in_24G())
+		return cds_set_mas(adapter, filterType);
 
 exit:
 	return ret;
@@ -5058,11 +5011,11 @@ static int hdd_parse_set_ibss_oui_data_command(uint8_t *command, uint8_t *ie,
  * Return:
  *      int status code
  */
-static int drv_cmd_set_ibss_beacon_oui_data(struct hdd_adapter *adapter,
-					    struct hdd_context *hdd_ctx,
+static int drv_cmd_set_ibss_beacon_oui_data(hdd_adapter_t *adapter,
+					    hdd_context_t *hdd_ctx,
 					    uint8_t *command,
 					    uint8_t command_len,
-					    struct hdd_priv_data *priv_data)
+					    hdd_priv_data_t *priv_data)
 {
 	int i = 0;
 	int status;
@@ -5072,8 +5025,9 @@ static int drv_cmd_set_ibss_beacon_oui_data(struct hdd_adapter *adapter,
 	uint32_t ibss_ie_length;
 	uint8_t *value = command;
 	tSirModifyIE ibssModifyIE;
-	struct csr_roam_profile *roam_profile;
-	mac_handle_t mac_handle;
+	tCsrRoamProfile *pRoamProfile;
+	hdd_wext_state_t *pWextState;
+
 
 	if (QDF_IBSS_MODE != adapter->device_mode) {
 		hdd_debug("Device_mode %s(%d) not IBSS",
@@ -5082,7 +5036,10 @@ static int drv_cmd_set_ibss_beacon_oui_data(struct hdd_adapter *adapter,
 		return ret;
 	}
 
+	pWextState = WLAN_HDD_GET_WEXT_STATE_PTR(adapter);
+
 	hdd_debug("received command %s", ((char *)value));
+
 
 	/* validate argument of command */
 	if (strlen(value) <= command_len) {
@@ -5123,12 +5080,12 @@ static int drv_cmd_set_ibss_beacon_oui_data(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	roam_profile = hdd_roam_profile(adapter);
+	pRoamProfile = &pWextState->roamProfile;
 
 	qdf_copy_macaddr(&ibssModifyIE.bssid,
-		     roam_profile->BSSIDs.bssid);
+		     pRoamProfile->BSSIDs.bssid);
 
-	ibssModifyIE.smeSessionId = adapter->session_id;
+	ibssModifyIE.smeSessionId = adapter->sessionId;
 	ibssModifyIE.notify = true;
 	ibssModifyIE.ieID = IE_EID_VENDOR;
 	ibssModifyIE.ieIDLen = ibss_ie_length;
@@ -5142,16 +5099,17 @@ static int drv_cmd_set_ibss_beacon_oui_data(struct hdd_adapter *adapter,
 		hdd_warn("0x%x", ibss_ie[i++]);
 
 	/* Probe Bcn modification */
-	mac_handle = hdd_ctx->mac_handle;
-	sme_modify_add_ie(mac_handle, &ibssModifyIE, eUPDATE_IE_PROBE_BCN);
+	sme_modify_add_ie(WLAN_HDD_GET_HAL_CTX(adapter),
+			  &ibssModifyIE, eUPDATE_IE_PROBE_BCN);
 
 	/* Populating probe resp frame */
-	sme_modify_add_ie(mac_handle, &ibssModifyIE, eUPDATE_IE_PROBE_RESP);
+	sme_modify_add_ie(WLAN_HDD_GET_HAL_CTX(adapter),
+			  &ibssModifyIE, eUPDATE_IE_PROBE_RESP);
 
 	qdf_mem_free(ibss_ie);
 
-	status = sme_send_cesium_enable_ind(mac_handle,
-					    adapter->session_id);
+	status = sme_send_cesium_enable_ind((tHalHandle)(hdd_ctx->hHal),
+					     adapter->sessionId);
 	if (QDF_STATUS_SUCCESS != status) {
 		hdd_err("Could not send cesium enable indication %d",
 			  status);
@@ -5163,17 +5121,16 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_set_rmc_enable(struct hdd_adapter *adapter,
-				  struct hdd_context *hdd_ctx,
+static int drv_cmd_set_rmc_enable(hdd_adapter_t *adapter,
+				  hdd_context_t *hdd_ctx,
 				  uint8_t *command,
 				  uint8_t command_len,
-				  struct hdd_priv_data *priv_data)
+				  hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
 	uint8_t ucRmcEnable = 0;
 	int status;
-	mac_handle_t mac_handle;
 
 	if ((QDF_IBSS_MODE != adapter->device_mode) &&
 	    (QDF_SAP_MODE != adapter->device_mode)) {
@@ -5193,20 +5150,25 @@ static int drv_cmd_set_rmc_enable(struct hdd_adapter *adapter,
 	}
 
 	hdd_debug("ucRmcEnable %d", ucRmcEnable);
-	mac_handle = hdd_ctx->mac_handle;
 
 	if (true == ucRmcEnable) {
-		status = sme_enable_rmc(mac_handle, adapter->session_id);
+		status = sme_enable_rmc((tHalHandle)
+							(hdd_ctx->hHal),
+						   adapter->sessionId);
 	} else if (false == ucRmcEnable) {
-		status = sme_disable_rmc(mac_handle, adapter->session_id);
+		status = sme_disable_rmc((tHalHandle)
+							(hdd_ctx->hHal),
+						     adapter->sessionId);
 	} else {
-		hdd_err("Invalid SETRMCENABLE command %d", ucRmcEnable);
+		hdd_err("Invalid SETRMCENABLE command %d",
+			ucRmcEnable);
 		ret = -EINVAL;
 		goto exit;
 	}
 
 	if (QDF_STATUS_SUCCESS != status) {
-		hdd_err("SETRMC %d failed status %d", ucRmcEnable, status);
+		hdd_err("SETRMC %d failed status %d",
+			ucRmcEnable, status);
 		ret = -EINVAL;
 		goto exit;
 	}
@@ -5215,17 +5177,16 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_set_rmc_action_period(struct hdd_adapter *adapter,
-					 struct hdd_context *hdd_ctx,
+static int drv_cmd_set_rmc_action_period(hdd_adapter_t *adapter,
+					 hdd_context_t *hdd_ctx,
 					 uint8_t *command,
 					 uint8_t command_len,
-					 struct hdd_priv_data *priv_data)
+					 hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
 	uint32_t uActionPeriod = 0;
 	int status;
-	mac_handle_t mac_handle;
 
 	if ((QDF_IBSS_MODE != adapter->device_mode) &&
 	    (QDF_SAP_MODE != adapter->device_mode)) {
@@ -5244,10 +5205,10 @@ static int drv_cmd_set_rmc_action_period(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	hdd_debug("uActionPeriod %d", uActionPeriod);
-	mac_handle = hdd_ctx->mac_handle;
+	hdd_debug("uActionPeriod %d",
+		  uActionPeriod);
 
-	if (sme_cfg_set_int(mac_handle,
+	if (sme_cfg_set_int(hdd_ctx->hHal,
 			    WNI_CFG_RMC_ACTION_PERIOD_FREQUENCY,
 			    uActionPeriod)) {
 		hdd_err("Could not set SETRMCACTIONPERIOD %d",
@@ -5256,8 +5217,8 @@ static int drv_cmd_set_rmc_action_period(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	status = sme_send_rmc_action_period(mac_handle,
-					    adapter->session_id);
+	status = sme_send_rmc_action_period((tHalHandle)(hdd_ctx->hHal),
+					    adapter->sessionId);
 	if (QDF_STATUS_SUCCESS != status) {
 		hdd_err("Could not send cesium enable indication %d",
 			  status);
@@ -5269,15 +5230,15 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_get_ibss_peer_info_all(struct hdd_adapter *adapter,
-					  struct hdd_context *hdd_ctx,
+static int drv_cmd_get_ibss_peer_info_all(hdd_adapter_t *adapter,
+					  hdd_context_t *hdd_ctx,
 					  uint8_t *command,
 					  uint8_t command_len,
-					  struct hdd_priv_data *priv_data)
+					  hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	int status = QDF_STATUS_SUCCESS;
-	struct hdd_station_ctx *sta_ctx = NULL;
+	hdd_station_ctx_t *pHddStaCtx = NULL;
 	char *extra = NULL;
 	int idx = 0;
 	int length = 0;
@@ -5291,13 +5252,13 @@ static int drv_cmd_get_ibss_peer_info_all(struct hdd_adapter *adapter,
 		return -EINVAL;
 	}
 
-	sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+	pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 	hdd_debug("Received GETIBSSPEERINFOALL Command");
 
 	/* Handle the command */
 	status = hdd_cfg80211_get_ibss_peer_info_all(adapter);
 	if (QDF_STATUS_SUCCESS == status) {
-		size_t user_size = qdf_min(WLAN_MAX_BUF_SIZE,
+		size_t user_size = QDF_MIN(WLAN_MAX_BUF_SIZE,
 					   priv_data->total_len);
 
 		/*
@@ -5316,26 +5277,26 @@ static int drv_cmd_get_ibss_peer_info_all(struct hdd_adapter *adapter,
 
 		/* Copy number of stations */
 		length = scnprintf(extra, user_size, "%d ",
-				   sta_ctx->ibss_peer_info.numPeers);
+				   pHddStaCtx->ibss_peer_info.numPeers);
 		numOfBytestoPrint = length;
-		for (idx = 0; idx < sta_ctx->ibss_peer_info.numPeers;
+		for (idx = 0; idx < pHddStaCtx->ibss_peer_info.numPeers;
 								idx++) {
 			int8_t rssi;
 			uint32_t tx_rate;
 
 			qdf_mem_copy(mac_addr,
-				sta_ctx->ibss_peer_info.peerInfoParams[idx].
+				pHddStaCtx->ibss_peer_info.peerInfoParams[idx].
 				mac_addr, sizeof(mac_addr));
 
 			tx_rate =
-				sta_ctx->ibss_peer_info.peerInfoParams[idx].
+				pHddStaCtx->ibss_peer_info.peerInfoParams[idx].
 									txRate;
 			/*
 			 * Only lower 3 bytes are rate info. Mask of the MSByte
 			 */
 			tx_rate &= 0x00FFFFFF;
 
-			rssi = sta_ctx->ibss_peer_info.peerInfoParams[idx].
+			rssi = pHddStaCtx->ibss_peer_info.peerInfoParams[idx].
 									rssi;
 
 			length += scnprintf(extra + length,
@@ -5396,16 +5357,16 @@ exit:
 }
 
 /* Peer Info <Peer Addr> command */
-static int drv_cmd_get_ibss_peer_info(struct hdd_adapter *adapter,
-				      struct hdd_context *hdd_ctx,
+static int drv_cmd_get_ibss_peer_info(hdd_adapter_t *adapter,
+				      hdd_context_t *hdd_ctx,
 				      uint8_t *command,
 				      uint8_t command_len,
-				      struct hdd_priv_data *priv_data)
+				      hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
 	QDF_STATUS status;
-	struct hdd_station_ctx *sta_ctx = NULL;
+	hdd_station_ctx_t *pHddStaCtx = NULL;
 	char extra[128] = { 0 };
 	uint32_t length = 0;
 	uint8_t staIdx = 0;
@@ -5418,13 +5379,13 @@ static int drv_cmd_get_ibss_peer_info(struct hdd_adapter *adapter,
 		return -EINVAL;
 	}
 
-	sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+	pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 
 	hdd_debug("Received GETIBSSPEERINFO Command");
 
 	/* if there are no peers, no need to continue with the command */
 	if (eConnectionState_IbssConnected !=
-	    sta_ctx->conn_info.connState) {
+	    pHddStaCtx->conn_info.connState) {
 		hdd_err("No IBSS Peers coalesced");
 		ret = -EINVAL;
 		goto exit;
@@ -5439,7 +5400,7 @@ static int drv_cmd_get_ibss_peer_info(struct hdd_adapter *adapter,
 	}
 
 	/* Get station index for the peer mac address and sanitize it */
-	hdd_get_peer_sta_id(sta_ctx, &peerMacAddr, &staIdx);
+	hdd_get_peer_sta_id(pHddStaCtx, &peerMacAddr, &staIdx);
 
 	if (staIdx > MAX_PEERS) {
 		hdd_err("Invalid StaIdx %d returned", staIdx);
@@ -5451,13 +5412,13 @@ static int drv_cmd_get_ibss_peer_info(struct hdd_adapter *adapter,
 	status = hdd_cfg80211_get_ibss_peer_info(adapter, staIdx);
 	if (QDF_STATUS_SUCCESS == status) {
 		uint32_t txRate =
-			sta_ctx->ibss_peer_info.peerInfoParams[0].txRate;
+			pHddStaCtx->ibss_peer_info.peerInfoParams[0].txRate;
 		/* Only lower 3 bytes are rate info. Mask of the MSByte */
 		txRate &= 0x00FFFFFF;
 
 		length = scnprintf(extra, sizeof(extra), "%d %d",
 				(int)txRate,
-				(int)sta_ctx->ibss_peer_info.
+				(int)pHddStaCtx->ibss_peer_info.
 				peerInfoParams[0].rssi);
 		length = QDF_MIN(priv_data->total_len, length + 1);
 
@@ -5483,16 +5444,16 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_set_rmc_tx_rate(struct hdd_adapter *adapter,
-				   struct hdd_context *hdd_ctx,
+static int drv_cmd_set_rmc_tx_rate(hdd_adapter_t *adapter,
+				   hdd_context_t *hdd_ctx,
 				   uint8_t *command,
 				   uint8_t command_len,
-				   struct hdd_priv_data *priv_data)
+				   hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
 	uint32_t uRate = 0;
-	enum tx_rate_info txFlags = 0;
+	tTxrateinfoflags txFlags = 0;
 	tSirRateUpdateInd rateUpdateParams = {0};
 	int status;
 	struct hdd_config *pConfig = hdd_ctx->config;
@@ -5527,26 +5488,25 @@ static int drv_cmd_set_rmc_tx_rate(struct hdd_adapter *adapter,
 	rateUpdateParams.dev_mode = adapter->device_mode;
 	rateUpdateParams.bcastDataRate = -1;
 	memcpy(rateUpdateParams.bssid.bytes,
-	       adapter->mac_addr.bytes,
+	       adapter->macAddressCurrent.bytes,
 	       sizeof(rateUpdateParams.bssid));
-	status = sme_send_rate_update_ind(hdd_ctx->mac_handle,
-					  &rateUpdateParams);
+	status = sme_send_rate_update_ind((tHalHandle) (hdd_ctx->hHal),
+							 &rateUpdateParams);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_set_ibss_tx_fail_event(struct hdd_adapter *adapter,
-					  struct hdd_context *hdd_ctx,
+static int drv_cmd_set_ibss_tx_fail_event(hdd_adapter_t *adapter,
+					  hdd_context_t *hdd_ctx,
 					  uint8_t *command,
 					  uint8_t command_len,
-					  struct hdd_priv_data *priv_data)
+					  hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	char *value;
 	uint8_t tx_fail_count = 0;
 	uint16_t pid = 0;
-	mac_handle_t mac_handle;
 
 	value = command;
 
@@ -5558,12 +5518,11 @@ static int drv_cmd_set_ibss_tx_fail_event(struct hdd_adapter *adapter,
 	}
 
 	hdd_debug("tx_fail_cnt=%hhu, pid=%hu", tx_fail_count, pid);
-	mac_handle = hdd_ctx->mac_handle;
 
 	if (0 == tx_fail_count) {
 		/* Disable TX Fail Indication */
 		if (QDF_STATUS_SUCCESS ==
-		    sme_tx_fail_monitor_start_stop_ind(mac_handle,
+		    sme_tx_fail_monitor_start_stop_ind(hdd_ctx->hHal,
 						       tx_fail_count,
 						       NULL)) {
 			cesium_pid = 0;
@@ -5573,7 +5532,7 @@ static int drv_cmd_set_ibss_tx_fail_event(struct hdd_adapter *adapter,
 		}
 	} else {
 		if (QDF_STATUS_SUCCESS ==
-		    sme_tx_fail_monitor_start_stop_ind(mac_handle,
+		    sme_tx_fail_monitor_start_stop_ind(hdd_ctx->hHal,
 				tx_fail_count,
 				(void *)hdd_tx_fail_ind_callback)) {
 			cesium_pid = pid;
@@ -5590,18 +5549,17 @@ exit:
 }
 
 #ifdef FEATURE_WLAN_ESE
-static int drv_cmd_set_ccx_roam_scan_channels(struct hdd_adapter *adapter,
-					      struct hdd_context *hdd_ctx,
+static int drv_cmd_set_ccx_roam_scan_channels(hdd_adapter_t *adapter,
+					      hdd_context_t *hdd_ctx,
 					      uint8_t *command,
 					      uint8_t command_len,
-					      struct hdd_priv_data *priv_data)
+					      hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
 	uint8_t ChannelList[WNI_CFG_VALID_CHANNEL_LIST_LEN] = { 0 };
 	uint8_t numChannels = 0;
 	QDF_STATUS status;
-	mac_handle_t mac_handle;
 
 	ret = hdd_parse_channellist(value, ChannelList, &numChannels);
 	if (ret) {
@@ -5616,15 +5574,15 @@ static int drv_cmd_set_ccx_roam_scan_channels(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	mac_handle = hdd_ctx->mac_handle;
-	if (!sme_validate_channel_list(mac_handle, ChannelList, numChannels)) {
+	if (!sme_validate_channel_list(hdd_ctx->hHal,
+	    ChannelList, numChannels)) {
 		hdd_err("List contains invalid channel(s)");
 		ret = -EINVAL;
 		goto exit;
 	}
 
-	status = sme_set_ese_roam_scan_channel_list(mac_handle,
-						    adapter->session_id,
+	status = sme_set_ese_roam_scan_channel_list(hdd_ctx->hHal,
+						    adapter->sessionId,
 						    ChannelList,
 						    numChannels);
 	if (QDF_STATUS_SUCCESS != status) {
@@ -5637,18 +5595,18 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_get_tsm_stats(struct hdd_adapter *adapter,
-				 struct hdd_context *hdd_ctx,
+static int drv_cmd_get_tsm_stats(hdd_adapter_t *adapter,
+				 hdd_context_t *hdd_ctx,
 				 uint8_t *command,
 				 uint8_t command_len,
-				 struct hdd_priv_data *priv_data)
+				 hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
 	char extra[128] = { 0 };
 	int len = 0;
 	uint8_t tid = 0;
-	struct hdd_station_ctx *sta_ctx;
+	hdd_station_ctx_t *pHddStaCtx;
 	tAniTrafStrmMetrics tsm_metrics = {0};
 
 	if ((QDF_STA_MODE != adapter->device_mode) &&
@@ -5659,10 +5617,10 @@ static int drv_cmd_get_tsm_stats(struct hdd_adapter *adapter,
 		return -EINVAL;
 	}
 
-	sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+	pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 
 	/* if not associated, return error */
-	if (eConnectionState_Associated != sta_ctx->conn_info.connState) {
+	if (eConnectionState_Associated != pHddStaCtx->conn_info.connState) {
 		hdd_err("Not associated!");
 		ret = -EINVAL;
 		goto exit;
@@ -5740,11 +5698,11 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_set_cckm_ie(struct hdd_adapter *adapter,
-			       struct hdd_context *hdd_ctx,
+static int drv_cmd_set_cckm_ie(hdd_adapter_t *adapter,
+			       hdd_context_t *hdd_ctx,
 			       uint8_t *command,
 			       uint8_t command_len,
-			       struct hdd_priv_data *priv_data)
+			       hdd_priv_data_t *priv_data)
 {
 	int ret;
 	uint8_t *value = command;
@@ -5768,7 +5726,7 @@ static int drv_cmd_set_cckm_ie(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	sme_set_cckm_ie(hdd_ctx->mac_handle, adapter->session_id,
+	sme_set_cckm_ie(hdd_ctx->hHal, adapter->sessionId,
 			cckmIe, cckmIeLen);
 	if (NULL != cckmIe) {
 		qdf_mem_free(cckmIe);
@@ -5779,11 +5737,11 @@ exit:
 	return ret;
 }
 
-static int drv_cmd_ccx_beacon_req(struct hdd_adapter *adapter,
-				  struct hdd_context *hdd_ctx,
+static int drv_cmd_ccx_beacon_req(hdd_adapter_t *adapter,
+				  hdd_context_t *hdd_ctx,
 				  uint8_t *command,
 				  uint8_t command_len,
-				  struct hdd_priv_data *priv_data)
+				  hdd_priv_data_t *priv_data)
 {
 	int ret;
 	uint8_t *value = command;
@@ -5816,8 +5774,8 @@ static int drv_cmd_ccx_beacon_req(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	status = sme_set_ese_beacon_request(hdd_ctx->mac_handle,
-					    adapter->session_id,
+	status = sme_set_ese_beacon_request(hdd_ctx->hHal,
+					    adapter->sessionId,
 					    &eseBcnReq);
 
 	if (QDF_STATUS_E_RESOURCES == status) {
@@ -5848,11 +5806,11 @@ exit:
  *
  * Return: 0 on success; negative errno otherwise
  */
-static int drv_cmd_ccx_plm_req(struct hdd_adapter *adapter,
-			       struct hdd_context *hdd_ctx,
+static int drv_cmd_ccx_plm_req(hdd_adapter_t *adapter,
+			       hdd_context_t *hdd_ctx,
 			       uint8_t *command,
 			       uint8_t command_len,
-			       struct hdd_priv_data *priv_data)
+			       hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -5872,9 +5830,9 @@ static int drv_cmd_ccx_plm_req(struct hdd_adapter *adapter,
 		ret = -EINVAL;
 		goto exit;
 	}
-	pPlmRequest->sessionId = adapter->session_id;
+	pPlmRequest->sessionId = adapter->sessionId;
 
-	status = sme_set_plm_request(hdd_ctx->mac_handle, pPlmRequest);
+	status = sme_set_plm_request(hdd_ctx->hHal, pPlmRequest);
 	if (QDF_STATUS_SUCCESS != status) {
 		qdf_mem_free(pPlmRequest);
 		pPlmRequest = NULL;
@@ -5898,27 +5856,25 @@ exit:
  *
  * Return: 0 on success; negative errno otherwise
  */
-static int drv_cmd_set_ccx_mode(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_set_ccx_mode(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
 	uint8_t eseMode = CFG_ESE_FEATURE_ENABLED_DEFAULT;
 	struct pmkid_mode_bits pmkid_modes;
-	mac_handle_t mac_handle;
 
 	hdd_get_pmkid_modes(hdd_ctx, &pmkid_modes);
-	mac_handle = hdd_ctx->mac_handle;
 	/*
 	 * Check if the features OKC/ESE/11R are supported simultaneously,
 	 * then this operation is not permitted (return FAILURE)
 	 */
-	if (sme_get_is_ese_feature_enabled(mac_handle) &&
+	if (sme_get_is_ese_feature_enabled(hdd_ctx->hHal) &&
 	    pmkid_modes.fw_okc &&
-	    sme_get_is_ft_feature_enabled(mac_handle)) {
+	    sme_get_is_ft_feature_enabled(hdd_ctx->hHal)) {
 		hdd_warn("OKC/ESE/11R are supported simultaneously hence this operation is not permitted!");
 		ret = -EPERM;
 		goto exit;
@@ -5953,8 +5909,8 @@ static int drv_cmd_set_ccx_mode(struct hdd_adapter *adapter,
 	hdd_debug("Received Command to change ese mode = %d", eseMode);
 
 	hdd_ctx->config->isEseIniFeatureEnabled = eseMode;
-	sme_update_is_ese_feature_enabled(mac_handle,
-					  adapter->session_id,
+	sme_update_is_ese_feature_enabled(hdd_ctx->hHal,
+					  adapter->sessionId,
 					  eseMode);
 
 exit:
@@ -5962,15 +5918,15 @@ exit:
 }
 #endif /* FEATURE_WLAN_ESE */
 
-static int drv_cmd_set_mc_rate(struct hdd_adapter *adapter,
-			       struct hdd_context *hdd_ctx,
+static int drv_cmd_set_mc_rate(hdd_adapter_t *adapter,
+			       hdd_context_t *hdd_ctx,
 			       uint8_t *command,
 			       uint8_t command_len,
-			       struct hdd_priv_data *priv_data)
+			       hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
-	int target_rate = 0;
+	int targetRate = 0;
 
 	/* input value is in units of hundred kbps */
 
@@ -5978,63 +5934,74 @@ static int drv_cmd_set_mc_rate(struct hdd_adapter *adapter,
 	value = value + command_len + 1;
 
 	/* Convert the value from ascii to integer, decimal base */
-	ret = kstrtouint(value, 10, &target_rate);
+	ret = kstrtouint(value, 10, &targetRate);
 
-	ret = wlan_hdd_set_mc_rate(adapter, target_rate);
+	ret = wlan_hdd_set_mc_rate(adapter, targetRate);
 	return ret;
 }
 
-static int drv_cmd_max_tx_power(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_max_tx_power(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
-	int ret;
-	int tx_power;
-	QDF_STATUS status;
+	int ret = 0;
+	int status;
+	int txPower;
+	QDF_STATUS qdf_status;
+	QDF_STATUS smeStatus;
 	uint8_t *value = command;
-	struct qdf_mac_addr bssid = QDF_MAC_ADDR_BCAST_INIT;
-	struct qdf_mac_addr selfmac = QDF_MAC_ADDR_BCAST_INIT;
+	struct qdf_mac_addr bssid = QDF_MAC_ADDR_BROADCAST_INITIALIZER;
+	struct qdf_mac_addr selfMac = QDF_MAC_ADDR_BROADCAST_INITIALIZER;
+	hdd_adapter_list_node_t *pAdapterNode = NULL;
+	hdd_adapter_list_node_t *pNext = NULL;
 
-	ret = hdd_parse_setmaxtxpower_command(value, &tx_power);
-	if (ret) {
+	status = hdd_parse_setmaxtxpower_command(value, &txPower);
+	if (status) {
 		hdd_err("Invalid MAXTXPOWER command");
-		return ret;
+		ret = -EINVAL;
+		goto exit;
 	}
 
-	hdd_for_each_adapter(hdd_ctx, adapter) {
+	qdf_status = hdd_get_front_adapter(hdd_ctx, &pAdapterNode);
+	while (NULL != pAdapterNode
+	       && QDF_STATUS_SUCCESS == qdf_status) {
+		adapter = pAdapterNode->pAdapter;
 		/* Assign correct self MAC address */
 		qdf_copy_macaddr(&bssid,
-				 &adapter->mac_addr);
-		qdf_copy_macaddr(&selfmac,
-				 &adapter->mac_addr);
+				 &adapter->macAddressCurrent);
+		qdf_copy_macaddr(&selfMac,
+				 &adapter->macAddressCurrent);
 
 		hdd_debug("Device mode %d max tx power %d selfMac: "
-			  MAC_ADDRESS_STR " bssId: " MAC_ADDRESS_STR,
-			  adapter->device_mode, tx_power,
-			  MAC_ADDR_ARRAY(selfmac.bytes),
-			  MAC_ADDR_ARRAY(bssid.bytes));
+			 MAC_ADDRESS_STR " bssId: " MAC_ADDRESS_STR " ",
+		       adapter->device_mode, txPower,
+		       MAC_ADDR_ARRAY(selfMac.bytes),
+		       MAC_ADDR_ARRAY(bssid.bytes));
 
-		status = sme_set_max_tx_power(hdd_ctx->mac_handle,
-					      bssid, selfmac, tx_power);
+		smeStatus = sme_set_max_tx_power(hdd_ctx->hHal,
+						 bssid, selfMac, txPower);
 		if (QDF_STATUS_SUCCESS != status) {
 			hdd_err("Set max tx power failed");
 			ret = -EINVAL;
 			goto exit;
 		}
 		hdd_debug("Set max tx power success");
+		qdf_status = hdd_get_next_adapter(hdd_ctx, pAdapterNode,
+						  &pNext);
+		pAdapterNode = pNext;
 	}
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_set_dfs_scan_mode(struct hdd_adapter *adapter,
-				    struct hdd_context *hdd_ctx,
+static int drv_cmd_set_dfs_scan_mode(hdd_adapter_t *adapter,
+				    hdd_context_t *hdd_ctx,
 				    uint8_t *command,
 				    uint8_t command_len,
-				    struct hdd_priv_data *priv_data)
+				    hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	uint8_t *value = command;
@@ -6073,8 +6040,8 @@ static int drv_cmd_set_dfs_scan_mode(struct hdd_adapter *adapter,
 	/* When DFS scanning is disabled, the DFS channels need to be
 	 * removed from the operation of device.
 	 */
-	ret = wlan_hdd_enable_dfs_chan_scan(hdd_ctx,
-			dfsScanMode != CFG_ROAMING_DFS_CHANNEL_DISABLED);
+	ret = wlan_hdd_disable_dfs_chan_scan(hdd_ctx, adapter,
+			(dfsScanMode == CFG_ROAMING_DFS_CHANNEL_DISABLED));
 	if (ret < 0) {
 		/* Some conditions prevented it from disabling DFS channels */
 		hdd_err("disable/enable DFS channel request was denied");
@@ -6082,21 +6049,21 @@ static int drv_cmd_set_dfs_scan_mode(struct hdd_adapter *adapter,
 	}
 
 	hdd_ctx->config->allowDFSChannelRoam = dfsScanMode;
-	sme_update_dfs_scan_mode(hdd_ctx->mac_handle, adapter->session_id,
+	sme_update_dfs_scan_mode(hdd_ctx->hHal, adapter->sessionId,
 				 dfsScanMode);
 
 exit:
 	return ret;
 }
 
-static int drv_cmd_get_dfs_scan_mode(struct hdd_adapter *adapter,
-				     struct hdd_context *hdd_ctx,
+static int drv_cmd_get_dfs_scan_mode(hdd_adapter_t *adapter,
+				     hdd_context_t *hdd_ctx,
 				     uint8_t *command,
 				     uint8_t command_len,
-				     struct hdd_priv_data *priv_data)
+				     hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
-	uint8_t dfsScanMode = sme_get_dfs_scan_mode(hdd_ctx->mac_handle);
+	uint8_t dfsScanMode = sme_get_dfs_scan_mode(hdd_ctx->hHal);
 	char extra[32];
 	uint8_t len = 0;
 
@@ -6110,11 +6077,11 @@ static int drv_cmd_get_dfs_scan_mode(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_get_link_status(struct hdd_adapter *adapter,
-				   struct hdd_context *hdd_ctx,
+static int drv_cmd_get_link_status(hdd_adapter_t *adapter,
+				   hdd_context_t *hdd_ctx,
 				   uint8_t *command,
 				   uint8_t command_len,
-				   struct hdd_priv_data *priv_data)
+				   hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	int value = wlan_hdd_get_link_status(adapter);
@@ -6132,11 +6099,11 @@ static int drv_cmd_get_link_status(struct hdd_adapter *adapter,
 }
 
 #ifdef WLAN_FEATURE_EXTWOW_SUPPORT
-static int drv_cmd_enable_ext_wow(struct hdd_adapter *adapter,
-				  struct hdd_context *hdd_ctx,
+static int drv_cmd_enable_ext_wow(hdd_adapter_t *adapter,
+				  hdd_context_t *hdd_ctx,
 				  uint8_t *command,
 				  uint8_t command_len,
-				  struct hdd_priv_data *priv_data)
+				  hdd_priv_data_t *priv_data)
 {
 	uint8_t *value = command;
 	int set_value;
@@ -6145,20 +6112,21 @@ static int drv_cmd_enable_ext_wow(struct hdd_adapter *adapter,
 	value = value + command_len;
 
 	if (!(sscanf(value, "%d", &set_value))) {
-		hdd_info("No input identified");
+		QDF_TRACE(QDF_MODULE_ID_HDD, QDF_TRACE_LEVEL_INFO,
+			  ("No input identified"));
 		return -EINVAL;
 	}
 
 	return hdd_enable_ext_wow_parser(adapter,
-					 adapter->session_id,
+					 adapter->sessionId,
 					 set_value);
 }
 
-static int drv_cmd_set_app1_params(struct hdd_adapter *adapter,
-				   struct hdd_context *hdd_ctx,
+static int drv_cmd_set_app1_params(hdd_adapter_t *adapter,
+				   hdd_context_t *hdd_ctx,
 				   uint8_t *command,
 				   uint8_t command_len,
-				   struct hdd_priv_data *priv_data)
+				   hdd_priv_data_t *priv_data)
 {
 	int ret;
 	uint8_t *value = command;
@@ -6174,11 +6142,11 @@ static int drv_cmd_set_app1_params(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_set_app2_params(struct hdd_adapter *adapter,
-				   struct hdd_context *hdd_ctx,
+static int drv_cmd_set_app2_params(hdd_adapter_t *adapter,
+				   hdd_context_t *hdd_ctx,
 				   uint8_t *command,
 				   uint8_t command_len,
-				   struct hdd_priv_data *priv_data)
+				   hdd_priv_data_t *priv_data)
 {
 	int ret;
 	uint8_t *value = command;
@@ -6208,11 +6176,11 @@ static int drv_cmd_set_app2_params(struct hdd_adapter *adapter,
  *
  * Return: 0 on success; negative errno otherwise
  */
-static int drv_cmd_tdls_secondary_channel_offset(struct hdd_adapter *adapter,
-						 struct hdd_context *hdd_ctx,
+static int drv_cmd_tdls_secondary_channel_offset(hdd_adapter_t *adapter,
+						 hdd_context_t *hdd_ctx,
 						 uint8_t *command,
 						 uint8_t command_len,
-						 struct hdd_priv_data *priv_data)
+						 hdd_priv_data_t *priv_data)
 {
 	int ret;
 	uint8_t *value = command;
@@ -6227,7 +6195,7 @@ static int drv_cmd_tdls_secondary_channel_offset(struct hdd_adapter *adapter,
 
 	hdd_debug("Tdls offchannel offset:%d", set_value);
 
-	ret = hdd_set_tdls_secoffchanneloffset(hdd_ctx, adapter, set_value);
+	ret = hdd_set_tdls_secoffchanneloffset(hdd_ctx, set_value);
 
 	return ret;
 }
@@ -6244,11 +6212,11 @@ static int drv_cmd_tdls_secondary_channel_offset(struct hdd_adapter *adapter,
  *
  * Return: 0 on success; negative errno otherwise
  */
-static int drv_cmd_tdls_off_channel_mode(struct hdd_adapter *adapter,
-					 struct hdd_context *hdd_ctx,
+static int drv_cmd_tdls_off_channel_mode(hdd_adapter_t *adapter,
+					 hdd_context_t *hdd_ctx,
 					 uint8_t *command,
 					 uint8_t command_len,
-					 struct hdd_priv_data *priv_data)
+					 hdd_priv_data_t *priv_data)
 {
 	int ret;
 	uint8_t *value = command;
@@ -6263,7 +6231,7 @@ static int drv_cmd_tdls_off_channel_mode(struct hdd_adapter *adapter,
 
 	hdd_debug("Tdls offchannel mode:%d", set_value);
 
-	ret = hdd_set_tdls_offchannelmode(hdd_ctx, adapter, set_value);
+	ret = hdd_set_tdls_offchannelmode(adapter, set_value);
 
 	return ret;
 }
@@ -6280,36 +6248,32 @@ static int drv_cmd_tdls_off_channel_mode(struct hdd_adapter *adapter,
  *
  * Return: 0 on success; negative errno otherwise
  */
-static int drv_cmd_tdls_off_channel(struct hdd_adapter *adapter,
-				    struct hdd_context *hdd_ctx,
+static int drv_cmd_tdls_off_channel(hdd_adapter_t *adapter,
+				    hdd_context_t *hdd_ctx,
 				    uint8_t *command,
 				    uint8_t command_len,
-				    struct hdd_priv_data *priv_data)
+				    hdd_priv_data_t *priv_data)
 {
 	int ret;
 	uint8_t *value = command;
-	int channel;
-	enum channel_state reg_state;
+	int set_value;
 
 	/* Move pointer to point the string */
 	value += command_len;
 
-	ret = sscanf(value, "%d", &channel);
+	ret = sscanf(value, "%d", &set_value);
 	if (ret != 1)
 		return -EINVAL;
-	reg_state = wlan_reg_get_channel_state(hdd_ctx->pdev, channel);
 
-	if (reg_state == CHANNEL_STATE_DFS ||
-		reg_state == CHANNEL_STATE_DISABLE ||
-		reg_state == CHANNEL_STATE_INVALID) {
-		hdd_err("reg state of the  channel %d is %d and not supported",
-			channel, reg_state);
+	if (CDS_IS_DFS_CH(set_value)) {
+		hdd_err("DFS channel %d is passed for hdd_set_tdls_offchannel",
+		    set_value);
 		return -EINVAL;
 	}
 
-	hdd_debug("Tdls offchannel num: %d", channel);
+	hdd_debug("Tdls offchannel num: %d", set_value);
 
-	ret = hdd_set_tdls_offchannel(hdd_ctx, adapter, channel);
+	ret = hdd_set_tdls_offchannel(hdd_ctx, set_value);
 
 	return ret;
 }
@@ -6326,11 +6290,11 @@ static int drv_cmd_tdls_off_channel(struct hdd_adapter *adapter,
  *
  * Return: 0 on success; negative errno otherwise
  */
-static int drv_cmd_tdls_scan(struct hdd_adapter *adapter,
-				    struct hdd_context *hdd_ctx,
+static int drv_cmd_tdls_scan(hdd_adapter_t *adapter,
+				    hdd_context_t *hdd_ctx,
 				    uint8_t *command,
 				    uint8_t command_len,
-				    struct hdd_priv_data *priv_data)
+				    hdd_priv_data_t *priv_data)
 {
 	int ret;
 	uint8_t *value = command;
@@ -6351,11 +6315,11 @@ static int drv_cmd_tdls_scan(struct hdd_adapter *adapter,
 }
 #endif
 
-static int drv_cmd_get_rssi(struct hdd_adapter *adapter,
-			    struct hdd_context *hdd_ctx,
+static int drv_cmd_get_rssi(hdd_adapter_t *adapter,
+			    hdd_context_t *hdd_ctx,
 			    uint8_t *command,
 			    uint8_t command_len,
-			    struct hdd_priv_data *priv_data)
+			    hdd_priv_data_t *priv_data)
 {
 	int ret = 0;
 	int8_t rssi = 0;
@@ -6376,11 +6340,11 @@ static int drv_cmd_get_rssi(struct hdd_adapter *adapter,
 	return ret;
 }
 
-static int drv_cmd_get_linkspeed(struct hdd_adapter *adapter,
-				 struct hdd_context *hdd_ctx,
+static int drv_cmd_get_linkspeed(hdd_adapter_t *adapter,
+				 hdd_context_t *hdd_ctx,
 				 uint8_t *command,
 				 uint8_t command_len,
-				 struct hdd_priv_data *priv_data)
+				 hdd_priv_data_t *priv_data)
 {
 	int ret;
 	uint32_t link_speed = 0;
@@ -6414,22 +6378,23 @@ static int drv_cmd_get_linkspeed(struct hdd_adapter *adapter,
  *
  * Return: 0 for success, non-zero for failure
  */
-static int hdd_set_rx_filter(struct hdd_adapter *adapter, bool action,
+static int hdd_set_rx_filter(hdd_adapter_t *adapter, bool action,
 			uint8_t pattern)
 {
 	int ret;
 	uint8_t i, j;
+	tHalHandle handle;
 	tSirRcvFltMcAddrList *filter;
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
-	mac_handle_t mac_handle;
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 
 	ret = wlan_hdd_validate_context(hdd_ctx);
 	if (0 != ret)
 		return ret;
 
-	mac_handle = hdd_ctx->mac_handle;
-	if (!mac_handle) {
-		hdd_err("MAC Handle is NULL");
+	handle = hdd_ctx->hHal;
+
+	if (NULL == handle) {
+		hdd_err("HAL Handle is NULL");
 		return -EINVAL;
 	}
 
@@ -6473,24 +6438,23 @@ static int hdd_set_rx_filter(struct hdd_adapter *adapter, bool action,
 				    MAC_ADDR_ARRAY(filter->multicastAddr[j].bytes));
 				j++;
 			}
-			if (j == SIR_MAX_NUM_MULTICAST_ADDRESS)
+			if (j == WLAN_HDD_MAX_MC_ADDR_LIST)
 				break;
 		}
 		filter->ulMulticastAddrCnt = j;
 		/* Set rx filter */
-		sme_8023_multicast_list(mac_handle, adapter->session_id,
-					filter);
+		sme_8023_multicast_list(handle, adapter->sessionId, filter);
 		qdf_mem_free(filter);
 	} else {
 		hdd_debug("mode %d mc_cnt %d",
-			  adapter->device_mode, adapter->mc_addr_list.mc_cnt);
+			adapter->device_mode, adapter->mc_addr_list.mc_cnt);
 	}
 
 	return 0;
 }
 
 /**
- * hdd_driver_rxfilter_command_handler() - RXFILTER driver command handler
+ * hdd_driver_rxfilter_comand_handler() - RXFILTER driver command handler
  * @command: Pointer to input string driver command
  * @adapter: Pointer to adapter
  * @action: Action to enable/disable filtering
@@ -6515,8 +6479,8 @@ static int hdd_set_rx_filter(struct hdd_adapter *adapter, bool action,
  *
  * Return: 0 for success, non-zero for failure
  */
-static int hdd_driver_rxfilter_command_handler(uint8_t *command,
-						struct hdd_adapter *adapter,
+static int hdd_driver_rxfilter_comand_handler(uint8_t *command,
+						hdd_adapter_t *adapter,
 						bool action)
 {
 	int ret = 0;
@@ -6556,13 +6520,13 @@ static int hdd_driver_rxfilter_command_handler(uint8_t *command,
  * @command_len: Command length
  * @priv_data: Pointer to private data in command
  */
-static int drv_cmd_rx_filter_remove(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_rx_filter_remove(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
-	return hdd_driver_rxfilter_command_handler(command, adapter, false);
+	return hdd_driver_rxfilter_comand_handler(command, adapter, false);
 }
 
 /**
@@ -6573,13 +6537,13 @@ static int drv_cmd_rx_filter_remove(struct hdd_adapter *adapter,
  * @command_len: Command length
  * @priv_data: Pointer to private data in command
  */
-static int drv_cmd_rx_filter_add(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_rx_filter_add(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
-	return hdd_driver_rxfilter_command_handler(command, adapter, true);
+	return hdd_driver_rxfilter_comand_handler(command, adapter, true);
 }
 
 /**
@@ -6647,7 +6611,7 @@ static int hdd_parse_setantennamode_command(const uint8_t *value)
  *
  * Return: true if supported chain mask 2x2 else false
  */
-static bool hdd_is_supported_chain_mask_2x2(struct hdd_context *hdd_ctx)
+static bool hdd_is_supported_chain_mask_2x2(hdd_context_t *hdd_ctx)
 {
 	/*
 	 * Revisit and the update logic to determine the number
@@ -6665,7 +6629,7 @@ static bool hdd_is_supported_chain_mask_2x2(struct hdd_context *hdd_ctx)
  *
  * Return: true if supported chain mask 1x1 else false
  */
-static bool hdd_is_supported_chain_mask_1x1(struct hdd_context *hdd_ctx)
+static bool hdd_is_supported_chain_mask_1x1(hdd_context_t *hdd_ctx)
 {
 	/*
 	 * Revisit and update the logic to determine the number
@@ -6676,12 +6640,11 @@ static bool hdd_is_supported_chain_mask_1x1(struct hdd_context *hdd_ctx)
 	return (!hdd_ctx->config->enable2x2) ? true : false;
 }
 
-QDF_STATUS hdd_update_smps_antenna_mode(struct hdd_context *hdd_ctx, int mode)
+QDF_STATUS hdd_update_smps_antenna_mode(hdd_context_t *hdd_ctx, int mode)
 {
 	QDF_STATUS status;
 	uint8_t smps_mode;
 	uint8_t smps_enable;
-	mac_handle_t mac_handle;
 
 	/* Update SME SMPS config */
 	if (HDD_ANTENNA_MODE_1X1 == mode) {
@@ -6694,11 +6657,11 @@ QDF_STATUS hdd_update_smps_antenna_mode(struct hdd_context *hdd_ctx, int mode)
 
 	hdd_debug("Update SME SMPS enable: %d mode: %d",
 		 smps_enable, smps_mode);
-	mac_handle = hdd_ctx->mac_handle;
-	status = sme_update_mimo_power_save(mac_handle, smps_enable,
-					    smps_mode, false);
+	status = sme_update_mimo_power_save(
+		hdd_ctx->hHal, smps_enable, smps_mode, false);
 	if (QDF_STATUS_SUCCESS != status) {
-		hdd_err("Update SMPS config failed enable: %d mode: %d status: %d",
+		hdd_err("Update SMPS config failed enable: %d mode: %d"
+			"status: %d",
 			smps_enable, smps_mode, status);
 		return QDF_STATUS_E_FAILURE;
 	}
@@ -6709,8 +6672,9 @@ QDF_STATUS hdd_update_smps_antenna_mode(struct hdd_context *hdd_ctx, int mode)
 	 * This will be used in tdls protocol engine to form tdls
 	 * Management frames.
 	 */
-	sme_update_user_configured_nss(mac_handle,
-				       hdd_ctx->current_antenna_mode);
+	sme_update_user_configured_nss(
+		hdd_ctx->hHal,
+		hdd_ctx->current_antenna_mode);
 
 	hdd_debug("Successfully switched to mode: %d x %d",
 		 hdd_ctx->current_antenna_mode,
@@ -6720,11 +6684,12 @@ QDF_STATUS hdd_update_smps_antenna_mode(struct hdd_context *hdd_ctx, int mode)
 }
 
 /**
- * wlan_hdd_soc_set_antenna_mode_cb() - Callback for set antenna mode
+ * wlan_hdd_soc_set_antenna_mode_cb() - Callback for set dual
+ * mac scan config
  * @status: Status of set antenna mode
  * @context: callback context
  *
- * Callback on setting antenna mode
+ * Callback on setting the dual mac configuration
  *
  * Return: None
  */
@@ -6732,109 +6697,51 @@ static void
 wlan_hdd_soc_set_antenna_mode_cb(enum set_antenna_mode_status status,
 				 void *context)
 {
-	struct osif_request *request = NULL;
+	struct hdd_request *request = NULL;
 
 	hdd_debug("Status: %d", status);
 
-	request = osif_request_get(context);
+	request = hdd_request_get(context);
 	if (!request) {
-		hdd_err("obselete request");
+		hdd_err("obsolete request");
 		return;
 	}
 
 	/* Signal the completion of set dual mac config */
-	osif_request_complete(request);
-	osif_request_put(request);
+	hdd_request_complete(request);
+	hdd_request_put(request);
 }
 
-static QDF_STATUS
-hdd_populate_vdev_chains(struct mlme_nss_chains *nss_chains_cfg,
-			 uint8_t tx_chains,
-			 uint8_t rx_chains,
-			 enum nss_chains_band_info band,
-			 struct wlan_objmgr_vdev *vdev)
-{
-	struct mlme_nss_chains *dynamic_cfg;
-
-	nss_chains_cfg->num_rx_chains[band] = rx_chains;
-	nss_chains_cfg->num_tx_chains[band] = tx_chains;
-
-	dynamic_cfg = ucfg_mlme_get_dynamic_vdev_config(vdev);
-
-	if (!dynamic_cfg) {
-		hdd_err("nss chain dynamic config NULL");
-		return QDF_STATUS_E_FAILURE;
-	}
-
-	/*
-	 * If user gives any nss value, then chains will be adjusted based on
-	 * nss (in SME func sme_validate_user_nss_chain_params).
-	 * If Chains are not suitable as per current NSS then, we need to
-	 * return, and the below logic is added for the same.
-	 */
-
-	if ((dynamic_cfg->rx_nss[band] > rx_chains) ||
-	    (dynamic_cfg->tx_nss[band] > tx_chains)) {
-		hdd_err("Chains less than nss, configure correct nss first.");
-		return QDF_STATUS_E_FAILURE;
-	}
-
-	return QDF_STATUS_SUCCESS;
-}
-
-static int
-hdd_set_dynamic_antenna_mode(struct hdd_adapter *adapter,
-			     uint8_t num_rx_chains,
-			     uint8_t num_tx_chains)
-{
-	enum nss_chains_band_info band;
-	struct mlme_nss_chains user_cfg;
-	QDF_STATUS status;
-	mac_handle_t mac_handle;
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
-
-	mac_handle = hdd_ctx->mac_handle;
-	if (!mac_handle) {
-		hdd_err("NULL MAC handle");
-		return -EINVAL;
-	}
-
-	if (!hdd_is_vdev_in_conn_state(adapter)) {
-		hdd_debug("Vdev (id %d) not in connected/started state, cannot accept command",
-			  adapter->session_id);
-		return -EINVAL;
-	}
-
-	qdf_mem_zero(&user_cfg, sizeof(user_cfg));
-	for (band = NSS_CHAINS_BAND_2GHZ; band < NSS_CHAINS_BAND_MAX; band++) {
-		status = hdd_populate_vdev_chains(&user_cfg,
-						  num_rx_chains,
-						  num_tx_chains, band,
-						  adapter->vdev);
-		if (QDF_IS_STATUS_ERROR(status))
-			return -EINVAL;
-	}
-	status = sme_nss_chains_update(mac_handle,
-				       &user_cfg,
-				       adapter->session_id);
-	if (QDF_IS_STATUS_ERROR(status))
-		return -EINVAL;
-
-	return 0;
-}
-
-int hdd_set_antenna_mode(struct hdd_adapter *adapter,
-				  struct hdd_context *hdd_ctx, int mode)
+int hdd_set_antenna_mode(hdd_adapter_t *adapter,
+				  hdd_context_t *hdd_ctx, int mode)
 {
 
 	struct sir_antenna_mode_param params;
 	QDF_STATUS status;
 	int ret = 0;
-	struct osif_request *request = NULL;
-	static const struct osif_request_params request_params = {
+	struct hdd_request *request = NULL;
+	static const struct hdd_request_params request_params = {
 		.priv_size = 0,
 		.timeout_ms = WLAN_WAIT_TIME_ANTENNA_MODE_REQ,
 	};
+
+	if (hdd_ctx->current_antenna_mode == mode) {
+		hdd_err("System already in the requested mode");
+		goto exit;
+	}
+
+	if ((HDD_ANTENNA_MODE_2X2 == mode) &&
+	    (!hdd_is_supported_chain_mask_2x2(hdd_ctx))) {
+		hdd_err("System does not support 2x2 mode");
+		ret = -EPERM;
+		goto exit;
+	}
+
+	if ((HDD_ANTENNA_MODE_1X1 == mode) &&
+	    hdd_is_supported_chain_mask_1x1(hdd_ctx)) {
+		hdd_err("System only supports 1x1 mode");
+		goto exit;
+	}
 
 	switch (mode) {
 	case HDD_ANTENNA_MODE_1X1:
@@ -6851,58 +6758,36 @@ int hdd_set_antenna_mode(struct hdd_adapter *adapter,
 		goto exit;
 	}
 
-	if (hdd_ctx->dynamic_nss_chains_support)
-		return hdd_set_dynamic_antenna_mode(adapter,
-						    params.num_rx_chains,
-						    params.num_tx_chains);
-
-	if (hdd_ctx->current_antenna_mode == mode) {
-		hdd_err("System already in the requested mode");
-		return 0;
-	}
-
-	if ((HDD_ANTENNA_MODE_2X2 == mode) &&
-	    (!hdd_is_supported_chain_mask_2x2(hdd_ctx))) {
-		hdd_err("System does not support 2x2 mode");
-		ret = -EPERM;
-		goto exit;
-	}
-
-	if ((HDD_ANTENNA_MODE_1X1 == mode) &&
-	    hdd_is_supported_chain_mask_1x1(hdd_ctx)) {
-		hdd_err("System only supports 1x1 mode");
-		goto exit;
-	}
-
 	/* Check TDLS status and update antenna mode */
 	if ((QDF_STA_MODE == adapter->device_mode) &&
-	    policy_mgr_is_sta_active_connection_exists(hdd_ctx->psoc)) {
-		ret = wlan_hdd_tdls_antenna_switch(hdd_ctx, adapter, mode);
+	    cds_is_sta_active_connection_exists()) {
+		ret = wlan_hdd_tdls_antenna_switch(hdd_ctx, adapter,
+						   mode);
 		if (0 != ret)
 			goto exit;
 	}
 
-	request = osif_request_alloc(&request_params);
+	request = hdd_request_alloc(&request_params);
 	if (!request) {
 		hdd_err("Request Allocation Failure");
 		ret = -ENOMEM;
 		goto exit;
 	}
 
-	params.set_antenna_mode_ctx = osif_request_cookie(request);
-	params.set_antenna_mode_resp = (void *)wlan_hdd_soc_set_antenna_mode_cb;
+	params.set_antenna_mode_ctx = hdd_request_cookie(request);
+	params.set_antenna_mode_resp = wlan_hdd_soc_set_antenna_mode_cb;
 	hdd_debug("Set antenna mode rx chains: %d tx chains: %d",
 		 params.num_rx_chains,
 		 params.num_tx_chains);
 
-	status = sme_soc_set_antenna_mode(hdd_ctx->mac_handle, &params);
+	status = sme_soc_set_antenna_mode(hdd_ctx->hHal, &params);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		hdd_err("set antenna mode failed status : %d", status);
 		ret = -EFAULT;
 		goto request_put;
 	}
 
-	ret = osif_request_wait_for_response(request);
+	ret = hdd_request_wait_for_response(request);
 	if (ret) {
 		hdd_err("send set antenna mode timed out");
 		goto request_put;
@@ -6915,8 +6800,19 @@ int hdd_set_antenna_mode(struct hdd_adapter *adapter,
 	}
 	ret = 0;
 request_put:
-	osif_request_put(request);
+	hdd_request_put(request);
 exit:
+#ifdef FEATURE_WLAN_TDLS
+	/* Reset tdls NSS flags */
+	if (hdd_ctx->tdls_nss_switch_in_progress &&
+	    hdd_ctx->tdls_nss_teardown_complete) {
+		hdd_ctx->tdls_nss_switch_in_progress = false;
+		hdd_ctx->tdls_nss_teardown_complete = false;
+	}
+	hdd_debug("tdls_nss_switch_in_progress: %d tdls_nss_teardown_complete: %d",
+		  hdd_ctx->tdls_nss_switch_in_progress,
+		  hdd_ctx->tdls_nss_teardown_complete);
+#endif
 	hdd_debug("Set antenna status: %d current mode: %d",
 		 ret, hdd_ctx->current_antenna_mode);
 
@@ -6931,11 +6827,11 @@ exit:
  * @command_len: Command length
  * @priv_data: Pointer to private data in command
  */
-static int drv_cmd_set_antenna_mode(struct hdd_adapter *adapter,
-				struct hdd_context *hdd_ctx,
+static int drv_cmd_set_antenna_mode(hdd_adapter_t *adapter,
+				hdd_context_t *hdd_ctx,
 				uint8_t *command,
 				uint8_t command_len,
-				struct hdd_priv_data *priv_data)
+				hdd_priv_data_t *priv_data)
 {
 	int mode;
 	uint8_t *value = command;
@@ -6952,40 +6848,6 @@ static int drv_cmd_set_antenna_mode(struct hdd_adapter *adapter,
 }
 
 /**
- * hdd_get_dynamic_antenna_mode() -get the dynamic antenna mode for vdev
- * @antenna_mode: pointer to antenna mode of vdev
- * @dynamic_nss_chains_support: feature support for dynamic nss chains update
- * @vdev: Pointer to vdev
- *
- * This API will check for the num of chains configured for the vdev, and fill
- * that info in the antenna mode if the dynamic chains per vdev are supported.
- *
- * Return: None
- */
-static void
-hdd_get_dynamic_antenna_mode(uint32_t *antenna_mode,
-			     bool dynamic_nss_chains_support,
-			     struct wlan_objmgr_vdev *vdev)
-{
-	struct mlme_nss_chains *nss_chains_dynamic_cfg;
-
-	if (!dynamic_nss_chains_support)
-		return;
-
-	nss_chains_dynamic_cfg = ucfg_mlme_get_dynamic_vdev_config(vdev);
-	if (!nss_chains_dynamic_cfg) {
-		hdd_err("nss chain dynamic config NULL");
-		return;
-	}
-	/*
-	 * At present, this command doesn't include band, so by default
-	 * it will return the band 2ghz present rf chains.
-	 */
-	*antenna_mode =
-		nss_chains_dynamic_cfg->num_rx_chains[NSS_CHAINS_BAND_2GHZ];
-}
-
-/**
  * drv_cmd_get_antenna_mode() - GET ANTENNA MODE driver command
  * handler
  * @adapter: Pointer to hdd adapter
@@ -6996,21 +6858,17 @@ hdd_get_dynamic_antenna_mode(uint32_t *antenna_mode,
  *
  * Return: 0 for success non-zero for failure
  */
-static inline int drv_cmd_get_antenna_mode(struct hdd_adapter *adapter,
-					   struct hdd_context *hdd_ctx,
+static inline int drv_cmd_get_antenna_mode(hdd_adapter_t *adapter,
+					   hdd_context_t *hdd_ctx,
 					   uint8_t *command,
 					   uint8_t command_len,
-					   struct hdd_priv_data *priv_data)
+					   hdd_priv_data_t *priv_data)
 {
 	uint32_t antenna_mode = 0;
 	char extra[32];
 	uint8_t len = 0;
 
 	antenna_mode = hdd_ctx->current_antenna_mode;
-	/* Overwrite this antenna mode if dynamic vdev chains are supported */
-	hdd_get_dynamic_antenna_mode(&antenna_mode,
-				     hdd_ctx->dynamic_nss_chains_support,
-				     adapter->vdev);
 	len = scnprintf(extra, sizeof(extra), "%s %d", command,
 			antenna_mode);
 	len = QDF_MIN(priv_data->total_len, len + 1);
@@ -7027,11 +6885,11 @@ static inline int drv_cmd_get_antenna_mode(struct hdd_adapter *adapter,
 /*
  * dummy (no-op) hdd driver command handler
  */
-static int drv_cmd_dummy(struct hdd_adapter *adapter,
-			 struct hdd_context *hdd_ctx,
+static int drv_cmd_dummy(hdd_adapter_t *adapter,
+			 hdd_context_t *hdd_ctx,
 			 uint8_t *command,
 			 uint8_t command_len,
-			 struct hdd_priv_data *priv_data)
+			 hdd_priv_data_t *priv_data)
 {
 	hdd_debug("%s: Ignoring driver command \"%s\"",
 		 adapter->dev->name, command);
@@ -7041,15 +6899,15 @@ static int drv_cmd_dummy(struct hdd_adapter *adapter,
 /*
  * handler for any unsupported wlan hdd driver command
  */
-static int drv_cmd_invalid(struct hdd_adapter *adapter,
-			   struct hdd_context *hdd_ctx,
+static int drv_cmd_invalid(hdd_adapter_t *adapter,
+			   hdd_context_t *hdd_ctx,
 			   uint8_t *command,
 			   uint8_t command_len,
-			   struct hdd_priv_data *priv_data)
+			   hdd_priv_data_t *priv_data)
 {
-	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
-		   TRACE_CODE_HDD_UNSUPPORTED_IOCTL,
-		   adapter->session_id, 0);
+	MTRACE(qdf_trace(QDF_MODULE_ID_HDD,
+			 TRACE_CODE_HDD_UNSUPPORTED_IOCTL,
+			 adapter->sessionId, 0));
 
 	hdd_warn("%s: Unsupported driver command \"%s\"",
 		 adapter->dev->name, command);
@@ -7058,52 +6916,58 @@ static int drv_cmd_invalid(struct hdd_adapter *adapter,
 }
 
 /**
- * drv_cmd_set_fcc_channel() - Handle fcc constraint request
+ * drv_cmd_set_fcc_channel() - handle fcc constraint request
  * @adapter: HDD adapter
  * @hdd_ctx: HDD context
- * @command: command ptr, SET_FCC_CHANNEL 0/-1 is the command
+ * @command: command ptr, SET_FCC_CHANNEL 0/1 is the command
  * @command_len: command len
  * @priv_data: private data
  *
  * Return: status
  */
-static int drv_cmd_set_fcc_channel(struct hdd_adapter *adapter,
-				   struct hdd_context *hdd_ctx,
+static int drv_cmd_set_fcc_channel(hdd_adapter_t *adapter,
+				   hdd_context_t *hdd_ctx,
 				   uint8_t *command,
 				   uint8_t command_len,
-				   struct hdd_priv_data *priv_data)
+				   hdd_priv_data_t *priv_data)
 {
+	uint8_t *value;
+	uint8_t fcc_constraint;
 	QDF_STATUS status;
-	int8_t input_value;
-	bool fcc_constraint;
-	int err;
+	bool scan_pending;
+	int ret = 0;
 
 	/*
-	 * This command would be called by user-space when it detects WLAN
+	 * this command would be called by user-space when it detects WLAN
 	 * ON after airplane mode is set. When APM is set, WLAN turns off.
 	 * But it can be turned back on. Otherwise; when APM is turned back
 	 * off, WLAN would turn back on. So at that point the command is
-	 * expected to come down. 0 means reduce power as per fcc constraint
-	 * and -1 means remove constraint.
+	 * expected to come down. 0 means disable, 1 means enable. The
+	 * constraint is removed when parameter 1 is set or different
+	 * country code is set
 	 */
 
-	err = kstrtos8(command + command_len + 1, 10, &input_value);
-	if (err) {
-		hdd_err("error %d parsing userspace fcc parameter", err);
-		return err;
+	value =  command + command_len + 1;
+
+	ret = kstrtou8(value, 10, &fcc_constraint);
+	if ((ret < 0) || (fcc_constraint > 1)) {
+		/*
+		 *  If the input value is greater than max value of datatype,
+		 *  then also it is a failure
+		 */
+		hdd_err("value out of range");
+		return -EINVAL;
 	}
 
-	fcc_constraint = input_value ? false : true;
-	hdd_debug("input_value = %d && fcc_constraint = %u",
-		  input_value, fcc_constraint);
+	scan_pending = !qdf_list_empty(&hdd_ctx->hdd_scan_req_q);
+	status = sme_handle_set_fcc_channel(hdd_ctx->hHal, !fcc_constraint,
+					    scan_pending);
+	if (status != QDF_STATUS_SUCCESS) {
+		hdd_err("sme disable fn. returned err");
+		ret = -EPERM;
+	}
 
-	status = ucfg_reg_set_fcc_constraint(hdd_ctx->pdev, fcc_constraint);
-
-	if (QDF_IS_STATUS_ERROR(status))
-		hdd_err("Failed to %s tx power for channels 12/13",
-			fcc_constraint ? "restore" : "reduce");
-
-	return qdf_status_to_os_return(status);
+	return ret;
 }
 
 /**
@@ -7174,11 +7038,11 @@ static int hdd_parse_set_channel_switch_command(uint8_t *value,
  *
  * Return: 0 for success, non-zero for failure
  */
-static int drv_cmd_set_channel_switch(struct hdd_adapter *adapter,
-				   struct hdd_context *hdd_ctx,
+static int drv_cmd_set_channel_switch(hdd_adapter_t *adapter,
+				   hdd_context_t *hdd_ctx,
 				   uint8_t *command,
 				   uint8_t command_len,
-				   struct hdd_priv_data *priv_data)
+				   hdd_priv_data_t *priv_data)
 {
 	struct net_device *dev = adapter->dev;
 	int status;
@@ -7214,9 +7078,7 @@ static int drv_cmd_set_channel_switch(struct hdd_adapter *adapter,
 
 	hdd_debug("CH:%d BW:%d", chan_number, chan_bw);
 
-	wlan_hdd_set_sap_csa_reason(hdd_ctx->psoc, adapter->session_id,
-				    CSA_REASON_USER_INITIATED);
-	status = hdd_softap_set_channel_change(dev, chan_number, width, true);
+	status = hdd_softap_set_channel_change(dev, chan_number, width);
 	if (status) {
 		hdd_err("Set channel change fail");
 		return status;
@@ -7225,25 +7087,22 @@ static int drv_cmd_set_channel_switch(struct hdd_adapter *adapter,
 	return 0;
 }
 
-#ifdef DISABLE_CHANNEL_LIST
-void wlan_hdd_free_cache_channels(struct hdd_context *hdd_ctx)
+void wlan_hdd_free_cache_channels(hdd_context_t *hdd_ctx)
 {
-	hdd_enter();
+	ENTER();
 
 	if (!hdd_ctx->original_channels)
 		return;
 
 	qdf_mutex_acquire(&hdd_ctx->cache_channel_lock);
 	hdd_ctx->original_channels->num_channels = 0;
-	if (hdd_ctx->original_channels->channel_info) {
-		qdf_mem_free(hdd_ctx->original_channels->channel_info);
-		hdd_ctx->original_channels->channel_info = NULL;
-	}
+	qdf_mem_free(hdd_ctx->original_channels->channel_info);
+	hdd_ctx->original_channels->channel_info = NULL;
 	qdf_mem_free(hdd_ctx->original_channels);
 	hdd_ctx->original_channels = NULL;
 	qdf_mutex_release(&hdd_ctx->cache_channel_lock);
 
-	hdd_exit();
+	EXIT();
 }
 
 /**
@@ -7255,7 +7114,7 @@ void wlan_hdd_free_cache_channels(struct hdd_context *hdd_ctx)
  *
  * Return: 0 on success and error code on failure
  */
-static int hdd_alloc_chan_cache(struct hdd_context *hdd_ctx, int num_chan)
+static int hdd_alloc_chan_cache(hdd_context_t *hdd_ctx, int num_chan)
 {
 	hdd_ctx->original_channels =
 			qdf_mem_malloc(sizeof(struct hdd_cache_channels));
@@ -7278,6 +7137,70 @@ static int hdd_alloc_chan_cache(struct hdd_context *hdd_ctx, int num_chan)
 }
 
 /**
+ * check_disable_channels() - Check for disable channel
+ * @hdd_ctx: Pointer to hdd context
+ * @operating_channel: Current operating channel of adapter
+ *
+ * This function checks original_channels array for a specific channel
+ *
+ * Return: 0 if channel not found, 1 if channel found
+ */
+static bool check_disable_channels(hdd_context_t *hdd_ctx,
+				   uint8_t operating_channel)
+{
+	uint32_t num_channels;
+	uint8_t i;
+
+	if (!hdd_ctx || !hdd_ctx->original_channels ||
+	    !hdd_ctx->original_channels->channel_info)
+		return false;
+
+	num_channels = hdd_ctx->original_channels->num_channels;
+	for (i = 0; i < num_channels; i++)
+		if (hdd_ctx->original_channels->channel_info[i].channel_num ==
+				operating_channel)
+			return true;
+	return false;
+}
+
+/**
+ * disconnect_sta_and_stop_sap() - Disconnect STA and stop SAP
+ *
+ * @hdd_ctx: Pointer to hdd context
+ *
+ * Disable channels provided by user and disconnect STA if it is
+ * connected to any AP, stop SAP and send deauthentication request
+ * to STAs connected to SAP.
+ *
+ * Return: None
+ */
+static void disconnect_sta_and_stop_sap(hdd_context_t *hdd_ctx)
+{
+	hdd_adapter_list_node_t *adapter_node = NULL, *next = NULL;
+	hdd_adapter_t *adapter;
+	QDF_STATUS status;
+
+	if (!hdd_ctx)
+		return;
+
+	hdd_check_and_disconnect_sta_on_invalid_channel(hdd_ctx);
+
+	status = hdd_get_front_adapter(hdd_ctx, &adapter_node);
+	while (adapter_node && (status == QDF_STATUS_SUCCESS)) {
+		adapter = adapter_node->pAdapter;
+
+		if (!hdd_validate_adapter(adapter) &&
+		    (adapter->device_mode == QDF_SAP_MODE) &&
+		    (check_disable_channels(hdd_ctx,
+		     adapter->sessionCtx.ap.operatingChannel)))
+			wlan_hdd_stop_sap(adapter);
+
+		status = hdd_get_next_adapter(hdd_ctx, adapter_node, &next);
+		adapter_node = next;
+	}
+}
+
+/**
  * hdd_parse_disable_chan_cmd() - Parse the channel list received
  * in command.
  * @adapter: pointer to hdd adapter
@@ -7295,12 +7218,12 @@ static int hdd_alloc_chan_cache(struct hdd_context *hdd_ctx, int num_chan)
  * Return: 0 on success, Error code on failure
  */
 
-static int hdd_parse_disable_chan_cmd(struct hdd_adapter *adapter, uint8_t *ptr)
+static int hdd_parse_disable_chan_cmd(hdd_adapter_t *adapter, uint8_t *ptr)
 {
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	uint8_t *param;
 	int j, i, temp_int, ret = 0, num_channels;
-	uint32_t parsed_channels[MAX_CHANNEL];
+	int parsed_channels[MAX_CHANNEL];
 	bool is_command_repeated = false;
 
 	if (NULL == hdd_ctx) {
@@ -7341,13 +7264,11 @@ static int hdd_parse_disable_chan_cmd(struct hdd_adapter *adapter, uint8_t *ptr)
 	hdd_debug("Number of channel to disable are: %d", temp_int);
 
 	if (!temp_int) {
-		if (!wlan_hdd_restore_channels(hdd_ctx, false)) {
-			/*
-			 * Free the cache channels only when the command is
-			 * received with num channels as 0
-			 */
-			wlan_hdd_free_cache_channels(hdd_ctx);
-		}
+		/*
+		 * Restore and Free the cache channels when the command is
+		 * received with num channels as 0
+		 */
+		wlan_hdd_restore_channels(hdd_ctx);
 		return 0;
 	}
 
@@ -7427,16 +7348,12 @@ static int hdd_parse_disable_chan_cmd(struct hdd_adapter *adapter, uint8_t *ptr)
 	 * command with the cached channels, if channel list matches
 	 * return success otherewise return failure.
 	 */
-	if (!is_command_repeated) {
+	if (!is_command_repeated)
 		for (j = 0; j < num_channels; j++)
 			hdd_ctx->original_channels->
 					channel_info[j].channel_num =
 							parsed_channels[j];
-
-		/* Cache the channel list in regulatory also */
-		ucfg_reg_cache_channel_state(hdd_ctx->pdev, parsed_channels,
-					     num_channels);
-	} else {
+	else {
 		for (i = 0; i < num_channels; i++) {
 			for (j = 0; j < num_channels; j++)
 				if (hdd_ctx->original_channels->
@@ -7450,34 +7367,35 @@ static int hdd_parse_disable_chan_cmd(struct hdd_adapter *adapter, uint8_t *ptr)
 		}
 		ret = 0;
 	}
+
 mem_alloc_failed:
 
 	qdf_mutex_release(&hdd_ctx->cache_channel_lock);
-	/* Disable the channels received in command SET_DISABLE_CHANNEL_LIST */
 	if (!is_command_repeated && hdd_ctx->original_channels) {
-		wlan_hdd_disable_channels(hdd_ctx);
-		hdd_check_and_disconnect_sta_on_invalid_channel(hdd_ctx);
+		ret = wlan_hdd_disable_channels(hdd_ctx);
+		if (ret)
+			return ret;
+		disconnect_sta_and_stop_sap(hdd_ctx);
 	}
 
-	hdd_exit();
+	EXIT();
 
 	return ret;
 
 parse_failed:
+	qdf_mutex_release(&hdd_ctx->cache_channel_lock);
 	if (!is_command_repeated)
 		wlan_hdd_free_cache_channels(hdd_ctx);
-
-	qdf_mutex_release(&hdd_ctx->cache_channel_lock);
-	hdd_exit();
+	EXIT();
 
 	return ret;
 }
 
-static int drv_cmd_set_disable_chan_list(struct hdd_adapter *adapter,
-					 struct hdd_context *hdd_ctx,
+static int drv_cmd_set_disable_chan_list(hdd_adapter_t *adapter,
+					 hdd_context_t *hdd_ctx,
 					 uint8_t *command,
 					 uint8_t command_len,
-					 struct hdd_priv_data *priv_data)
+					 hdd_priv_data_t *priv_data)
 {
 	return hdd_parse_disable_chan_cmd(adapter, command);
 }
@@ -7490,7 +7408,7 @@ static int drv_cmd_set_disable_chan_list(struct hdd_adapter *adapter,
  *
  * Return: length of data copied to buf
  */
-static int hdd_get_disable_ch_list(struct hdd_context *hdd_ctx, uint8_t *buf,
+static int hdd_get_disable_ch_list(hdd_context_t *hdd_ctx, uint8_t *buf,
 				   uint32_t buf_len)
 {
 	struct hdd_cache_channel_info *ch_list;
@@ -7506,7 +7424,7 @@ static int hdd_get_disable_ch_list(struct hdd_context *hdd_ctx, uint8_t *buf,
 		len = scnprintf(buf, buf_len, "%s %hhu",
 				"GET_DISABLE_CHANNEL_LIST", num_ch);
 		ch_list = hdd_ctx->original_channels->channel_info;
-		for (i = 0; (i < num_ch) && (len < buf_len - 1); i++) {
+		for (i = 0; (i < num_ch) && len <= buf_len; i++) {
 			len += scnprintf(buf + len, buf_len - len,
 					 " %d", ch_list[i].channel_num);
 		}
@@ -7516,11 +7434,11 @@ static int hdd_get_disable_ch_list(struct hdd_context *hdd_ctx, uint8_t *buf,
 	return len;
 }
 
-static int drv_cmd_get_disable_chan_list(struct hdd_adapter *adapter,
-					 struct hdd_context *hdd_ctx,
+static int drv_cmd_get_disable_chan_list(hdd_adapter_t *adapter,
+					 hdd_context_t *hdd_ctx,
 					 uint8_t *command,
 					 uint8_t command_len,
-					 struct hdd_priv_data *priv_data)
+					 hdd_priv_data_t *priv_data)
 {
 	char extra[512] = {0};
 	int max_len, copied_length;
@@ -7542,30 +7460,7 @@ static int drv_cmd_get_disable_chan_list(struct hdd_adapter *adapter,
 	hdd_debug("data:%s", extra);
 	return 0;
 }
-#else
 
-static int drv_cmd_set_disable_chan_list(struct hdd_adapter *adapter,
-					 struct hdd_context *hdd_ctx,
-					 uint8_t *command,
-					 uint8_t command_len,
-					 struct hdd_priv_data *priv_data)
-{
-	return 0;
-}
-
-void wlan_hdd_free_cache_channels(struct hdd_context *hdd_ctx)
-{
-}
-
-static int drv_cmd_get_disable_chan_list(struct hdd_adapter *adapter,
-					 struct hdd_context *hdd_ctx,
-					 uint8_t *command,
-					 uint8_t command_len,
-					 struct hdd_priv_data *priv_data)
-{
-	return 0;
-}
-#endif
 /*
  * The following table contains all supported WLAN HDD
  * IOCTL driver commands and the handler for each of them.
@@ -7577,8 +7472,6 @@ static const struct hdd_drv_cmd hdd_drv_cmds[] = {
 	{"SETBAND",                   drv_cmd_set_band, true},
 	{"SETWMMPS",                  drv_cmd_set_wmmps, true},
 	{"COUNTRY",                   drv_cmd_country, true},
-	{"SETCOUNTRYREV",             drv_cmd_country, true},
-	{"GETCOUNTRYREV",             drv_cmd_get_country, false},
 	{"SETSUSPENDMODE",            drv_cmd_dummy, false},
 	{"SET_AP_WPS_P2P_IE",         drv_cmd_dummy, false},
 	{"SETROAMTRIGGER",            drv_cmd_set_roam_trigger, true},
@@ -7633,7 +7526,9 @@ static const struct hdd_drv_cmd hdd_drv_cmds[] = {
 	{"BTCOEXMODE",                drv_cmd_bt_coex_mode, true},
 	{"SCAN-ACTIVE",               drv_cmd_scan_active, false},
 	{"SCAN-PASSIVE",              drv_cmd_scan_passive, false},
+#ifdef WLAN_AP_STA_CONCURRENCY
 	{"CONCSETDWELLTIME",          drv_cmd_conc_set_dwell_time, true},
+#endif
 	{"GETDWELLTIME",              drv_cmd_get_dwell_time, false},
 	{"SETDWELLTIME",              drv_cmd_set_dwell_time, true},
 	{"MIRACAST",                  drv_cmd_miracast, true},
@@ -7679,8 +7574,8 @@ static const struct hdd_drv_cmd hdd_drv_cmds[] = {
 	{"GETANTENNAMODE",            drv_cmd_get_antenna_mode, false},
 	{"SET_DISABLE_CHANNEL_LIST",  drv_cmd_set_disable_chan_list, true},
 	{"GET_DISABLE_CHANNEL_LIST",  drv_cmd_get_disable_chan_list, false},
-	{"STOP",                      drv_cmd_dummy, false},
 	/* Deprecated commands */
+	{"STOP",                      drv_cmd_dummy, false},
 	{"RXFILTER-START",            drv_cmd_dummy, false},
 	{"RXFILTER-STOP",             drv_cmd_dummy, false},
 	{"BTCOEXSCAN-START",          drv_cmd_dummy, false},
@@ -7699,11 +7594,11 @@ static const struct hdd_drv_cmd hdd_drv_cmds[] = {
  *
  * Return: 0 for success non-zero for failure
  */
-static int hdd_drv_cmd_process(struct hdd_adapter *adapter,
+static int hdd_drv_cmd_process(hdd_adapter_t *adapter,
 			       uint8_t *cmd,
-			       struct hdd_priv_data *priv_data)
+			       hdd_priv_data_t *priv_data)
 {
-	struct hdd_context *hdd_ctx;
+	hdd_context_t *hdd_ctx;
 	int i;
 	const int cmd_num_total = ARRAY_SIZE(hdd_drv_cmds);
 	uint8_t *cmd_i = NULL;
@@ -7721,7 +7616,7 @@ static int hdd_drv_cmd_process(struct hdd_adapter *adapter,
 	ptr = strchrnul(cmd, ' ');
 	cmd_len = ptr - cmd;
 
-	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_ctx = (hdd_context_t *)adapter->pHddCtx;
 
 	for (i = 0; i < cmd_num_total; i++) {
 
@@ -7757,14 +7652,14 @@ static int hdd_drv_cmd_process(struct hdd_adapter *adapter,
  *
  * Return: 0 for success non-zero for failure
  */
-static int hdd_driver_command(struct hdd_adapter *adapter,
-			      struct hdd_priv_data *priv_data)
+static int hdd_driver_command(hdd_adapter_t *adapter,
+			      hdd_priv_data_t *priv_data)
 {
 	uint8_t *command = NULL;
 	int ret = 0;
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 
-	hdd_enter();
+	ENTER();
 
 	if (QDF_GLOBAL_FTM_MODE == hdd_get_conparam()) {
 		hdd_err("Command not allowed in FTM mode");
@@ -7815,19 +7710,19 @@ static int hdd_driver_command(struct hdd_adapter *adapter,
 exit:
 	if (command)
 		qdf_mem_free(command);
-	hdd_exit();
+	EXIT();
 	return ret;
 }
 
 #ifdef CONFIG_COMPAT
-static int hdd_driver_compat_ioctl(struct hdd_adapter *adapter, struct ifreq *ifr)
+static int hdd_driver_compat_ioctl(hdd_adapter_t *adapter, struct ifreq *ifr)
 {
 	struct {
 		compat_uptr_t buf;
 		int used_len;
 		int total_len;
 	} compat_priv_data;
-	struct hdd_priv_data priv_data;
+	hdd_priv_data_t priv_data;
 	int ret = 0;
 
 	/*
@@ -7847,16 +7742,16 @@ exit:
 	return ret;
 }
 #else /* CONFIG_COMPAT */
-static int hdd_driver_compat_ioctl(struct hdd_adapter *adapter, struct ifreq *ifr)
+static int hdd_driver_compat_ioctl(hdd_adapter_t *adapter, struct ifreq *ifr)
 {
 	/* will never be invoked */
 	return 0;
 }
 #endif /* CONFIG_COMPAT */
 
-static int hdd_driver_ioctl(struct hdd_adapter *adapter, struct ifreq *ifr)
+static int hdd_driver_ioctl(hdd_adapter_t *adapter, struct ifreq *ifr)
 {
-	struct hdd_priv_data priv_data;
+	hdd_priv_data_t priv_data;
 	int ret = 0;
 
 	/*
@@ -7891,11 +7786,11 @@ static int hdd_driver_ioctl(struct hdd_adapter *adapter, struct ifreq *ifr)
  */
 static int __hdd_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 {
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
-	struct hdd_context *hdd_ctx;
+	hdd_adapter_t *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_context_t *hdd_ctx;
 	int ret;
 
-	hdd_enter_dev(dev);
+	ENTER_DEV(dev);
 
 	if (dev != adapter->dev) {
 		hdd_err("HDD adapter/dev inconsistency");
@@ -7935,7 +7830,7 @@ static int __hdd_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 		break;
 	}
 exit:
-	hdd_exit();
+	EXIT();
 	return ret;
 }
 

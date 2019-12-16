@@ -84,6 +84,10 @@ struct dot11p_channel_sched {
  *	array of NDL active state configuration
  * @QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_FLAGS:
  *	flag to set the absolute expiry
+ *      configuration flags such as OCB_CONFIG_FLAG_80211_FRAME_MODE
+ * @QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_DEF_TX_PARAM:
+ *      default TX parameters to use in the case that a packet is sent without
+ *      a TX control header
  */
 enum qca_wlan_vendor_attr_ocb_set_config {
 	QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_INVALID = 0,
@@ -94,6 +98,7 @@ enum qca_wlan_vendor_attr_ocb_set_config {
 	QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_NDL_CHANNEL_ARRAY,
 	QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_NDL_ACTIVE_STATE_ARRAY,
 	QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_FLAGS,
+	QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_DEF_TX_PARAM,
 	QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_MAX =
 		QCA_WLAN_VENDOR_ATTR_OCB_SET_CONFIG_AFTER_LAST - 1,
@@ -229,11 +234,10 @@ enum qca_wlan_vendor_attr_dcc_update_ndl {
 	QCA_WLAN_VENDOR_ATTR_DCC_UPDATE_NDL_MAX =
 		QCA_WLAN_VENDOR_ATTR_DCC_UPDATE_NDL_AFTER_LAST - 1,
 };
-
-struct hdd_context;
-
 #ifdef WLAN_FEATURE_DSRC
-void hdd_set_dot11p_config(struct hdd_context *hdd_ctx);
+void hdd_set_dot11p_config(hdd_context_t *hdd_ctx);
+
+void hdd_remove_ocb_tx_header(struct sk_buff *skb);
 
 int iw_set_dot11p_channel_sched(struct net_device *dev,
 				struct iw_request_info *info,
@@ -279,14 +283,17 @@ int wlan_hdd_cfg80211_dcc_update_ndl(struct wiphy *wiphy,
 				     const void *data,
 				     int data_len);
 
-void wlan_hdd_dcc_register_for_dcc_stats_event(struct hdd_context *hdd_ctx);
+void wlan_hdd_dcc_register_for_dcc_stats_event(hdd_context_t *hdd_ctx);
 
 void wlan_hdd_dcc_stats_event(void *context_ptr, void *response_ptr);
 #else
-static inline void hdd_set_dot11p_config(struct hdd_context *hdd_ctx)
+static inline void hdd_set_dot11p_config(hdd_context_t *hdd_ctx)
 {
 }
 
+static inline void hdd_remove_ocb_tx_header(struct sk_buff *skb)
+{
+}
 static inline int iw_set_dot11p_channel_sched(struct net_device *dev,
 		struct iw_request_info *info,
 		union iwreq_data *wrqu, char *extra)
@@ -359,7 +366,7 @@ static inline int wlan_hdd_cfg80211_dcc_update_ndl(struct wiphy *wiphy,
 }
 
 static inline void wlan_hdd_dcc_register_for_dcc_stats_event(
-		struct hdd_context *hdd_ctx)
+		hdd_context_t *hdd_ctx)
 {
 }
 

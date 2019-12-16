@@ -36,13 +36,12 @@
 #include "cds_utils.h"
 #include "wma.h"
 #include "sme_api.h"
-#include "wlan_nlink_srv.h"
 
 #ifdef CNSS_GENL
 #include <net/cnss_nl.h>
 #endif
 
-static struct hdd_context *p_hdd_ctx;
+static struct hdd_context_s *p_hdd_ctx;
 
 /**
  * populate_oem_data_cap() - populate oem capabilities
@@ -51,14 +50,14 @@ static struct hdd_context *p_hdd_ctx;
  *
  * Return: error code
  */
-static int populate_oem_data_cap(struct hdd_adapter *adapter,
+static int populate_oem_data_cap(hdd_adapter_t *adapter,
 				 struct oem_data_cap *data_cap)
 {
 	QDF_STATUS status;
 	struct hdd_config *config;
 	uint32_t num_chan;
 	uint8_t *chan_list;
-	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	hdd_context_t *hdd_ctx = adapter->pHddCtx;
 
 	config = hdd_ctx->config;
 	if (!config) {
@@ -82,16 +81,16 @@ static int populate_oem_data_cap(struct hdd_adapter *adapter,
 	data_cap->allowed_dwell_time_min = config->nNeighborScanMinChanTime;
 	data_cap->allowed_dwell_time_max = config->nNeighborScanMaxChanTime;
 	data_cap->curr_dwell_time_min =
-		sme_get_neighbor_scan_min_chan_time(hdd_ctx->mac_handle,
-						    adapter->session_id);
+		sme_get_neighbor_scan_min_chan_time(hdd_ctx->hHal,
+						    adapter->sessionId);
 	data_cap->curr_dwell_time_max =
-		sme_get_neighbor_scan_max_chan_time(hdd_ctx->mac_handle,
-						    adapter->session_id);
+		sme_get_neighbor_scan_max_chan_time(hdd_ctx->hHal,
+						    adapter->sessionId);
 	data_cap->supported_bands = config->nBandCapability;
 
 	/* request for max num of channels */
 	num_chan = OEM_CAP_MAX_NUM_CHANNELS;
-	status = sme_get_cfg_valid_channels(
+	status = sme_get_cfg_valid_channels(hdd_ctx->hHal,
 					    &chan_list[0], &num_chan);
 	if (QDF_STATUS_SUCCESS != status) {
 		hdd_err("failed to get valid channel list, status: %d", status);
@@ -134,18 +133,18 @@ int iw_get_oem_data_cap(struct net_device *dev,
 	int status;
 	struct oem_data_cap oemDataCap = { {0} };
 	struct oem_data_cap *pHddOemDataCap;
-	struct hdd_adapter *adapter = (netdev_priv(dev));
-	struct hdd_context *pHddContext;
+	hdd_adapter_t *pAdapter = (netdev_priv(dev));
+	hdd_context_t *pHddContext;
 	int ret;
 
-	hdd_enter();
+	ENTER();
 
-	pHddContext = WLAN_HDD_GET_CTX(adapter);
+	pHddContext = WLAN_HDD_GET_CTX(pAdapter);
 	ret = wlan_hdd_validate_context(pHddContext);
 	if (0 != ret)
 		return ret;
 
-	status = populate_oem_data_cap(adapter, &oemDataCap);
+	status = populate_oem_data_cap(pAdapter, &oemDataCap);
 	if (0 != status) {
 		hdd_err("Failed to populate oem data capabilities");
 		return status;
@@ -154,8 +153,29 @@ int iw_get_oem_data_cap(struct net_device *dev,
 	pHddOemDataCap = (struct oem_data_cap *) (extra);
 	*pHddOemDataCap = oemDataCap;
 
-	hdd_exit();
+	EXIT();
 	return 0;
+}
+
+/**
+ * nl_srv_ucast_oem() - Wrapper function to send ucast msgs to OEM
+ * @skb: sk buffer pointer
+ * @dst_pid: Destination PID
+ * @flag: flags
+ *
+ * Sends the ucast message to OEM with generic nl socket if CNSS_GENL
+ * is enabled. Else, use the legacy netlink socket to send.
+ *
+ * Return: None
+ */
+static void nl_srv_ucast_oem(struct sk_buff *skb, int dst_pid, int flag)
+{
+#ifdef CNSS_GENL
+	nl_srv_ucast(skb, dst_pid, flag, WLAN_NL_MSG_OEM,
+					CLD80211_MCGRP_OEM_MSGS);
+#else
+	nl_srv_ucast(skb, dst_pid, flag);
+#endif
 }
 
 /**
@@ -174,7 +194,10 @@ static void send_oem_reg_rsp_nlink_msg(void)
 	uint8_t *numInterfaces;
 	uint8_t *deviceMode;
 	uint8_t *vdevId;
-	struct hdd_adapter *adapter;
+	hdd_adapter_list_node_t *pAdapterNode = NULL;
+	hdd_adapter_list_node_t *pNext = NULL;
+	hdd_adapter_t *pAdapter = NULL;
+	QDF_STATUS status = 0;
 
 	/* OEM msg is always to a specific process & cannot be a broadcast */
 	if (p_hdd_ctx->oem_pid == 0) {
@@ -205,15 +228,21 @@ static void send_oem_reg_rsp_nlink_msg(void)
 	*numInterfaces = 0;
 
 	/* Iterate through each adapter and fill device mode and vdev id */
-	hdd_for_each_adapter(p_hdd_ctx, adapter) {
-		deviceMode = buf++;
-		vdevId = buf++;
-		*deviceMode = adapter->device_mode;
-		*vdevId = adapter->session_id;
-		(*numInterfaces)++;
-		hdd_debug("numInterfaces: %d, deviceMode: %d, vdevId: %d",
-			  *numInterfaces, *deviceMode,
-			  *vdevId);
+	status = hdd_get_front_adapter(p_hdd_ctx, &pAdapterNode);
+	while ((QDF_STATUS_SUCCESS == status) && pAdapterNode) {
+		pAdapter = pAdapterNode->pAdapter;
+		if (pAdapter) {
+			deviceMode = buf++;
+			vdevId = buf++;
+			*deviceMode = pAdapter->device_mode;
+			*vdevId = pAdapter->sessionId;
+			(*numInterfaces)++;
+			hdd_debug("numInterfaces: %d, deviceMode: %d, vdevId: %d",
+				   *numInterfaces, *deviceMode,
+				   *vdevId);
+		}
+		status = hdd_get_next_adapter(p_hdd_ctx, pAdapterNode, &pNext);
+		pAdapterNode = pNext;
 	}
 
 	aniHdr->length =
@@ -361,7 +390,7 @@ static QDF_STATUS oem_process_data_req_msg(int oem_data_len, char *oem_data)
 	oem_data_req.data_len = oem_data_len;
 	qdf_mem_copy(oem_data_req.data, oem_data, oem_data_len);
 
-	status = sme_oem_data_req(p_hdd_ctx->mac_handle, &oem_data_req);
+	status = sme_oem_data_req(p_hdd_ctx->hHal, &oem_data_req);
 
 	qdf_mem_free(oem_data_req.data);
 	oem_data_req.data = NULL;
@@ -382,28 +411,29 @@ static QDF_STATUS oem_process_data_req_msg(int oem_data_len, char *oem_data)
  *
  * Return: void
  */
-void hdd_update_channel_bw_info(struct hdd_context *hdd_ctx,
+void hdd_update_channel_bw_info(hdd_context_t *hdd_ctx,
 				uint16_t chan, void *chan_info)
 {
-	struct ch_params ch_params = {0};
+	struct ch_params_s ch_params = {0};
 	uint16_t sec_ch_2g = 0;
 	WLAN_PHY_MODE phy_mode;
 	uint32_t wni_dot11_mode;
-	tHddChannelInfo *hdd_chan_info = chan_info;
+	struct hdd_channel_info *hdd_chan_info = chan_info;
 
-	wni_dot11_mode = sme_get_wni_dot11_mode(hdd_ctx->mac_handle);
+	wni_dot11_mode = sme_get_wni_dot11_mode(hdd_ctx->hHal);
 
 	/* Passing CH_WIDTH_MAX will give the max bandwidth supported */
 	ch_params.ch_width = CH_WIDTH_MAX;
 
-	wlan_reg_set_channel_params(hdd_ctx->pdev, chan, sec_ch_2g, &ch_params);
+	cds_set_channel_params(chan, sec_ch_2g, &ch_params);
+
 	if (ch_params.center_freq_seg0)
 		hdd_chan_info->band_center_freq1 =
 			cds_chan_to_freq(ch_params.center_freq_seg0);
 
 	if (ch_params.ch_width < CH_WIDTH_INVALID)
-		phy_mode = wma_chan_phy_mode(chan, ch_params.ch_width,
-					     wni_dot11_mode);
+		phy_mode = wma_chan_phy_mode(chan,
+				ch_params.ch_width, wni_dot11_mode);
 	else
 		/*
 		 * If channel width is CH_WIDTH_INVALID, It mean channel is
@@ -481,7 +511,7 @@ static int oem_process_channel_info_req_msg(int numOfChannels, char *chanList)
 						    sizeof(*pHddChanInfo));
 
 		chanId = chanList[i];
-		status = sme_get_reg_info(p_hdd_ctx->mac_handle, chanId,
+		status = sme_get_reg_info(p_hdd_ctx->hHal, chanId,
 					  &reg_info_1, &reg_info_2);
 		if (QDF_STATUS_SUCCESS == status) {
 			/* copy into hdd chan info struct */
@@ -493,7 +523,7 @@ static int oem_process_channel_info_req_msg(int numOfChannels, char *chanList)
 
 			hddChanInfo.info = 0;
 			if (CHANNEL_STATE_DFS ==
-			    wlan_reg_get_channel_state(p_hdd_ctx->pdev, chanId))
+			    cds_get_channel_state(chanId))
 				WMI_SET_CHANNEL_FLAG(&hddChanInfo,
 						     WMI_CHAN_FLAG_DFS);
 
@@ -555,7 +585,7 @@ static int oem_process_set_cap_req_msg(int oem_cap_len,
 		return -EINVAL;
 	}
 
-	status = sme_oem_update_capability(p_hdd_ctx->mac_handle,
+	status = sme_oem_update_capability(p_hdd_ctx->hHal,
 					(struct sme_oem_capability *)oem_cap);
 	if (!QDF_IS_STATUS_SUCCESS(status))
 		hdd_err("error updating rm capability, status: %d", status);
@@ -603,7 +633,7 @@ static int oem_process_get_cap_req_msg(void)
 	struct oem_get_capability_rsp *cap_rsp;
 	struct oem_data_cap data_cap = { {0} };
 	struct sme_oem_capability oem_cap;
-	struct hdd_adapter *adapter;
+	hdd_adapter_t *adapter;
 	struct sk_buff *skb;
 	struct nlmsghdr *nlh;
 	tAniMsgHdr *ani_hdr;
@@ -641,7 +671,7 @@ static int oem_process_get_cap_req_msg(void)
 
 	buf = (char *) buf +  sizeof(data_cap);
 	qdf_mem_zero(&oem_cap, sizeof(oem_cap));
-	sme_oem_get_capability(p_hdd_ctx->mac_handle, &oem_cap);
+	sme_oem_get_capability(p_hdd_ctx->hHal, &oem_cap);
 	qdf_mem_copy(buf, &oem_cap, sizeof(oem_cap));
 
 	skb_put(skb, NLMSG_SPACE((sizeof(tAniMsgHdr) + ani_hdr->length)));
@@ -669,15 +699,15 @@ void hdd_send_peer_status_ind_to_oem_app(struct qdf_mac_addr *peerMac,
 					 uint8_t peerTimingMeasCap,
 					 uint8_t sessionId,
 					 tSirSmeChanInfo *chan_info,
-					 enum QDF_OPMODE dev_mode)
+					 enum tQDF_ADAPTER_MODE dev_mode)
 {
 	struct sk_buff *skb;
 	struct nlmsghdr *nlh;
 	tAniMsgHdr *aniHdr;
 	struct peer_status_info *pPeerInfo;
 
-	if (!p_hdd_ctx) {
-		hdd_err("HDD Ctx is null");
+	if (!p_hdd_ctx || !p_hdd_ctx->hHal) {
+		hdd_err("Either HDD Ctx is null or Hal Ctx is null");
 		return;
 	}
 
@@ -769,8 +799,8 @@ void hdd_send_peer_status_ind_to_oem_app(struct qdf_mac_addr *peerMac,
  *
  * Return: 0 if success, error code otherwise
  */
-static int oem_app_reg_req_handler(struct hdd_context *hdd_ctx,
-				   tAniMsgHdr *msg_hdr, int pid)
+static int oem_app_reg_req_handler(struct hdd_context_s *hdd_ctx,
+					tAniMsgHdr *msg_hdr, int pid)
 {
 	char *sign_str = NULL;
 
@@ -804,7 +834,7 @@ static int oem_app_reg_req_handler(struct hdd_context *hdd_ctx,
  *
  * Return: 0 if success, error code otherwise
  */
-static int oem_data_req_handler(struct hdd_context *hdd_ctx,
+static int oem_data_req_handler(struct hdd_context_s *hdd_ctx,
 				tAniMsgHdr *msg_hdr, int pid)
 {
 	hdd_debug("Received Oem Data Request length: %d from pid: %d",
@@ -841,7 +871,7 @@ static int oem_data_req_handler(struct hdd_context *hdd_ctx,
  *
  * Return: 0 if success, error code otherwise
  */
-static int oem_chan_info_req_handler(struct hdd_context *hdd_ctx,
+static int oem_chan_info_req_handler(struct hdd_context_s *hdd_ctx,
 					tAniMsgHdr *msg_hdr, int pid)
 {
 	hdd_debug("Received channel info request, num channel(%d) from pid: %d",
@@ -878,7 +908,7 @@ static int oem_chan_info_req_handler(struct hdd_context *hdd_ctx,
  *
  * Return: 0 if success, error code otherwise
  */
-static int oem_set_cap_req_handler(struct hdd_context *hdd_ctx,
+static int oem_set_cap_req_handler(struct hdd_context_s *hdd_ctx,
 					tAniMsgHdr *msg_hdr, int pid)
 {
 	hdd_info("Received set oem cap req of length:%d from pid: %d",
@@ -915,7 +945,7 @@ static int oem_set_cap_req_handler(struct hdd_context *hdd_ctx,
  *
  * Return: 0 if success, error code otherwise
  */
-static int oem_get_cap_req_handler(struct hdd_context *hdd_ctx,
+static int oem_get_cap_req_handler(struct hdd_context_s *hdd_ctx,
 					tAniMsgHdr *msg_hdr, int pid)
 {
 	hdd_info("Rcvd get oem capability req - length:%d from pid: %d",
@@ -1004,8 +1034,7 @@ static void oem_cmd_handler(const void *data, int data_len, void *ctx, int pid)
 	 * audit note: it is ok to pass a NULL policy here since only
 	 * one attribute is parsed and it is explicitly validated
 	 */
-	if (wlan_cfg80211_nla_parse(tb, CLD80211_ATTR_MAX,
-				    data, data_len, NULL)) {
+	if (hdd_nla_parse(tb, CLD80211_ATTR_MAX, data, data_len, NULL)) {
 		hdd_err("Invalid ATTR");
 		return;
 	}
@@ -1033,7 +1062,7 @@ static void oem_cmd_handler(const void *data, int data_len, void *ctx, int pid)
 	oem_request_dispatcher(msg_hdr, pid);
 }
 
-int oem_activate_service(struct hdd_context *hdd_ctx)
+int oem_activate_service(struct hdd_context_s *hdd_ctx)
 {
 	p_hdd_ctx = hdd_ctx;
 	register_cld_cmd_cb(WLAN_NL_MSG_OEM, oem_cmd_handler, NULL);
@@ -1045,6 +1074,7 @@ int oem_deactivate_service(void)
 	deregister_cld_cmd_cb(WLAN_NL_MSG_OEM);
 	return 0;
 }
+
 #else
 
 /*
@@ -1111,7 +1141,7 @@ static int __oem_msg_callback(struct sk_buff *skb)
 	return ret;
 }
 
-int oem_activate_service(struct hdd_context *hdd_ctx)
+int oem_activate_service(struct hdd_context_s *hdd_ctx)
 {
 	p_hdd_ctx = hdd_ctx;
 

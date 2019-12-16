@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -244,7 +244,7 @@ tpDphHashNode dph_init_sta_state(tpAniSirGlobal pMac, tSirMacAddr staAddr,
 	pnext = pStaDs->next;
 
 	/* Clear the STA node except for the next pointer */
-	qdf_mem_zero((uint8_t *)pStaDs, sizeof(tDphHashNode));
+	qdf_mem_set((uint8_t *)pStaDs, sizeof(tDphHashNode), 0);
 	pStaDs->next = pnext;
 
 	/* Initialize the assocId */
@@ -259,7 +259,7 @@ tpDphHashNode dph_init_sta_state(tpAniSirGlobal pMac, tSirMacAddr staAddr,
 
 	/* Initialize fragmentation threshold */
 	if (wlan_cfg_get_int(pMac, WNI_CFG_FRAGMENTATION_THRESHOLD, &val) !=
-	    QDF_STATUS_SUCCESS)
+	    eSIR_SUCCESS)
 		pe_warn("could not retrieve fragmentation threshold");
 	else
 		pStaDs->fragSize = (uint16_t) val;
@@ -267,8 +267,9 @@ tpDphHashNode dph_init_sta_state(tpAniSirGlobal pMac, tSirMacAddr staAddr,
 	pStaDs->added = 1;
 	pStaDs->encPolicy = ENC_POLICY_NULL;
 	pStaDs->is_disassoc_deauth_in_progress = 0;
+#ifdef WLAN_FEATURE_11W
 	pStaDs->last_assoc_received_time = 0;
-	pStaDs->last_disassoc_deauth_received_time = 0;
+#endif
 	pStaDs->sta_deletion_in_progress = false;
 	pStaDs->valid = 1;
 	return pStaDs;
@@ -361,13 +362,13 @@ tpDphHashNode dph_add_hash_entry(tpAniSirGlobal pMac, tSirMacAddr staAddr,
  *
  * @param staAddr MAC address of the station
  * @param staId Station ID assigned to the station
- * @return QDF_STATUS_SUCCESS if successful,
- *         QDF_STATUS_E_FAILURE otherwise
+ * @return eSIR_SUCCESS if successful,\n
+ *         eSIR_FAILURE otherwise
  */
 
-QDF_STATUS dph_delete_hash_entry(tpAniSirGlobal pMac, tSirMacAddr staAddr,
-				 uint16_t assocId,
-				 dphHashTableClass *pDphHashTable)
+tSirRetStatus dph_delete_hash_entry(tpAniSirGlobal pMac, tSirMacAddr staAddr,
+				    uint16_t assocId,
+				    dphHashTableClass *pDphHashTable)
 {
 	tpDphHashNode ptr, prev;
 	uint16_t index = hash_function(pMac, staAddr, pDphHashTable->size);
@@ -377,12 +378,12 @@ QDF_STATUS dph_delete_hash_entry(tpAniSirGlobal pMac, tSirMacAddr staAddr,
 
 	if (assocId >= pDphHashTable->size) {
 		pe_err("invalid STA id %d", assocId);
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 
 	if (pDphHashTable->pDphNodeArray[assocId].added == 0) {
 		pe_err("STA %d never added", assocId);
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 
 	for (prev = 0, ptr = pDphHashTable->pHashTable[index];
@@ -391,7 +392,7 @@ QDF_STATUS dph_delete_hash_entry(tpAniSirGlobal pMac, tSirMacAddr staAddr,
 			break;
 		if (prev == ptr) {
 			pe_err("Infinite Loop");
-			return QDF_STATUS_E_FAILURE;
+			return eSIR_FAILURE;
 		}
 	}
 
@@ -405,17 +406,18 @@ QDF_STATUS dph_delete_hash_entry(tpAniSirGlobal pMac, tSirMacAddr staAddr,
 			prev->next = ptr->next;
 		ptr->added = 0;
 		ptr->is_disassoc_deauth_in_progress = 0;
+#ifdef WLAN_FEATURE_11W
 		ptr->last_assoc_received_time = 0;
-		ptr->last_disassoc_deauth_received_time = 0;
+#endif
 		ptr->sta_deletion_in_progress = false;
 		ptr->next = 0;
 	} else {
 		pe_err("Entry not present STA addr");
 		pe_err(MAC_ADDRESS_STR, MAC_ADDR_ARRAY(staAddr));
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }
 
 

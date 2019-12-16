@@ -87,7 +87,7 @@ uint32_t cfg_need_reload(tpAniSirGlobal pMac, uint16_t cfgId)
 }
 
 /* --------------------------------------------------------------------- */
-QDF_STATUS cfg_init(tpAniSirGlobal pMac)
+tSirRetStatus cfg_init(tpAniSirGlobal pMac)
 {
 	uint16_t i = 0;
 	uint16_t combined_buff_size = 0;
@@ -134,13 +134,13 @@ QDF_STATUS cfg_init(tpAniSirGlobal pMac)
 
 	if (combined_buff_size > 4 * PAGE_SIZE) {
 		pe_err("Mem alloc request too big");
-		return QDF_STATUS_E_NOMEM;
+		return eSIR_MEM_ALLOC_FAILED;
 	}
 	/* at this point pMac->cfg.gCfgSBuf starts */
 	pMac->cfg.gCfgSBuf = qdf_mem_malloc(combined_buff_size);
 	if (NULL == pMac->cfg.gCfgSBuf) {
 		pe_err("Failed to allocate memory for cfg array");
-		return QDF_STATUS_E_NOMEM;
+		return eSIR_MEM_ALLOC_FAILED;
 	}
 	/* at offset max_s_count, pMac->cfg.gCfgIBuf starts */
 	pMac->cfg.gCfgIBuf = (uint32_t *)&pMac->cfg.gCfgSBuf[max_s_count];
@@ -149,7 +149,7 @@ QDF_STATUS cfg_init(tpAniSirGlobal pMac)
 	/* after max_i_count integers, pMac->cfg.gCfgIBufMax starts */
 	pMac->cfg.gCfgIBufMax = &pMac->cfg.gCfgIBufMin[max_i_count];
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -180,21 +180,21 @@ void cfg_de_init(tpAniSirGlobal pMac)
  *
  * @param cfgId:  16-bit CFG parameter ID
  *
- * @return QDF_STATUS_SUCCESS:  request completed successfully
- * @return QDF_STATUS_E_INVAL:  invalid CFG parameter ID
+ * @return eSIR_SUCCESS:  request completed successfully
+ * @return eSIR_CFG_INVALID_ID:  invalid CFG parameter ID
  */
-QDF_STATUS cfg_check_valid(tpAniSirGlobal pMac, uint16_t cfgId,
-			   uint32_t *index)
+tSirRetStatus cfg_check_valid(tpAniSirGlobal pMac, uint16_t cfgId,
+					uint32_t *index)
 {
 	uint32_t control;
 
 	if (cfgId >= CFG_PARAM_MAX_NUM) {
 		pe_warn("Invalid cfg id: %d", cfgId);
-		return QDF_STATUS_E_INVAL;
+		return eSIR_CFG_INVALID_ID;
 	}
 	if (!pMac->cfg.gCfgEntry) {
 		pe_warn("gCfgEntry is NULL");
-		return QDF_STATUS_E_INVAL;
+		return eSIR_CFG_INVALID_ID;
 	}
 
 	control = pMac->cfg.gCfgEntry[cfgId].control;
@@ -202,17 +202,17 @@ QDF_STATUS cfg_check_valid(tpAniSirGlobal pMac, uint16_t cfgId,
 	/* Check if parameter is valid */
 	if ((control & CFG_CTL_VALID) == 0) {
 		pe_warn("Not valid cfg id: %d", cfgId);
-		return QDF_STATUS_E_INVAL;
+		return eSIR_CFG_INVALID_ID;
 	}
 
 	*index = control & CFG_BUF_INDX_MASK;
 
 	if (*index >= pMac->cfg.gCfgMaxSBufSize) {
 		pe_warn("cfg index out of bounds: %d", *index);
-		return QDF_STATUS_E_INVAL;
+		return eSIR_CFG_INVALID_ID;
 	}
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 
 } /*** end cfg_check_valid() ***/
 
@@ -239,29 +239,28 @@ QDF_STATUS cfg_check_valid(tpAniSirGlobal pMac, uint16_t cfgId,
  * @param cfgId:     16-bit CFG parameter ID
  * @param value:     32-bit unsigned value
  *
- * @return QDF_STATUS_SUCCESS:  request completed successfully
- * @return QDF_STATUS_E_INVAL:  invalid CFG parameter ID
+ * @return eSIR_SUCCESS:  request completed successfully
+ * @return eSIR_CFG_INVALID_ID:  invalid CFG parameter ID
  */
 
-QDF_STATUS cfg_set_int(tpAniSirGlobal pMac, uint16_t cfgId, uint32_t value)
+tSirRetStatus cfg_set_int(tpAniSirGlobal pMac, uint16_t cfgId, uint32_t value)
 {
 	uint32_t index;
 	uint32_t control;
 	uint32_t mask;
-	QDF_STATUS status;
+	tSirRetStatus status;
 
 	status = cfg_check_valid(pMac, cfgId, &index);
 
-	if (QDF_STATUS_SUCCESS != status)
+	if (eSIR_SUCCESS != status)
 		return status;
 
 	if ((pMac->cfg.gCfgIBufMin[index] > value) ||
 			(pMac->cfg.gCfgIBufMax[index] < value)) {
-		pe_warn("Value: %d out of range: [%d,%d] cfg id: %d, %s",
-				value, pMac->cfg.gCfgIBufMin[index],
-				pMac->cfg.gCfgIBufMax[index], cfgId,
-				cfg_get_string(cfgId));
-		return QDF_STATUS_E_INVAL;
+		pe_warn("Value: %d out of range: [%d,%d] cfg id: %d", value,
+			       pMac->cfg.gCfgIBufMin[index],
+			       pMac->cfg.gCfgIBufMax[index], cfgId);
+		return eSIR_CFG_INVALID_ID;
 	} else {
 		/* Write integer value */
 		pMac->cfg.gCfgIBuf[index] = value;
@@ -269,10 +268,8 @@ QDF_STATUS cfg_set_int(tpAniSirGlobal pMac, uint16_t cfgId, uint32_t value)
 		control = pMac->cfg.gCfgEntry[cfgId].control;
 		/* Update hardware if necessary */
 		mask = control & CFG_CTL_NTF_MASK;
-#ifdef WLAN_DEBUG
 		if ((mask & CFG_CTL_NTF_HW) != 0)
 			pe_debug("CFG notify HW not supported!!!");
-#endif
 			/* notify other modules if necessary */
 			if ((mask & CFG_CTL_NTF_MASK) != 0)
 				notify(pMac, cfgId, mask);
@@ -296,25 +293,25 @@ QDF_STATUS cfg_set_int(tpAniSirGlobal pMac, uint16_t cfgId, uint32_t value)
  * @param cfgId:  16-bit CFG parameter ID
  * @param pVal:   address where parameter value will be written
  *
- * @return QDF_STATUS_SUCCESS:  request completed successfully
- * @return QDF_STATUS_E_INVAL:  invalid CFG parameter ID
+ * @return eSIR_SUCCESS:  request completed successfully
+ * @return eSIR_CFG_INVALID_ID:  invalid CFG parameter ID
  */
 
-QDF_STATUS wlan_cfg_get_int(tpAniSirGlobal pMac, uint16_t cfgId,
-			    uint32_t *pValue)
+tSirRetStatus wlan_cfg_get_int(tpAniSirGlobal pMac, uint16_t cfgId,
+				uint32_t *pValue)
 {
 	uint32_t index;
-	QDF_STATUS status;
+	tSirRetStatus status;
 
 	status = cfg_check_valid(pMac, cfgId, &index);
 
-	if (QDF_STATUS_SUCCESS != status)
+	if (eSIR_SUCCESS != status)
 		return status;
 
 	/* Get integer value */
 	*pValue = pMac->cfg.gCfgIBuf[index];
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 } /*** end wlan_cfg_get_int() ***/
 
 /* --------------------------------------------------------------------- */
@@ -340,14 +337,14 @@ QDF_STATUS wlan_cfg_get_int(tpAniSirGlobal pMac, uint16_t cfgId,
  * @param pStr:      address of string data
  * @param len:       string length
  *
- * @return QDF_STATUS_SUCCESS:  request completed successfully
- * @return QDF_STATUS_E_INVAL:  invalid CFG parameter ID
- * @return QDF_STATUS_E_INVAL:  invalid CFG parameter length
+ * @return eSIR_SUCCESS:  request completed successfully
+ * @return eSIR_CFG_INVALID_ID:  invalid CFG parameter ID
+ * @return eSIR_CFG_INVALID_LEN:  invalid CFG parameter length
  *
  */
 
-QDF_STATUS cfg_set_str(tpAniSirGlobal pMac, uint16_t cfgId, uint8_t *pStr,
-		       uint32_t length)
+tSirRetStatus cfg_set_str(tpAniSirGlobal pMac, uint16_t cfgId, uint8_t *pStr,
+			  uint32_t length)
 {
 	return cfg_set_str_notify(pMac, cfgId, pStr, length, true);
 }
@@ -374,24 +371,24 @@ QDF_STATUS cfg_set_str(tpAniSirGlobal pMac, uint16_t cfgId, uint8_t *pStr,
  * @param len:       string length
  * @param notifyMod. notify respective Module
  *
- * @return QDF_STATUS_SUCCESS:  request completed successfully
- * @return QDF_STATUS_E_INVAL:  invalid CFG parameter ID
- * @return QDF_STATUS_E_INVAL:  invalid CFG parameter length
+ * @return eSIR_SUCCESS:  request completed successfully
+ * @return eSIR_CFG_INVALID_ID:  invalid CFG parameter ID
+ * @return eSIR_CFG_INVALID_LEN:  invalid CFG parameter length
  *
  */
 
-QDF_STATUS cfg_set_str_notify(tpAniSirGlobal pMac, uint16_t cfgId,
-			      uint8_t *pStr, uint32_t length,
-			      int notifyMod)
+tSirRetStatus cfg_set_str_notify(tpAniSirGlobal pMac, uint16_t cfgId,
+					uint8_t *pStr, uint32_t length,
+					int notifyMod)
 {
 	uint8_t *pDst, *pDstEnd;
 	uint32_t index, paramLen, mask;
 	uint32_t control;
-	QDF_STATUS status;
+	tSirRetStatus status;
 
 	status = cfg_check_valid(pMac, cfgId, &index);
 
-	if (QDF_STATUS_SUCCESS != status)
+	if (eSIR_SUCCESS != status)
 		return status;
 
 	pDst = &pMac->cfg.gCfgSBuf[index];
@@ -400,7 +397,7 @@ QDF_STATUS cfg_set_str_notify(tpAniSirGlobal pMac, uint16_t cfgId,
 	if (length > paramLen) {
 		pe_warn("Invalid length: %d (>%d) cfg id: %d",
 			length, paramLen, cfgId);
-			return QDF_STATUS_E_INVAL;
+			return eSIR_CFG_INVALID_LEN;
 	} else {
 		*pDst++ = (uint8_t) length;
 		pDstEnd = pDst + length;
@@ -419,7 +416,7 @@ QDF_STATUS cfg_set_str_notify(tpAniSirGlobal pMac, uint16_t cfgId,
 			}
 		}
 	}
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 } /*** end cfg_set_str_notify() ***/
 
 /* --------------------------------------------------------------------- */
@@ -442,22 +439,22 @@ QDF_STATUS cfg_set_str_notify(tpAniSirGlobal pMac, uint16_t cfgId,
  * @param pLen:      address of max buffer length
  *                   actual length will be returned at this address
  *
- * @return QDF_STATUS_SUCCESS:  request completed successfully
- * @return QDF_STATUS_E_INVAL:  invalid CFG parameter ID
- * @return QDF_STATUS_E_INVAL:  invalid CFG parameter length
+ * @return eSIR_SUCCESS:  request completed successfully
+ * @return eSIR_CFG_INVALID_ID:  invalid CFG parameter ID
+ * @return eSIR_CFG_INVALID_LEN:  invalid CFG parameter length
  *
  */
 
-QDF_STATUS wlan_cfg_get_str(tpAniSirGlobal pMac, uint16_t cfgId,
-			    uint8_t *pBuf, uint32_t *pLength)
+tSirRetStatus wlan_cfg_get_str(tpAniSirGlobal pMac, uint16_t cfgId,
+				uint8_t *pBuf, uint32_t *pLength)
 {
 	uint8_t *pSrc, *pSrcEnd;
 	uint32_t index;
-	QDF_STATUS status;
+	tSirRetStatus status;
 
 	status = cfg_check_valid(pMac, cfgId, &index);
 
-	if (QDF_STATUS_SUCCESS != status)
+	if (eSIR_SUCCESS != status)
 		return status;
 
 	/* Get string */
@@ -466,14 +463,14 @@ QDF_STATUS wlan_cfg_get_str(tpAniSirGlobal pMac, uint16_t cfgId,
 	if (*pLength < *pSrc) {
 		pe_warn("Invalid length: %d (<%d) cfg id: %d",
 			*pLength, *pSrc, cfgId);
-			return QDF_STATUS_E_INVAL;
+			return eSIR_CFG_INVALID_LEN;
 	} else {
 		*pLength = *pSrc++;     /* save parameter length */
 		pSrcEnd = pSrc + *pLength;
 		while (pSrc < pSrcEnd)
 			*pBuf++ = *pSrc++;
 	}
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 } /*** end wlan_cfg_get_str() ***/
 
 /* --------------------------------------------------------------------- */
@@ -494,20 +491,20 @@ QDF_STATUS wlan_cfg_get_str(tpAniSirGlobal pMac, uint16_t cfgId,
  * @param cfgId:     16-bit CFG parameter ID
  * @param pLen:      maximum length will be returned at this address
  *
- * @return QDF_STATUS_SUCCESS:  request completed successfully
- * @return QDF_STATUS_E_INVAL:  invalid CFG parameter ID
+ * @return eSIR_SUCCESS:  request completed successfully
+ * @return eSIR_CFG_INVALID_ID:  invalid CFG parameter ID
  *
  */
 
-QDF_STATUS wlan_cfg_get_str_max_len(tpAniSirGlobal pMac, uint16_t cfgId,
-				    uint32_t *pLength)
+tSirRetStatus wlan_cfg_get_str_max_len(tpAniSirGlobal pMac, uint16_t cfgId,
+					uint32_t *pLength)
 {
 	uint32_t index;
-	QDF_STATUS status;
+	tSirRetStatus status;
 
 	status = cfg_check_valid(pMac, cfgId, &index);
 
-	if (QDF_STATUS_SUCCESS != status)
+	if (eSIR_SUCCESS != status)
 		return status;
 
 	*pLength = pMac->cfg.gCfgSBuf[index];
@@ -533,20 +530,20 @@ QDF_STATUS wlan_cfg_get_str_max_len(tpAniSirGlobal pMac, uint16_t cfgId,
  * @param cfgId:     16-bit CFG parameter ID
  * @param pLen:      current length will be returned at this address
  *
- * @return QDF_STATUS_SUCCESS:         request completed successfully
- * @return QDF_STATUS_E_INVAL:  invalid CFG parameter ID
+ * @return eSIR_SUCCESS:         request completed successfully
+ * @return eSIR_CFG_INVALID_ID:  invalid CFG parameter ID
  *
  */
 
-QDF_STATUS wlan_cfg_get_str_len(tpAniSirGlobal pMac, uint16_t cfgId,
-				uint32_t *pLength)
+tSirRetStatus wlan_cfg_get_str_len(tpAniSirGlobal pMac, uint16_t cfgId,
+		uint32_t *pLength)
 {
 	uint32_t index;
-	QDF_STATUS status;
+	tSirRetStatus status;
 
 	status = cfg_check_valid(pMac, cfgId, &index);
 
-	if (QDF_STATUS_SUCCESS != status)
+	if (eSIR_SUCCESS != status)
 		return status;
 
 	*pLength = pMac->cfg.gCfgSBuf[index + 1];
@@ -588,7 +585,7 @@ cfg_get_dot11d_transmit_power(tpAniSirGlobal pMac, uint16_t cfgId,
 	 * is enabled on AP else will contain EEPROM contents
 	 */
 	if (wlan_cfg_get_str(pMac, cfgId, pCountryInfo, &cfgLength) !=
-							QDF_STATUS_SUCCESS) {
+	    eSIR_SUCCESS) {
 		qdf_mem_free(pCountryInfo);
 		pCountryInfo = NULL;
 
@@ -680,8 +677,8 @@ int8_t cfg_get_regulatory_max_transmit_power(tpAniSirGlobal pMac,
  * @return None
  */
 
-QDF_STATUS cfg_get_capability_info(tpAniSirGlobal pMac, uint16_t *pCap,
-				   tpPESession sessionEntry)
+tSirRetStatus cfg_get_capability_info(tpAniSirGlobal pMac, uint16_t *pCap,
+			tpPESession sessionEntry)
 {
 	uint32_t val = 0;
 	tpSirMacCapabilityInfo pCapInfo;
@@ -706,19 +703,18 @@ QDF_STATUS cfg_get_capability_info(tpAniSirGlobal pMac, uint16_t *pCap,
 	} else {
 		/* PRIVACY bit */
 		if (wlan_cfg_get_int(pMac, WNI_CFG_PRIVACY_ENABLED, &val) !=
-							QDF_STATUS_SUCCESS) {
+		    eSIR_SUCCESS) {
 			pe_err("cfg get WNI_CFG_PRIVACY_ENABLED failed");
-			return QDF_STATUS_E_FAILURE;
+			return eSIR_FAILURE;
 		}
 	}
 	if (val)
 		pCapInfo->privacy = 1;
 
 	/* Short preamble bit */
-	if (wlan_cfg_get_int(pMac, WNI_CFG_SHORT_PREAMBLE, &val) !=
-							QDF_STATUS_SUCCESS) {
+	if (wlan_cfg_get_int(pMac, WNI_CFG_SHORT_PREAMBLE, &val) != eSIR_SUCCESS) {
 		pe_err("cfg get WNI_CFG_SHORT_PREAMBLE failed");
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 	if (val)
 		pCapInfo->shortPreamble = 1;
@@ -728,32 +724,25 @@ QDF_STATUS cfg_get_capability_info(tpAniSirGlobal pMac, uint16_t *pCap,
 
 	/* Channel agility bit */
 	pCapInfo->channelAgility = 0;
-	/* If STA/AP operating in 11B mode, don't set rest of the
-	 * capability info bits.
-	 */
+	/* If STA/AP operating in 11B mode, don't set rest of the capability info bits. */
 	if (sessionEntry->dot11mode == WNI_CFG_DOT11_MODE_11B)
-		return QDF_STATUS_SUCCESS;
+		return eSIR_SUCCESS;
 
 	/* Short slot time bit */
 	if (LIM_IS_AP_ROLE(sessionEntry)) {
 		pCapInfo->shortSlotTime = sessionEntry->shortSlotTimeSupported;
 	} else {
-		if (wlan_cfg_get_int(pMac, WNI_CFG_11G_SHORT_SLOT_TIME_ENABLED,
-				     &val) != QDF_STATUS_SUCCESS) {
+		if (wlan_cfg_get_int
+			    (pMac, WNI_CFG_11G_SHORT_SLOT_TIME_ENABLED, &val)
+		    != eSIR_SUCCESS) {
 			pe_err("cfg get WNI_CFG_11G_SHORT_SLOT_TIME failed");
-			return QDF_STATUS_E_FAILURE;
+			return eSIR_FAILURE;
 		}
-		/* When in STA mode, we need to check if short slot is
-		 * enabled as well as check if the current operating
-		 * mode is short slot time and then decide whether to
-		 * enable short slot or not. It is safe to check both
-		 * cfg values to determine short slot value in this
-		 * funcn since this funcn is always used after assoc
-		 * when these cfg values are already set based on
-		 * peer's capability. Even in case of IBSS, its value
-		 * is set to correct value either in delBSS as part of
-		 * deleting the previous IBSS or in start BSS as part
-		 * of coalescing
+		/* When in STA mode, we need to check if short slot is enabled as well as check if the current operating
+		 * mode is short slot time and then decide whether to enable short slot or not. It is safe to check both
+		 * cfg values to determine short slot value in this funcn since this funcn is always used after assoc when
+		 * these cfg values are already set based on peer's capability. Even in case of IBSS, its value is set to
+		 * correct value either in delBSS as part of deleting the previous IBSS or in start BSS as part of coalescing
 		 */
 		if (val) {
 			pCapInfo->shortSlotTime =
@@ -764,27 +753,25 @@ QDF_STATUS cfg_get_capability_info(tpAniSirGlobal pMac, uint16_t *pCap,
 	/* Spectrum Management bit */
 	if (!LIM_IS_IBSS_ROLE(sessionEntry) && sessionEntry->lim11hEnable) {
 		if (wlan_cfg_get_int(pMac, WNI_CFG_11H_ENABLED, &val) !=
-		    QDF_STATUS_SUCCESS) {
+		    eSIR_SUCCESS) {
 			pe_err("cfg get WNI_CFG_11H_ENABLED failed");
-			return QDF_STATUS_E_FAILURE;
+			return eSIR_FAILURE;
 		}
 		if (val)
 			pCapInfo->spectrumMgt = 1;
 	}
 	/* QoS bit */
-	if (wlan_cfg_get_int(pMac, WNI_CFG_QOS_ENABLED, &val) !=
-							QDF_STATUS_SUCCESS) {
+	if (wlan_cfg_get_int(pMac, WNI_CFG_QOS_ENABLED, &val) != eSIR_SUCCESS) {
 		pe_err("cfg get WNI_CFG_QOS_ENABLED failed");
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 	if (val)
 		pCapInfo->qos = 1;
 
 	/* APSD bit */
-	if (wlan_cfg_get_int(pMac, WNI_CFG_APSD_ENABLED, &val) !=
-							QDF_STATUS_SUCCESS) {
+	if (wlan_cfg_get_int(pMac, WNI_CFG_APSD_ENABLED, &val) != eSIR_SUCCESS) {
 		pe_err("cfg get WNI_CFG_APSD_ENABLED failed");
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 	if (val)
 		pCapInfo->apsd = 1;
@@ -796,16 +783,16 @@ QDF_STATUS cfg_get_capability_info(tpAniSirGlobal pMac, uint16_t *pCap,
 
 	/* Block ack bit */
 	if (wlan_cfg_get_int(pMac, WNI_CFG_BLOCK_ACK_ENABLED, &val) !=
-							QDF_STATUS_SUCCESS) {
+	    eSIR_SUCCESS) {
 		pe_err("cfg get WNI_CFG_BLOCK_ACK_ENABLED failed");
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 	pCapInfo->delayedBA =
 		(uint16_t) ((val >> WNI_CFG_BLOCK_ACK_ENABLED_DELAYED) & 1);
 	pCapInfo->immediateBA =
 		(uint16_t) ((val >> WNI_CFG_BLOCK_ACK_ENABLED_IMMEDIATE) & 1);
 
-	return QDF_STATUS_SUCCESS;
+	return eSIR_SUCCESS;
 }
 
 /* -------------------------------------------------------------------- */
@@ -884,7 +871,7 @@ void cfg_cleanup(tpAniSirGlobal pMac)
 static void notify(tpAniSirGlobal pMac, uint16_t cfgId, uint32_t ntfMask)
 {
 
-	struct scheduler_msg mmhMsg = {0};
+	tSirMsgQ mmhMsg;
 
 	mmhMsg.type = SIR_CFG_PARAM_UPDATE_IND;
 	mmhMsg.bodyval = (uint32_t) cfgId;
@@ -902,4 +889,82 @@ static void notify(tpAniSirGlobal pMac, uint16_t cfgId, uint32_t ntfMask)
 	/* notify ARQ */
 
 } /*** end notify() ***/
+
+/**
+ * cfg_get_vendor_ie_ptr_from_oui() - returns IE pointer in IE buffer given its
+ * OUI and OUI size
+ * @mac_ctx:    mac context.
+ * @oui:        OUI string.
+ * @oui_size:   length of OUI string
+ *              One can provide multiple line descriptions
+ *              for arguments.
+ * @ie:         ie buffer
+ * @ie_len:     length of ie buffer
+ *
+ * This function parses the IE buffer and finds the given OUI and returns its
+ * pointer
+ *
+ * Return: pointer of given OUI IE else NULL
+ */
+uint8_t *cfg_get_vendor_ie_ptr_from_oui(tpAniSirGlobal mac_ctx,
+					uint8_t *oui,
+					uint8_t oui_size,
+					uint8_t *ie,
+					uint16_t ie_len)
+{
+	int32_t left = ie_len;
+	uint8_t *ptr = ie;
+	uint8_t elem_id, elem_len;
+
+	while (left >= 2) {
+		elem_id  = ptr[0];
+		elem_len = ptr[1];
+		left -= 2;
+		if (elem_len > left) {
+			pe_err("Invalid IEs eid: %d elem_len: %d left: %d",
+				elem_id, elem_len, left);
+			return NULL;
+		}
+		if (SIR_MAC_EID_VENDOR == elem_id) {
+			if ((elem_len >= oui_size) &&
+				(memcmp(&ptr[2], oui, oui_size) == 0))
+				return ptr;
+		}
+
+		left -= elem_len;
+		ptr += (elem_len + 2);
+	}
+	return NULL;
+}
+
+uint8_t *wlan_cfg_get_ie_ptr(uint8_t *p_ie, int length, uint8_t eid,
+			     enum size_of_len_field size_of_len_field)
+{
+	int left = length;
+	uint8_t *ptr = p_ie;
+	uint8_t elem_id;
+	uint16_t elem_len;
+
+	while (left >= (size_of_len_field + 1)) {
+		elem_id = ptr[0];
+		if (size_of_len_field == TWO_BYTE)
+			elem_len = ((uint16_t)ptr[1]) | (ptr[2] << 8);
+		else
+			elem_len = ptr[1];
+
+		left -= (size_of_len_field + 1);
+		if (elem_len > left) {
+			pe_err("Invalid IEs eid: %d elem_len: %d left: %d",
+			       eid, elem_len, left);
+			return NULL;
+		}
+
+		if (elem_id == eid)
+			return ptr;
+
+		left -= elem_len;
+		ptr += (elem_len + (size_of_len_field + 1));
+	}
+	return NULL;
+}
 

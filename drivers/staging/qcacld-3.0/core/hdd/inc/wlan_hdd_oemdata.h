@@ -25,8 +25,6 @@
 #ifndef __WLAN_HDD_OEM_DATA_H__
 #define __WLAN_HDD_OEM_DATA_H__
 
-struct hdd_context;
-
 #ifdef FEATURE_OEM_DATA_SUPPORT
 
 #ifndef OEM_DATA_REQ_SIZE
@@ -158,7 +156,7 @@ enum oem_capability_mask {
 };
 
 /**
- * struct oem_get_capability_rsp - capabilities set by userspace and target.
+ * struct oem_get_capability_rsp - capabilites set by userspace and target.
  * @target_cap: target capabilities
  * @client_capabilities: capabilities set by userspace via set request
  */
@@ -171,8 +169,8 @@ void hdd_send_peer_status_ind_to_oem_app(struct qdf_mac_addr *peerMac,
 					 uint8_t peerStatus,
 					 uint8_t peerTimingMeasCap,
 					 uint8_t sessionId,
-					 struct sSirSmeChanInfo *chan_info,
-					 enum QDF_OPMODE dev_mode);
+					 tSirSmeChanInfo *chan_info,
+					 enum tQDF_ADAPTER_MODE dev_mode);
 
 int iw_get_oem_data_cap(struct net_device *dev, struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra);
@@ -184,9 +182,9 @@ int iw_get_oem_data_cap(struct net_device *dev, struct iw_request_info *info,
  * This API is used to register the handler to receive netlink message
  * from an OEM application process
  *
- * Return: 0 on success and errno on failure
+ * Return: 0
  */
-int oem_activate_service(struct hdd_context *hdd_ctx);
+int oem_activate_service(struct hdd_context_s *hdd_ctx);
 
 /**
  * oem_deactivate_service() - API to unregister the oem command handler
@@ -194,16 +192,16 @@ int oem_activate_service(struct hdd_context *hdd_ctx);
  * This API is used to deregister the handler to receive netlink message
  * from an OEM application process
  *
- * Return: 0 on success and errno on failure
+ * Return: 0
  */
 int oem_deactivate_service(void);
 
 void hdd_send_oem_data_rsp_msg(struct oem_data_rsp *oem_rsp);
-void hdd_update_channel_bw_info(struct hdd_context *hdd_ctx,
+void hdd_update_channel_bw_info(hdd_context_t *hdd_ctx,
 				uint16_t chan,
 				void *hdd_chan_info);
 #else
-static inline int oem_activate_service(struct hdd_context *hdd_ctx)
+static inline int oem_activate_service(struct hdd_context_s *hdd_ctx)
 {
 	return 0;
 }
@@ -213,9 +211,7 @@ static inline int oem_deactivate_service(void)
 	return 0;
 }
 
-static inline void hdd_send_oem_data_rsp_msg(void *oem_rsp) {}
-
-static inline void hdd_update_channel_bw_info(struct hdd_context *hdd_ctx,
+static inline void hdd_update_channel_bw_info(hdd_context_t *hdd_ctx,
 					      uint16_t chan,
 					      void *hdd_chan_info) {}
 #endif /* FEATURE_OEM_DATA_SUPPORT */

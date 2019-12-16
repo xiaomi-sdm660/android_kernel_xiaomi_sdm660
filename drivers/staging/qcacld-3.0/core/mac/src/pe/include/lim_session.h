@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -83,38 +83,8 @@ typedef struct join_params {
 	tSirResultCodes result_code;
 } join_params;
 
-#ifdef WLAN_FEATURE_11AX_BSS_COLOR
-#define MAX_BSS_COLOR_VALUE 63
-#define TIME_BEACON_NOT_UPDATED 30000
-#define BSS_COLOR_SWITCH_COUNTDOWN 5
-#define OBSS_COLOR_COLLISION_DETECTION_STA_PERIOD_MS 10000
-#define OBSS_COLOR_COLLISION_DETECTION_AP_PERIOD_MS 5000
-#define OBSS_COLOR_COLLISION_SCAN_PERIOD_MS 200
-#define OBSS_COLOR_COLLISION_FREE_SLOT_EXPIRY_MS 50000
-struct bss_color_info {
-	qdf_time_t timestamp;
-	uint64_t seen_count;
-};
-#endif
-
-/**
- * struct obss_detection_cfg - current obss detection cfg set to firmware
- * @obss_11b_ap_detect_mode: detection mode for 11b access point.
- * @obss_11b_sta_detect_mode: detection mode for 11b station.
- * @obss_11g_ap_detect_mode: detection mode for 11g access point.
- * @obss_11a_detect_mode: detection mode for 11a access point.
- * @obss_ht_legacy_detect_mode: detection mode for ht ap with legacy mode.
- * @obss_ht_mixed_detect_mode: detection mode for ht ap with mixed mode.
- * @obss_ht_20mhz_detect_mode: detection mode for ht ap with 20mhz mode.
- */
-struct obss_detection_cfg {
-	uint8_t obss_11b_ap_detect_mode;
-	uint8_t obss_11b_sta_detect_mode;
-	uint8_t obss_11g_ap_detect_mode;
-	uint8_t obss_11a_detect_mode;
-	uint8_t obss_ht_legacy_detect_mode;
-	uint8_t obss_ht_mixed_detect_mode;
-	uint8_t obss_ht_20mhz_detect_mode;
+struct session_params {
+	uint16_t session_id;
 };
 
 typedef struct sPESession       /* Added to Support BT-AMP */
@@ -150,8 +120,6 @@ typedef struct sPESession       /* Added to Support BT-AMP */
 	uint16_t channelChangeReasonCode;
 	uint8_t dot11mode;
 	uint8_t htCapability;
-	enum ani_akm_type connected_akm;
-
 	/* Supported Channel Width Set: 0-20MHz 1 - 40MHz */
 	uint8_t htSupportedChannelWidthSet;
 	/* Recommended Tx Width Set
@@ -161,7 +129,7 @@ typedef struct sPESession       /* Added to Support BT-AMP */
 	uint8_t htRecommendedTxWidthSet;
 	/* Identifies the 40 MHz extension channel */
 	ePhyChanBondState htSecondaryChannelOffset;
-	enum band_info limRFBand;
+	tSirRFBand limRFBand;
 	uint8_t limIbssActive;  /* TO SUPPORT CONCURRENCY */
 
 	/* These global varibales moved to session Table to support BT-AMP : Oct 9th review */
@@ -303,7 +271,7 @@ typedef struct sPESession       /* Added to Support BT-AMP */
 	uint32_t lim11hEnable;
 
 	int8_t maxTxPower;   /* MIN (Regulatory and local power constraint) */
-	enum QDF_OPMODE pePersona;
+	enum tQDF_ADAPTER_MODE pePersona;
 	int8_t txMgmtPower;
 	bool is11Rconnection;
 
@@ -380,7 +348,7 @@ typedef struct sPESession       /* Added to Support BT-AMP */
 	uint32_t peerAIDBitmap[2];
 	bool tdls_prohibited;
 	bool tdls_chan_swit_prohibited;
-	bool tdls_send_set_state_disable;
+	bool is_tdls_csa;
 #endif
 	bool fWaitForProbeRsp;
 	bool fIgnoreCapsChange;
@@ -474,7 +442,7 @@ typedef struct sPESession       /* Added to Support BT-AMP */
 	tftPEContext ftPEContext;
 	bool isNonRoamReassoc;
 	uint8_t  is_key_installed;
-	/* timer for resetting protection fileds at regular intervals */
+	/* timer for reseting protection fileds at regular intervals */
 	qdf_mc_timer_t protection_fields_reset_timer;
 	/* timer to decrement CSA/ECSA count */
 	qdf_mc_timer_t ap_ecsa_timer;
@@ -517,22 +485,6 @@ typedef struct sPESession       /* Added to Support BT-AMP */
 	bool process_ho_fail;
 	/* Number of STAs that do not support ECSA capability */
 	uint8_t lim_non_ecsa_cap_num;
-#ifdef WLAN_FEATURE_11AX
-	bool he_capable;
-	tDot11fIEhe_cap he_config;
-	tDot11fIEhe_op he_op;
-	uint32_t he_sta_obsspd;
-#ifdef WLAN_FEATURE_11AX_BSS_COLOR
-	tDot11fIEbss_color_change he_bss_color_change;
-	struct bss_color_info bss_color_info[MAX_BSS_COLOR_VALUE];
-	uint8_t bss_color_changing;
-#endif
-#endif
-	bool enable_bcast_probe_rsp;
-	uint8_t ht_client_cnt;
-	bool force_24ghz_in_ht20;
-	bool ch_switch_in_progress;
-	bool he_with_wep_tkip;
 #ifdef WLAN_FEATURE_FILS_SK
 	struct pe_fils_session *fils_info;
 	struct qdf_mac_addr dst_mac;
@@ -540,30 +492,21 @@ typedef struct sPESession       /* Added to Support BT-AMP */
 	uint16_t hlp_data_len;
 	uint8_t *hlp_data;
 #endif
+	uint8_t deauthmsgcnt;
+	uint8_t disassocmsgcnt;
+	bool enable_bcast_probe_rsp;
+	uint8_t ht_client_cnt;
+	bool force_24ghz_in_ht20;
+	bool ch_switch_in_progress;
 	/* previous auth frame's sequence number */
 	uint16_t prev_auth_seq_num;
-	struct obss_detection_cfg obss_offload_cfg;
-	struct obss_detection_cfg current_obss_detection;
-	bool is_session_obss_offload_enabled;
-	bool is_obss_reset_timer_initialized;
-	bool sae_pmk_cached;
 	bool fw_roaming_started;
 	bool recvd_deauth_while_roaming;
 	bool recvd_disassoc_while_roaming;
 	bool deauth_disassoc_rc;
-	enum wmi_obss_color_collision_evt_type obss_color_collision_dec_evt;
-	bool is_session_obss_color_collision_det_enabled;
 	int8_t def_max_tx_pwr;
-#ifdef WLAN_SUPPORT_TWT
-	uint8_t peer_twt_requestor;
-	uint8_t peer_twt_responder;
-#endif
-	bool enable_session_twt_support;
+	bool sae_pmk_cached;
 } tPESession, *tpPESession;
-
-struct session_params {
-	uint16_t session_id;
-};
 
 /*-------------------------------------------------------------------------
    Function declarations and documenation
@@ -696,46 +639,4 @@ uint8_t pe_get_active_session_count(tpAniSirGlobal mac_ctx);
  */
 void pe_delete_fils_info(tpPESession session);
 #endif
-
-/**
- * lim_set_bcn_probe_filter - set the beacon/probe filter in mac context
- *
- * @mac_ctx: pointer to global mac context
- * @session: pointer to the PE session
- * @ibss_ssid: SSID of the session for IBSS sessions
- * @sap_channel: Operating Channel of the session for SAP sessions
- *
- * Sets the beacon/probe filter in the global mac context to filter
- * and drop beacon/probe frames before posting it to PE queue
- *
- * Return: None
- */
-void lim_set_bcn_probe_filter(tpAniSirGlobal mac_ctx,
-				tpPESession session,
-				tSirMacSSid *ibss_ssid,
-				uint8_t sap_channel);
-
-/**
- * lim_reset_bcn_probe_filter - clear the beacon/probe filter in mac context
- *
- * @mac_ctx: pointer to the global mac context
- * @session: pointer to the PE session whose filter is to be cleared
- *
- * Return: None
- */
-void lim_reset_bcn_probe_filter(tpAniSirGlobal mac_ctx, tpPESession session);
-
-/**
- * lim_update_bcn_probe_filter - Update the beacon/probe filter in mac context
- *
- * @mac_ctx: pointer to the global mac context
- * @session: pointer to the PE session whose filter is to be cleared
- *
- * This API is applicable only for SAP sessions to update the SAP channel
- * in the filter during a channel switch
- *
- * Return: None
- */
-void lim_update_bcn_probe_filter(tpAniSirGlobal mac_ctx, tpPESession session);
-
 #endif /* #if !defined( __LIM_SESSION_H ) */

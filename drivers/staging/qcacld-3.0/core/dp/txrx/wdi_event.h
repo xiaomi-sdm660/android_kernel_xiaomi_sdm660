@@ -23,7 +23,6 @@
 #include "qdf_nbuf.h"
 #define WDI_EVENT_BASE 0x100    /* Event starting number */
 
-#define WDI_NO_VAL (-1)
 enum WDI_EVENT {
 	WDI_EVENT_TX_STATUS = WDI_EVENT_BASE,
 	WDI_EVENT_RX_DESC,
@@ -32,9 +31,6 @@ enum WDI_EVENT {
 	WDI_EVENT_RATE_UPDATE,
 	WDI_EVENT_SW_EVENT,
 	WDI_EVENT_RX_PEER_INVALID,
-	/* From WIN definations */
-	WDI_EVENT_LITE_RX,
-	WDI_EVENT_LITE_T2H,
 	/* End of new event items */
 
 	WDI_EVENT_LAST
@@ -57,8 +53,7 @@ enum WDI_EVENT_NOTIFY {
 };
 
 /* Opaque event callback */
-typedef void (*wdi_event_cb)(void *pdev, enum WDI_EVENT event, void *data,
-					u_int16_t peer_id, uint32_t status);
+typedef void (*wdi_event_cb)(void *pdev, enum WDI_EVENT event, void *data);
 
 /* Opaque event notify */
 typedef void (*wdi_event_notify)(enum WDI_EVENT_NOTIFY notify,

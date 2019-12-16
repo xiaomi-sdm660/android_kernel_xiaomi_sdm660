@@ -65,7 +65,7 @@ cfg_send_host_msg(tpAniSirGlobal pMac, uint16_t msgType, uint32_t msgLen,
 		  uint32_t *pData)
 {
 	uint32_t *pMsg, *pEnd;
-	struct scheduler_msg mmhMsg = {0};
+	tSirMsgQ mmhMsg;
 
 	if ((paramNum > 0) && (NULL == pParamList)) {
 		pe_err("pParamList NULL when paramNum greater than 0!");

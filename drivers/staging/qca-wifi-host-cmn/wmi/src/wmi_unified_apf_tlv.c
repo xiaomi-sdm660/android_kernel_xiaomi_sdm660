@@ -18,12 +18,10 @@
 
 #include "wmi_unified_apf_tlv.h"
 
-QDF_STATUS wmi_send_set_active_apf_mode_cmd_tlv(wmi_unified_t wmi_handle,
+QDF_STATUS send_set_active_apf_mode_cmd_tlv(wmi_unified_t wmi_handle,
 					    uint8_t vdev_id,
-					    enum wmi_host_active_apf_mode
-								     ucast_mode,
-					    enum wmi_host_active_apf_mode
-							       mcast_bcast_mode)
+					    FW_ACTIVE_BPF_MODE ucast_mode,
+					    FW_ACTIVE_BPF_MODE mcast_bcast_mode)
 {
 	const WMITLV_TAG_ID tag_id =
 		WMITLV_TAG_STRUC_wmi_bpf_set_vdev_active_mode_cmd_fixed_param;
@@ -65,9 +63,8 @@ QDF_STATUS wmi_send_set_active_apf_mode_cmd_tlv(wmi_unified_t wmi_handle,
 	return QDF_STATUS_SUCCESS;
 }
 
-QDF_STATUS wmi_send_apf_enable_cmd_tlv(wmi_unified_t wmi_handle,
-				       uint32_t vdev_id,
-				       bool enable)
+QDF_STATUS send_apf_enable_cmd_tlv(wmi_unified_t wmi_handle,
+				   uint32_t vdev_id, bool enable)
 {
 	wmi_bpf_set_vdev_enable_cmd_fixed_param *cmd;
 	wmi_buf_t buf;
@@ -98,9 +95,9 @@ QDF_STATUS wmi_send_apf_enable_cmd_tlv(wmi_unified_t wmi_handle,
 }
 
 QDF_STATUS
-wmi_send_apf_write_work_memory_cmd_tlv(wmi_unified_t wmi_handle,
-				       struct wmi_apf_write_memory_params
-							      *apf_write_params)
+send_apf_write_work_memory_cmd_tlv(wmi_unified_t wmi_handle,
+				   struct wmi_apf_write_memory_params
+							*apf_write_params)
 {
 	wmi_bpf_set_vdev_work_memory_cmd_fixed_param *cmd;
 	uint32_t wmi_buf_len;
@@ -155,9 +152,9 @@ wmi_send_apf_write_work_memory_cmd_tlv(wmi_unified_t wmi_handle,
 }
 
 QDF_STATUS
-wmi_send_apf_read_work_memory_cmd_tlv(wmi_unified_t wmi_handle,
-				      struct wmi_apf_read_memory_params
-							       *apf_read_params)
+send_apf_read_work_memory_cmd_tlv(wmi_unified_t wmi_handle,
+				  struct wmi_apf_read_memory_params
+							*apf_read_params)
 {
 	wmi_bpf_get_vdev_work_memory_cmd_fixed_param *cmd;
 	wmi_buf_t buf;
@@ -190,10 +187,8 @@ wmi_send_apf_read_work_memory_cmd_tlv(wmi_unified_t wmi_handle,
 }
 
 QDF_STATUS
-wmi_extract_apf_read_memory_resp_event_tlv(wmi_unified_t wmi_handle,
-				void *evt_buf,
-				struct wmi_apf_read_memory_resp_event_params
-									  *resp)
+extract_apf_read_memory_resp_event_tlv(wmi_unified_t wmi_handle, void *evt_buf,
+			struct wmi_apf_read_memory_resp_event_params *resp)
 {
 	WMI_BPF_GET_VDEV_WORK_MEMORY_RESP_EVENTID_param_tlvs *param_buf;
 	wmi_bpf_get_vdev_work_memory_resp_evt_fixed_param *data_event;

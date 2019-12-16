@@ -30,7 +30,7 @@
 #include <cdp_txrx_cmn.h>           /* ol_txrx_pdev_handle */
 #include <ol_txrx_types.h>          /* OL_TXRX_MAC_ADDR_LEN */
 #include <cds_ieee80211_common.h>   /* ieee80211_frame */
-#include <cdp_txrx_handle.h>
+
 #ifdef SUPPORT_HOST_STATISTICS
 /** * @brief Update tx statistics
  * @details
@@ -40,8 +40,7 @@
  * @param vdev_id - ID of the virtual device that tx frame
  * @param had_error - whether there is error when tx
  */
-void ol_tx_statistics(struct cdp_cfg *cfg_pdev,
-		     uint16_t vdev_id, int had_error);
+void ol_tx_statistics(ol_pdev_handle pdev, uint16_t vdev_id, int had_error);
 #else
 #define ol_tx_statistics(pdev, vdev_id, had_error)
 #endif
@@ -52,7 +51,7 @@ void ol_tx_statistics(struct cdp_cfg *cfg_pdev,
  * @param wh - received frame
  * @param err_type - what kind of error occurred
  */
-void ol_rx_err_inv_peer_statistics(struct cdp_cfg *cfg_pdev,
+void ol_rx_err_inv_peer_statistics(ol_pdev_handle pdev,
 				   struct ieee80211_frame *wh,
 				   enum ol_rx_err_type err_type);
 
@@ -65,7 +64,7 @@ void ol_rx_err_inv_peer_statistics(struct cdp_cfg *cfg_pdev,
  * @param sec_type - The cipher type the peer is using
  * @param is_mcast - whether this is one multi cast frame
  */
-void ol_rx_err_statistics(struct cdp_cfg *cfg_pdev,
+void ol_rx_err_statistics(ol_pdev_handle pdev,
 			  uint8_t vdev_id,
 			  enum ol_rx_err_type err_type,
 			  enum ol_sec_type sec_type, int is_mcast);
@@ -91,7 +90,7 @@ void ol_rx_err_statistics(struct cdp_cfg *cfg_pdev,
  * @key_id - Key index octet received in IV of the frame
  */
 void
-ol_rx_err(struct cdp_cfg *cfg_pdev,
+ol_rx_err(ol_pdev_handle pdev,
 	  uint8_t vdev_id,
 	  uint8_t *peer_mac_addr,
 	  int tid,
@@ -134,7 +133,7 @@ enum ol_rx_notify_type {
  * @param rx_frame - the rx frame containing the special data
  */
 void
-ol_rx_notify(struct cdp_cfg *cfg_pdev,
+ol_rx_notify(ol_pdev_handle pdev,
 	     uint8_t vdev_id,
 	     uint8_t *peer_mac_addr,
 	     int tid,

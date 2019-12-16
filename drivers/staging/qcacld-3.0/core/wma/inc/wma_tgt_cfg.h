@@ -37,12 +37,9 @@
  * @en_tdls_uapsd_buf_sta: enable sta tdls uapsd buf
  * @en_tdls_uapsd_sleep_sta: enable sta tdls uapsd sleep
  * @en_roam_offload: enable roam offload
- * @en_11ax: enable 11ax
+ * @get_peer_info_enabled: PEER info feature
+ * @is_fils_roaming_supported: Fast Initial Link Setup feature
  * @is_fw_mawc_capable: Motion Aided Wireless Connectivity feature
- * @twt_requestor: TWT requestor capability
- * @twt_responder: TWT responder capability
- * @bcn_reception_stats: Beacon Reception stats capability
- * @ft_akm_service_bitmap: bitmap of FT akm supported by firmware
  */
 struct wma_tgt_services {
 	uint32_t sta_power_save;
@@ -66,15 +63,10 @@ struct wma_tgt_services {
 #ifdef WLAN_FEATURE_ROAM_OFFLOAD
 	bool en_roam_offload;
 #endif /* WLAN_FEATURE_ROAM_OFFLOAD */
-	bool en_11ax;
 	bool get_peer_info_enabled;
 	bool is_fils_roaming_supported;
 	bool is_fw_mawc_capable;
 	bool is_11k_offload_supported;
-	bool twt_requestor;
-	bool twt_responder;
-	bool bcn_reception_stats;
-	uint32_t ft_akm_service_bitmap;
 };
 
 /**
@@ -177,21 +169,14 @@ struct board_info {
  * @egap_support: enhanced green ap support
  * @nan_datapath_enabled: nan data path support
  * @bool is_ra_rate_limit_enabled: RA filter support
- * @he_cap: HE capability received from FW
- * @dfs_cac_offload: dfs and cac timer offloaded
  * @tx_bfee_8ss_enabled: Tx Beamformee support for 8x8
  * @rcpi_enabled: for checking rcpi support
- * @obss_detection_offloaded: obss detection offloaded to firmware
- * @obss_color_collision_offloaded: obss color collision offloaded to firmware
  * @sar_version: Version of SAR supported by firmware
- * @dynamic_nss_chains_support: per vdev dynamic nss, chains update
- * @ft_akm_service_bitmap: bitmap of FT akm supported by firmware
  */
 struct wma_tgt_cfg {
 	uint32_t target_fw_version;
 	uint32_t target_fw_vers_ext;
 	uint8_t band_cap;
-	struct wlan_mlme_chain_cfg chain_cfg;
 	uint32_t reg_domain;
 	uint32_t eeprom_rd_ext;
 	struct qdf_mac_addr hw_macaddr;
@@ -203,6 +188,9 @@ struct wma_tgt_cfg {
 	uint8_t lpss_support;
 #endif
 	uint8_t ap_arpns_support;
+#ifdef FEATURE_GREEN_AP
+	bool egap_support;
+#endif
 	uint32_t fine_time_measurement_cap;
 	bool apf_enabled;
 #ifdef FEATURE_WLAN_RA_FILTERING
@@ -213,20 +201,10 @@ struct wma_tgt_cfg {
 #endif
 	bool sub_20_support;
 	uint16_t wmi_max_len;
-#ifdef WLAN_FEATURE_11AX
-	tDot11fIEhe_cap he_cap;
-	uint8_t ppet_2g[HE_MAX_PPET_SIZE];
-	uint8_t ppet_5g[HE_MAX_PPET_SIZE];
-#endif
-	bool dfs_cac_offload;
 	bool tx_bfee_8ss_enabled;
 	bool rcpi_enabled;
-	bool obss_detection_offloaded;
-	bool obss_color_collision_offloaded;
 	uint32_t hw_bd_id;
 	struct board_info hw_bd_info;
 	enum sar_version sar_version;
-	bool dynamic_nss_chains_support;
-	uint32_t ft_akm_service_bitmap;
 };
 #endif /* WMA_TGT_CFG_H */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -27,8 +27,8 @@
 #include <qdf_util.h>
 #include <qdf_types.h>
 #include <qdf_lock.h>
-#include <i_qdf_trace.h>
 #include <i_qdf_nbuf.h>
+#include <i_qdf_trace.h>
 #include <qdf_net_types.h>
 
 #define IPA_NBUF_OWNER_ID			0xaa55aa55
@@ -51,7 +51,6 @@
 #define QDF_NBUF_TRAC_EAPOL_ETH_TYPE		0x888E
 #define QDF_NBUF_TRAC_WAPI_ETH_TYPE		0x88b4
 #define QDF_NBUF_TRAC_ARP_ETH_TYPE		0x0806
-#define QDF_NBUF_TRAC_TDLS_ETH_TYPE		0x890D
 #define QDF_NBUF_TRAC_IPV4_ETH_TYPE     0x0800
 #define QDF_NBUF_TRAC_IPV6_ETH_TYPE     0x86dd
 #define QDF_NBUF_DEST_MAC_OFFSET		0
@@ -63,14 +62,10 @@
 #define QDF_NBUF_TRAC_IPV4_ADDR_BCAST_MASK    0xF0000000
 #define QDF_NBUF_TRAC_IPV6_DEST_ADDR_OFFSET   38
 #define QDF_NBUF_TRAC_IPV6_DEST_ADDR          0xFF00
-#define QDF_NBUF_TRAC_IPV6_OFFSET		14
-#define QDF_NBUF_TRAC_IPV6_HEADER_SIZE   40
 #define QDF_NBUF_TRAC_ICMP_TYPE         1
 #define QDF_NBUF_TRAC_TCP_TYPE          6
 #define QDF_NBUF_TRAC_UDP_TYPE          17
 #define QDF_NBUF_TRAC_ICMPV6_TYPE       0x3a
-#define QDF_NBUF_TRAC_DHCP6_SRV_PORT		547
-#define QDF_NBUF_TRAC_DHCP6_CLI_PORT		546
 
 /* EAPOL Related MASK */
 #define EAPOL_PACKET_TYPE_OFFSET		15
@@ -119,7 +114,6 @@
 #define QDF_NBUF_TX_PKT_INVALID              0
 #define QDF_NBUF_TX_PKT_DATA_TRACK           1
 #define QDF_NBUF_TX_PKT_MGMT_TRACK           2
-#define QDF_NBUF_RX_PKT_DATA_TRACK           3
 
 /* Different Packet states */
 #define QDF_NBUF_TX_PKT_HDD                  1
@@ -132,31 +126,18 @@
 #define QDF_NBUF_TX_PKT_CE                   8
 #define QDF_NBUF_TX_PKT_FREE                 9
 #define QDF_NBUF_TX_PKT_STATE_MAX            10
-#define QDF_NBUF_TX_PKT_LI_DP                11
-
-/* qdf_nbuf allocate and map max retry threshold when failed */
-#define QDF_NBUF_ALLOC_MAP_RETRY_THRESHOLD      20
 
 /* Enable flag to print TSO specific prints in datapath */
 #ifdef TSO_DEBUG_LOG_ENABLE
-#define TSO_DEBUG(fmt, args ...) \
-	QDF_TRACE(QDF_MODULE_ID_DP, QDF_TRACE_LEVEL_NONE, \
-		fmt, ## args)
+#define TSO_DEBUG(args ...) printk(args)
 #else
-#define TSO_DEBUG(fmt, args ...)
-#endif
-
-#define IEEE80211_AMPDU_FLAG    0x01
-
-#ifdef GET_MSDU_AGGREGATION
-#define IEEE80211_AMSDU_FLAG    0x02
+#define TSO_DEBUG(args ...)
 #endif
 
 /**
  * struct mon_rx_status - This will have monitor mode rx_status extracted from
  * htt_rx_desc used later to update radiotap information.
  * @tsft: Time Synchronization Function timer
- * @preamble_type: Preamble type in radio header
  * @chan_freq: Capture channel frequency
  * @chan_num: Capture channel number
  * @chan_flags: Bitmap of Channel flags, IEEE80211_CHAN_TURBO,
@@ -164,75 +145,32 @@
  * @ht_flags: HT flags, only present for HT frames.
  * @vht_flags: VHT flags, only present for VHT frames.
  * @vht_flag_values1-5: Contains corresponding data for flags field
- * @he_flags: HE (11ax) flags, only present in HE frames
- * @he_mu_flags: HE-MU (11ax) flags, only present in HE frames
- * @he_mu_other_flags: HE-MU-OTHER (11ax) flags, only present in HE frames
- * @he_sig_A1_known: HE (11ax) sig A1 known field
- * @he_sig_A2_known: HE (11ax) sig A2 known field
- * @he_sig_b_common: HE (11ax) sig B common field
- * @he_sig_b_common_known: HE (11ax) sig B common known field
  * @rate: Rate in terms 500Kbps
  * @rtap_flags: Bit map of available fields in the radiotap
  * @ant_signal_db: Rx packet RSSI
  * @nr_ant: Number of Antennas used for streaming
  * @mcs: MCS index of Rx frame
- * @nss: Number of spatial streams
  * @bw: bandwidth of rx frame
  * @is_stbc: Is STBC enabled
  * @sgi: Rx frame short guard interval
- * @he_re: HE range extension
  * @ldpc: ldpc enabled
  * @beamformed: Is frame beamformed.
- * @he_sig_b_common_RU[4]: HE (11ax) common RU assignment index
- * @rssi_comb: Combined RSSI
- * @duration: 802.11 Duration
- * @first_data_seq_ctrl: Sequence ctrl field of first data frame
- * @ast_index: AST table hash index
- * @tid: QoS traffic tid number
- * @rs_fcs_err: FCS error flag
- * @rs_flags: Flags to indicate AMPDU or AMSDU aggregation
- * @cck_flag: Flag to indicate CCK modulation
- * @ofdm_flag: Flag to indicate OFDM modulation
- * @he_per_user_1: HE per user info1
- * @he_per_user_2: HE per user info2
- * @he_per_user_position: HE per user position info
- * @he_per_user_known: HE per user known info
- * @he_flags1: HE flags
- * @he_flags2: HE flags
- * @he_RU[4]: HE RU assignment index
- * @he_data1: HE property of received frame
- * @he_data2: HE property of received frame
- * @he_data3: HE property of received frame
- * @he_data4: HE property of received frame
- * @he_data5: HE property of received frame
- * @prev_ppdu_id: ppdu_id in previously received message
- * @ppdu_id: Id of the PLCP protocol data unit
+ * @tx_status: Status of Tx frame
+ * @add_rtap_ext: Bool to add extension to radiotap header
  */
 struct mon_rx_status {
 	uint64_t tsft;
-	uint32_t preamble_type;
 	uint16_t chan_freq;
 	uint16_t chan_num;
 	uint16_t chan_flags;
 	uint16_t ht_flags;
 	uint16_t vht_flags;
 	uint16_t vht_flag_values6;
-	uint16_t he_flags;
-	uint16_t he_mu_flags;
-	uint16_t he_mu_other_flags;
-	uint16_t he_sig_A1_known;
-	uint16_t he_sig_A2_known;
-	uint16_t he_sig_b_common;
-	uint16_t he_sig_b_common_known;
 	uint8_t  rate;
 	uint8_t  rtap_flags;
 	uint8_t  ant_signal_db;
 	uint8_t  nr_ant;
 	uint8_t  mcs;
-	uint8_t  nss;
-	uint16_t  tcp_msdu_count;
-	uint16_t  udp_msdu_count;
-	uint16_t  other_msdu_count;
 	uint8_t  bw;
 	uint8_t  vht_flag_values1;
 	uint8_t  vht_flag_values2;
@@ -241,49 +179,12 @@ struct mon_rx_status {
 	uint8_t  vht_flag_values5;
 	uint8_t  is_stbc;
 	uint8_t  sgi;
-	uint8_t  he_re;
 	uint8_t  ldpc;
 	uint8_t  beamformed;
-	uint8_t  he_sig_b_common_RU[4];
-	int8_t   rssi_comb;
-	uint8_t  reception_type;
-	uint16_t duration;
-	uint8_t frame_control_info_valid;
-	int16_t first_data_seq_ctrl;
-	uint32_t ast_index;
-	uint32_t tid;
-	uint8_t  rs_fcs_err;
-	uint8_t      rs_flags;
-	uint8_t cck_flag;
-	uint8_t ofdm_flag;
-	/* New HE radiotap fields */
-	uint16_t he_per_user_1;
-	uint16_t he_per_user_2;
-	uint8_t he_per_user_position;
-	uint8_t he_per_user_known;
-	uint16_t he_flags1;
-	uint16_t he_flags2;
-	uint8_t he_RU[4];
-	uint16_t he_data1;
-	uint16_t he_data2;
-	uint16_t he_data3;
-	uint16_t he_data4;
-	uint16_t he_data5;
-	uint16_t he_data6;
-	uint32_t ppdu_len;
-	uint32_t prev_ppdu_id;
-	uint32_t ppdu_id;
+	uint8_t  tx_status;
+	bool add_rtap_ext;
+	uint8_t  tx_retry_cnt;
 };
-
-/* Masks for HE SIG known fields in mon_rx_status structure */
-#define QDF_MON_STATUS_HE_SIG_B_COMMON_KNOWN_RU0	0x00000001
-#define QDF_MON_STATUS_HE_SIG_B_COMMON_KNOWN_RU1	0x00000002
-#define QDF_MON_STATUS_HE_SIG_B_COMMON_KNOWN_RU2	0x00000004
-#define QDF_MON_STATUS_HE_SIG_B_COMMON_KNOWN_RU3	0x00000008
-#define QDF_MON_STATUS_HE_SIG_B_USER_KNOWN_SIG_B_ALL   0x00fe0000
-#define QDF_MON_STATUS_HE_SIG_A1_HE_FORMAT_SU		0x00000000
-#define QDF_MON_STATUS_HE_SIG_A1_HE_FORMAT_EXT_SU	0x40000000
-#define QDF_MON_STATUS_HE_SIG_A1_HE_FORMAT_TRIG		0xc0000000
 
 /* DHCP Related Mask */
 #define QDF_DHCP_OPTION53			(0x35)
@@ -343,97 +244,6 @@ struct mon_rx_status {
 #define ICMPV6_NA                     0x88
 
 #define QDF_NBUF_IPA_CHECK_MASK		0x80000000
-
-/* HE Radiotap data1 Mask */
-#define QDF_MON_STATUS_HE_SU_FORMAT_TYPE 0x0000
-#define QDF_MON_STATUS_HE_EXT_SU_FORMAT_TYPE 0x0001
-#define QDF_MON_STATUS_HE_MU_FORMAT_TYPE 0x0002
-#define QDF_MON_STATUS_HE_TRIG_FORMAT_TYPE 0x0003
-
-
-#define QDF_MON_STATUS_HE_BEAM_CHANGE_KNOWN 0x0008
-#define QDF_MON_STATUS_HE_DL_UL_KNOWN 0x0010
-#define QDF_MON_STATUS_HE_MCS_KNOWN 0x0020
-#define QDF_MON_STATUS_HE_DCM_KNOWN 0x0040
-#define QDF_MON_STATUS_HE_CODING_KNOWN 0x0080
-#define QDF_MON_STATUS_HE_LDPC_EXTRA_SYMBOL_KNOWN 0x0100
-#define QDF_MON_STATUS_HE_STBC_KNOWN 0x0200
-#define QDF_MON_STATUS_HE_DATA_BW_RU_KNOWN 0x4000
-#define QDF_MON_STATUS_HE_DOPPLER_KNOWN 0x8000
-#define QDF_MON_STATUS_HE_BSS_COLOR_KNOWN 0x0004
-
-/* HE Radiotap data2 Mask */
-#define QDF_MON_STATUS_HE_GI_KNOWN 0x0002
-#define QDF_MON_STATUS_TXBF_KNOWN 0x0010
-#define QDF_MON_STATUS_PE_DISAMBIGUITY_KNOWN 0x0020
-#define QDF_MON_STATUS_TXOP_KNOWN 0x0040
-#define QDF_MON_STATUS_LTF_SYMBOLS_KNOWN 0x0004
-#define QDF_MON_STATUS_PRE_FEC_PADDING_KNOWN 0x0008
-#define QDF_MON_STATUS_MIDABLE_PERIODICITY_KNOWN 0x0080
-
-/* HE radiotap data3 shift values */
-#define QDF_MON_STATUS_BEAM_CHANGE_SHIFT 6
-#define QDF_MON_STATUS_DL_UL_SHIFT 7
-#define QDF_MON_STATUS_TRANSMIT_MCS_SHIFT 8
-#define QDF_MON_STATUS_DCM_SHIFT 12
-#define QDF_MON_STATUS_CODING_SHIFT 13
-#define QDF_MON_STATUS_LDPC_EXTRA_SYMBOL_SHIFT 14
-#define QDF_MON_STATUS_STBC_SHIFT 15
-
-/* HE radiotap data4 shift values */
-#define QDF_MON_STATUS_STA_ID_SHIFT 4
-
-/* HE radiotap data5 */
-#define QDF_MON_STATUS_GI_SHIFT 4
-#define QDF_MON_STATUS_HE_LTF_SHIFT 8
-#define QDF_MON_STATUS_TXBF_SHIFT 14
-#define QDF_MON_STATUS_PE_DISAMBIGUITY_SHIFT 15
-#define QDF_MON_STATUS_PRE_FEC_PAD_SHIFT 12
-
-/* HE radiotap data6 */
-#define QDF_MON_STATUS_DOPPLER_SHIFT 4
-#define QDF_MON_STATUS_TXOP_SHIFT 8
-
-/* HE radiotap HE-MU flags1 */
-#define QDF_MON_STATUS_SIG_B_MCS_KNOWN 0x0010
-#define QDF_MON_STATUS_SIG_B_DCM_KNOWN 0x0040
-#define QDF_MON_STATUS_SIG_B_SYM_NUM_KNOWN 0x8000
-#define QDF_MON_STATUS_RU_0_KNOWN 0x0100
-#define QDF_MON_STATUS_RU_1_KNOWN 0x0200
-#define QDF_MON_STATUS_RU_2_KNOWN 0x0400
-#define QDF_MON_STATUS_RU_3_KNOWN 0x0800
-#define QDF_MON_STATUS_DCM_FLAG_1_SHIFT 5
-#define QDF_MON_STATUS_SPATIAL_REUSE_MU_KNOWN 0x0100
-#define QDF_MON_STATUS_SIG_B_COMPRESSION_FLAG_1_KNOWN 0x4000
-
-/* HE radiotap HE-MU flags2 */
-#define QDF_MON_STATUS_SIG_B_COMPRESSION_FLAG_2_SHIFT 3
-#define QDF_MON_STATUS_BW_KNOWN 0x0004
-#define QDF_MON_STATUS_NUM_SIG_B_SYMBOLS_SHIFT 4
-#define QDF_MON_STATUS_SIG_B_COMPRESSION_FLAG_2_KNOWN 0x0100
-#define QDF_MON_STATUS_NUM_SIG_B_FLAG_2_SHIFT 9
-#define QDF_MON_STATUS_LTF_FLAG_2_SYMBOLS_SHIFT 12
-#define QDF_MON_STATUS_LTF_KNOWN 0x8000
-
-/* HE radiotap per_user_1 */
-#define QDF_MON_STATUS_STA_SPATIAL_SHIFT 11
-#define QDF_MON_STATUS_TXBF_SHIFT 14
-#define QDF_MON_STATUS_RESERVED_SET_TO_1_SHIFT 19
-#define QDF_MON_STATUS_STA_CODING_SHIFT 20
-
-/* HE radiotap per_user_2 */
-#define QDF_MON_STATUS_STA_MCS_SHIFT 4
-#define QDF_MON_STATUS_STA_DCM_SHIFT 5
-
-/* HE radiotap per user known */
-#define QDF_MON_STATUS_USER_FIELD_POSITION_KNOWN 0x01
-#define QDF_MON_STATUS_STA_ID_PER_USER_KNOWN 0x02
-#define QDF_MON_STATUS_STA_NSTS_KNOWN 0x04
-#define QDF_MON_STATUS_STA_TX_BF_KNOWN 0x08
-#define QDF_MON_STATUS_STA_SPATIAL_CONFIG_KNOWN 0x10
-#define QDF_MON_STATUS_STA_MCS_KNOWN 0x20
-#define QDF_MON_STATUS_STA_DCM_KNOWN 0x40
-#define QDF_MON_STATUS_STA_CODING_KNOWN 0x80
 
 /**
  * qdf_proto_type - protocol type
@@ -572,7 +382,7 @@ qdf_nbuf_set_send_complete_flag(qdf_nbuf_t buf, bool flag)
 	__qdf_nbuf_set_send_complete_flag(buf, flag);
 }
 
-#ifdef NBUF_MAP_UNMAP_DEBUG
+#ifdef MEMORY_DEBUG
 /**
  * qdf_nbuf_map_check_for_leaks() - check for nbut map leaks
  *
@@ -660,9 +470,9 @@ void qdf_nbuf_unmap_nbytes_single_debug(qdf_device_t osdev,
 	qdf_nbuf_unmap_nbytes_single_debug(osdev, buf, dir, nbytes, \
 					   __FILE__, __LINE__)
 
-#else /* NBUF_MAP_UNMAP_DEBUG */
+#else /* MEMORY_DEBUG */
 
-static inline void qdf_nbuf_map_check_for_leaks(void) {}
+static inline void qdf_nbuf_map_check_for_leaks(void) { }
 
 static inline QDF_STATUS
 qdf_nbuf_map(qdf_device_t osdev, qdf_nbuf_t buf, qdf_dma_dir_t dir)
@@ -715,13 +525,15 @@ qdf_nbuf_unmap_nbytes_single(
 {
 	return __qdf_nbuf_unmap_nbytes_single(osdev, buf, dir, nbytes);
 }
-#endif /* NBUF_MAP_UNMAP_DEBUG */
+#endif /* MEMORY_DEBUG */
 
+#ifndef REMOVE_INIT_DEBUG_CODE
 static inline void
 qdf_nbuf_sync_for_cpu(qdf_device_t osdev, qdf_nbuf_t buf, qdf_dma_dir_t dir)
 {
 	__qdf_nbuf_sync_for_cpu(osdev, buf, dir);
 }
+#endif
 
 static inline int qdf_nbuf_get_num_frags(qdf_nbuf_t buf)
 {
@@ -768,8 +580,7 @@ qdf_nbuf_get_frag_vaddr_always(qdf_nbuf_t buf)
 }
 
 /**
- * qdf_nbuf_get_frag_paddr() - get physical address for skb linear buffer
- *                              or skb fragment, based on frag_num passed
+ * qdf_nbuf_get_frag_paddr() - get fragment physical address
  * @buf: Network buffer
  * @frag_num: Fragment number
  *
@@ -783,19 +594,6 @@ static inline qdf_dma_addr_t qdf_nbuf_get_frag_paddr(qdf_nbuf_t buf,
 }
 
 /**
- * qdf_nbuf_get_tx_frag_paddr() - get physical address for skb fragments only
- * @buf: Network buffer
- *
- * Return: Fragment physical address
- * Usage guideline: Use “qdf_nbuf_frag_map()” to dma map the specific
- *                  skb fragment , followed by “qdf_nbuf_get_tx_frag_paddr”
- */
-static inline qdf_dma_addr_t qdf_nbuf_get_tx_frag_paddr(qdf_nbuf_t buf)
-{
-	return __qdf_nbuf_get_tx_frag_paddr(buf);
-}
-
-/**
  * qdf_nbuf_get_frag_is_wordstream() - is fragment wordstream
  * @buf: Network buffer
  * @frag_num: Fragment number
@@ -806,6 +604,33 @@ static inline int qdf_nbuf_get_frag_is_wordstream(qdf_nbuf_t buf, int frag_num)
 {
 	QDF_BUG(!(frag_num >= QDF_NBUF_CB_TX_MAX_EXTRA_FRAGS));
 	return __qdf_nbuf_get_frag_is_wordstream(buf, frag_num);
+}
+
+static inline int qdf_nbuf_ipa_owned_get(qdf_nbuf_t buf)
+{
+	return __qdf_nbuf_ipa_owned_get(buf);
+}
+
+static inline void qdf_nbuf_ipa_owned_set(qdf_nbuf_t buf)
+{
+	__qdf_nbuf_ipa_owned_set(buf);
+}
+
+static inline void qdf_nbuf_ipa_owned_clear(qdf_nbuf_t buf)
+{
+	__qdf_nbuf_ipa_owned_clear(buf);
+}
+
+static inline int qdf_nbuf_ipa_priv_get(qdf_nbuf_t buf)
+{
+	return __qdf_nbuf_ipa_priv_get(buf);
+}
+
+static inline void qdf_nbuf_ipa_priv_set(qdf_nbuf_t buf, uint32_t priv)
+{
+
+	QDF_BUG(!(priv & QDF_NBUF_IPA_CHECK_MASK));
+	__qdf_nbuf_ipa_priv_set(buf, priv);
 }
 
 /**
@@ -825,41 +650,32 @@ qdf_nbuf_set_frag_is_wordstream(qdf_nbuf_t buf,
 }
 
 static inline void
-qdf_nbuf_set_vdev_ctx(qdf_nbuf_t buf, uint8_t vdev_id)
+qdf_nbuf_set_vdev_ctx(qdf_nbuf_t buf, void *vdev_ctx)
 {
-	__qdf_nbuf_set_vdev_ctx(buf, vdev_id);
+	__qdf_nbuf_set_vdev_ctx(buf, vdev_ctx);
 }
 
 static inline void
-qdf_nbuf_set_tx_ftype(qdf_nbuf_t buf, uint8_t type)
+qdf_nbuf_set_fctx_type(qdf_nbuf_t buf, void *ctx, uint8_t type)
 {
-	__qdf_nbuf_set_tx_ftype(buf, type);
+	__qdf_nbuf_set_fctx_type(buf, ctx, type);
 }
 
-static inline void
-qdf_nbuf_set_rx_ftype(qdf_nbuf_t buf, uint8_t type)
-{
-	__qdf_nbuf_set_rx_ftype(buf, type);
-}
-
-
-
-static inline uint8_t
+static inline void *
 qdf_nbuf_get_vdev_ctx(qdf_nbuf_t buf)
 {
 	return  __qdf_nbuf_get_vdev_ctx(buf);
 }
 
-static inline uint8_t qdf_nbuf_get_tx_ftype(qdf_nbuf_t buf)
+static inline void *qdf_nbuf_get_fctx(qdf_nbuf_t buf)
 {
-	return  __qdf_nbuf_get_tx_ftype(buf);
+	return  __qdf_nbuf_get_fctx(buf);
 }
 
-static inline uint8_t qdf_nbuf_get_rx_ftype(qdf_nbuf_t buf)
+static inline uint8_t qdf_nbuf_get_ftype(qdf_nbuf_t buf)
 {
-	return  __qdf_nbuf_get_rx_ftype(buf);
+	return  __qdf_nbuf_get_ftype(buf);
 }
-
 
 static inline qdf_dma_addr_t
 qdf_nbuf_mapped_paddr_get(qdf_nbuf_t buf)
@@ -883,146 +699,31 @@ qdf_nbuf_frag_push_head(qdf_nbuf_t buf,
 
 #define qdf_nbuf_num_frags_init(_nbuf) __qdf_nbuf_num_frags_init((_nbuf))
 
-/**
- * qdf_nbuf_set_rx_chfrag_start() - set msdu start bit
- * @buf: Network buffer
- * @val: 0/1
- *
- * Return: void
+/* For efficiency, it is the responsibility of the caller to ensure that val
+ * is either 0 or 1.
  */
 static inline void
-qdf_nbuf_set_rx_chfrag_start(qdf_nbuf_t buf, uint8_t val)
+qdf_nbuf_set_chfrag_start(qdf_nbuf_t buf, uint8_t val)
 {
-	__qdf_nbuf_set_rx_chfrag_start(buf, val);
+	__qdf_nbuf_set_chfrag_start(buf, val);
 }
 
-/**
- * qdf_nbuf_is_rx_chfrag_start() - get msdu start bit
- * @buf: Network buffer
- *
- * Return: integer value - 0/1
- */
-static inline int qdf_nbuf_is_rx_chfrag_start(qdf_nbuf_t buf)
+static inline int qdf_nbuf_is_chfrag_start(qdf_nbuf_t buf)
 {
-	return __qdf_nbuf_is_rx_chfrag_start(buf);
+	return __qdf_nbuf_is_chfrag_start(buf);
 }
 
-/**
- * qdf_nbuf_set_rx_chfrag_cont() - set msdu continuation bit
- * @buf: Network buffer
- * @val: 0/1
- *
- * Return: void
+/* For efficiency, it is the responsibility of the caller to ensure that val
+ * is either 0 or 1.
  */
-static inline void
-qdf_nbuf_set_rx_chfrag_cont(qdf_nbuf_t buf, uint8_t val)
+static inline void qdf_nbuf_set_chfrag_end(qdf_nbuf_t buf, uint8_t val)
 {
-	__qdf_nbuf_set_rx_chfrag_cont(buf, val);
+	__qdf_nbuf_set_chfrag_end(buf, val);
 }
 
-/**
- * qdf_nbuf_is_rx_chfrag_cont() - get msdu continuation bit
- * @buf: Network buffer
- *
- * Return: integer value - 0/1
- */
-static inline int qdf_nbuf_is_rx_chfrag_cont(qdf_nbuf_t buf)
+static inline int qdf_nbuf_is_chfrag_end(qdf_nbuf_t buf)
 {
-	return __qdf_nbuf_is_rx_chfrag_cont(buf);
-}
-
-/**
- * qdf_nbuf_set_rx_chfrag_end() - set msdu end bit
- * @buf: Network buffer
- * @val: 0/1
- *
- * Return: void
- */
-static inline void qdf_nbuf_set_rx_chfrag_end(qdf_nbuf_t buf, uint8_t val)
-{
-	__qdf_nbuf_set_rx_chfrag_end(buf, val);
-}
-
-/**
- * qdf_nbuf_is_rx_chfrag_end() - set msdu end bit
- * @buf: Network buffer
- *
- * Return: integer value - 0/1
- */
-static inline int qdf_nbuf_is_rx_chfrag_end(qdf_nbuf_t buf)
-{
-	return __qdf_nbuf_is_rx_chfrag_end(buf);
-}
-
-/**
- * qdf_nbuf_set_tx_chfrag_start() - set msdu start bit
- * @buf: Network buffer
- * @val: 0/1
- *
- * Return: void
- */
-static inline void
-qdf_nbuf_set_tx_chfrag_start(qdf_nbuf_t buf, uint8_t val)
-{
-	__qdf_nbuf_set_tx_chfrag_start(buf, val);
-}
-
-/**
- * qdf_nbuf_is_tx_chfrag_start() - get msdu start bit
- * @buf: Network buffer
- *
- * Return: integer value - 0/1
- */
-static inline int qdf_nbuf_is_tx_chfrag_start(qdf_nbuf_t buf)
-{
-	return __qdf_nbuf_is_tx_chfrag_start(buf);
-}
-
-/**
- * qdf_nbuf_set_tx_chfrag_cont() - set msdu continuation bit
- * @buf: Network buffer
- * @val: 0/1
- *
- * Return: void
- */
-static inline void
-qdf_nbuf_set_tx_chfrag_cont(qdf_nbuf_t buf, uint8_t val)
-{
-	__qdf_nbuf_set_tx_chfrag_cont(buf, val);
-}
-
-/**
- * qdf_nbuf_is_tx_chfrag_cont() - get msdu continuation bit
- * @buf: Network buffer
- *
- * Return: integer value - 0/1
- */
-static inline int qdf_nbuf_is_tx_chfrag_cont(qdf_nbuf_t buf)
-{
-	return __qdf_nbuf_is_tx_chfrag_cont(buf);
-}
-
-/**
- * qdf_nbuf_set_tx_chfrag_end() - set msdu end bit
- * @buf: Network buffer
- * @val: 0/1
- *
- * Return: void
- */
-static inline void qdf_nbuf_set_tx_chfrag_end(qdf_nbuf_t buf, uint8_t val)
-{
-	__qdf_nbuf_set_tx_chfrag_end(buf, val);
-}
-
-/**
- * qdf_nbuf_is_tx_chfrag_end() - set msdu end bit
- * @buf: Network buffer
- *
- * Return: integer value - 0/1
- */
-static inline int qdf_nbuf_is_tx_chfrag_end(qdf_nbuf_t buf)
-{
-	return __qdf_nbuf_is_tx_chfrag_end(buf);
+	return __qdf_nbuf_is_chfrag_end(buf);
 }
 
 static inline void
@@ -1069,19 +770,12 @@ static inline qdf_nbuf_t qdf_nbuf_next(qdf_nbuf_t buf)
 	return __qdf_nbuf_next(buf);
 }
 
-#ifdef NBUF_MEMORY_DEBUG
+#ifdef MEMORY_DEBUG
 void qdf_net_buf_debug_init(void);
 void qdf_net_buf_debug_exit(void);
 void qdf_net_buf_debug_clean(void);
 void qdf_net_buf_debug_add_node(qdf_nbuf_t net_buf, size_t size,
 			uint8_t *file_name, uint32_t line_num);
-/**
- * qdf_net_buf_debug_update_node() - update nbuf in debug hash table
- *
- * Return: none
- */
-void qdf_net_buf_debug_update_node(qdf_nbuf_t net_buf, uint8_t *file_name,
-				   uint32_t line_num);
 void qdf_net_buf_debug_delete_node(qdf_nbuf_t net_buf);
 
 /**
@@ -1120,15 +814,28 @@ void qdf_nbuf_free_debug(qdf_nbuf_t nbuf, uint8_t *file, uint32_t line);
 /**
  * qdf_nbuf_clone_debug() - clone the nbuf (copy is readonly)
  * @buf: nbuf to clone from
- * @file: pointer to file name
- * @line: line number
+ * @file_name: pointer to file name
+ * @line_num: line number
  *
  * This function clones the nbuf and creates a memory tracking
  * node corresponding to that cloned skbuff structure.
  *
  * Return: cloned buffer
  */
-qdf_nbuf_t qdf_nbuf_clone_debug(qdf_nbuf_t buf, uint8_t *file, uint32_t line);
+static inline qdf_nbuf_t
+qdf_nbuf_clone_debug(qdf_nbuf_t buf, uint8_t *file_name,
+			uint32_t line_num)
+{
+	qdf_nbuf_t cloned_buf;
+
+	cloned_buf = __qdf_nbuf_clone(buf);
+
+	/* Store SKB in internal QDF tracking table */
+	if (qdf_likely(cloned_buf))
+		qdf_net_buf_debug_add_node(cloned_buf, 0, file_name, line_num);
+
+	return cloned_buf;
+}
 
 #define qdf_nbuf_copy(buf)     \
 	qdf_nbuf_copy_debug(buf, __FILE__, __LINE__)
@@ -1136,8 +843,8 @@ qdf_nbuf_t qdf_nbuf_clone_debug(qdf_nbuf_t buf, uint8_t *file, uint32_t line);
 /**
  * qdf_nbuf_copy_debug() - returns a private copy of the buf
  * @buf: nbuf to copy from
- * @file: pointer to file name
- * @line: line number
+ * @file_name: pointer to file name
+ * @line_num: line number
  *
  * This API returns a private copy of the buf, the buf returned is completely
  * modifiable by callers. It also creates a memory tracking node corresponding
@@ -1145,12 +852,22 @@ qdf_nbuf_t qdf_nbuf_clone_debug(qdf_nbuf_t buf, uint8_t *file, uint32_t line);
  *
  * Return: copied buffer
  */
-qdf_nbuf_t qdf_nbuf_copy_debug(qdf_nbuf_t buf, uint8_t *file, uint32_t line);
+static inline qdf_nbuf_t
+qdf_nbuf_copy_debug(qdf_nbuf_t buf, uint8_t *file_name,
+			uint32_t line_num)
+{
+	qdf_nbuf_t copied_buf;
 
-#else /* NBUF_MEMORY_DEBUG */
+	copied_buf = __qdf_nbuf_copy(buf);
 
-static inline void qdf_net_buf_debug_init(void) {}
-static inline void qdf_net_buf_debug_exit(void) {}
+	/* Store SKB in internal QDF tracking table */
+	if (qdf_likely(copied_buf))
+		qdf_net_buf_debug_add_node(copied_buf, 0, file_name, line_num);
+
+	return copied_buf;
+}
+
+#else
 
 static inline void qdf_net_buf_debug_acquire_skb(qdf_nbuf_t net_buf,
 			uint8_t *file_name, uint32_t line_num)
@@ -1161,22 +878,13 @@ static inline void qdf_net_buf_debug_release_skb(qdf_nbuf_t net_buf)
 {
 }
 
-static inline void
-qdf_net_buf_debug_update_node(qdf_nbuf_t net_buf, uint8_t *file_name,
-			      uint32_t line_num)
-{
-}
-
 /* Nbuf allocation rouines */
 
-#define qdf_nbuf_alloc(osdev, size, reserve, align, prio) \
-	qdf_nbuf_alloc_fl(osdev, size, reserve, align, prio, \
-			  __func__, __LINE__)
 static inline qdf_nbuf_t
-qdf_nbuf_alloc_fl(qdf_device_t osdev, qdf_size_t size, int reserve, int align,
-		  int prio, const char *func, uint32_t line)
+qdf_nbuf_alloc(qdf_device_t osdev,
+		qdf_size_t size, int reserve, int align, int prio)
 {
-	return __qdf_nbuf_alloc(osdev, size, reserve, align, prio, func, line);
+	return __qdf_nbuf_alloc(osdev, size, reserve, align, prio);
 }
 
 static inline void qdf_nbuf_free(qdf_nbuf_t buf)
@@ -1213,7 +921,7 @@ static inline qdf_nbuf_t qdf_nbuf_copy(qdf_nbuf_t buf)
 	return __qdf_nbuf_copy(buf);
 }
 
-#endif /* NBUF_MEMORY_DEBUG */
+#endif
 
 #ifdef WLAN_FEATURE_FASTPATH
 /**
@@ -1223,7 +931,12 @@ static inline qdf_nbuf_t qdf_nbuf_copy(qdf_nbuf_t buf)
  * Return: data pointer of this buf where new data has to be
  *         put, or NULL if there is not enough room in this buf.
  */
-void qdf_nbuf_init_fast(qdf_nbuf_t nbuf);
+static inline void qdf_nbuf_init_fast(qdf_nbuf_t nbuf)
+{
+	qdf_nbuf_users_set(&nbuf->users, 1);
+	nbuf->data = nbuf->head + NET_SKB_PAD;
+	skb_reset_tail_pointer(nbuf);
+}
 #endif /* WLAN_FEATURE_FASTPATH */
 
 static inline void qdf_nbuf_tx_free(qdf_nbuf_t buf_list, int tx_err)
@@ -1408,55 +1121,6 @@ static inline void qdf_nbuf_set_pktlen(qdf_nbuf_t buf, uint32_t len)
 static inline void qdf_nbuf_reserve(qdf_nbuf_t buf, qdf_size_t size)
 {
 	__qdf_nbuf_reserve(buf, size);
-}
-
-/**
- * qdf_nbuf_reset() - reset the buffer data and pointer
- * @buf: Network buf instance
- * @reserve: reserve
- * @align: align
- *
- * Return: none
- */
-static inline void qdf_nbuf_reset(qdf_nbuf_t buf, int reserve, int align)
-{
-	__qdf_nbuf_reset(buf, reserve, align);
-}
-
-/**
- * qdf_nbuf_dev_scratch_is_supported() - dev_scratch support for network buffer
- *                                       in kernel
- *
- * Return: true if dev_scratch is supported
- *         false if dev_scratch is not supported
- */
-static inline bool qdf_nbuf_is_dev_scratch_supported(void)
-{
-	return __qdf_nbuf_is_dev_scratch_supported();
-}
-
-/**
- * qdf_nbuf_get_dev_scratch() - get dev_scratch of network buffer
- * @buf: Pointer to network buffer
- *
- * Return: dev_scratch if dev_scratch supported
- *         0 if dev_scratch not supported
- */
-static inline unsigned long qdf_nbuf_get_dev_scratch(qdf_nbuf_t buf)
-{
-	return __qdf_nbuf_get_dev_scratch(buf);
-}
-
-/**
- * qdf_nbuf_set_dev_scratch() - set dev_scratch of network buffer
- * @buf: Pointer to network buffer
- * @value: value to be set in dev_scratch of network buffer
- *
- * Return: void
- */
-static inline void qdf_nbuf_set_dev_scratch(qdf_nbuf_t buf, unsigned long value)
-{
-	__qdf_nbuf_set_dev_scratch(buf, value);
 }
 
 /**
@@ -2053,21 +1717,6 @@ bool qdf_nbuf_data_is_ipv4_dhcp_pkt(uint8_t *data)
 }
 
 /**
- * qdf_nbuf_data_is_ipv6_dhcp_pkt() - check if it is DHCP packet.
- * @data: Pointer to DHCP packet data buffer
- *
- * This func. checks whether it is a DHCP packet or not.
- *
- * Return: true if it is a DHCP packet
- *         false if not
- */
-static inline
-bool qdf_nbuf_is_ipv6_dhcp_pkt(qdf_nbuf_t buf)
-{
-	return __qdf_nbuf_data_is_ipv6_dhcp_pkt(qdf_nbuf_data(buf));
-}
-
-/**
  * qdf_nbuf_is_ipv4_eapol_pkt() - check if packet is a eapol packet or not
  * @buf:  buffer
  *
@@ -2111,20 +1760,6 @@ bool qdf_nbuf_is_ipv4_wapi_pkt(qdf_nbuf_t buf)
 }
 
 /**
- * qdf_nbuf_is_ipv4_tdls_pkt() - check if packet is a tdls packet or not
- * @buf:  buffer
- *
- * This api is for ipv4 packet.
- *
- * Return: true if packet is TDLS packet
- */
-static inline
-bool qdf_nbuf_is_ipv4_tdls_pkt(qdf_nbuf_t buf)
-{
-	return __qdf_nbuf_is_ipv4_tdls_pkt(buf);
-}
-
-/**
  * qdf_nbuf_is_ipv4_arp_pkt() - check if packet is a arp packet or not
  * @buf:  buffer
  *
@@ -2159,7 +1794,7 @@ bool qdf_nbuf_data_is_ipv4_arp_pkt(uint8_t *data)
  *
  * This func. checks whether it is a ARP request or not.
  *
- * Return: true if it is a ARP request or FALSE if not
+ * Return: true if it is a ARP request or fALSE if not
  */
 static inline
 bool qdf_nbuf_data_is_arp_req(qdf_nbuf_t buf)
@@ -2173,7 +1808,7 @@ bool qdf_nbuf_data_is_arp_req(qdf_nbuf_t buf)
  *
  * This func. checks whether it is a ARP response or not.
  *
- * Return: true if it is a ARP response or FALSE if not
+ * Return: true if it is a ARP response or fALSE if not
  */
 static inline
 bool qdf_nbuf_data_is_arp_rsp(qdf_nbuf_t buf)
@@ -2599,18 +2234,17 @@ bool qdf_nbuf_data_is_ipv6_tcp_pkt(uint8_t *data)
 }
 
 /**
- * qdf_nbuf_is_bcast_pkt() - check if it is broadcast packet.
- * @buf: Network buffer
+ * qdf_invalidate_range() - invalidate virtual address range
+ * @start: start address of the address range
+ * @end: end address of the address range
  *
- * This func. checks whether packet is broadcast or not.
+ * Note that this function does not write back the cache entries.
  *
- * Return: TRUE if it is broadcast packet
- *         FALSE if not
+ * Return: none
  */
-static inline
-bool qdf_nbuf_is_bcast_pkt(qdf_nbuf_t buf)
+static inline void qdf_invalidate_range(void *start, void *end)
 {
-	return __qdf_nbuf_is_bcast_pkt(buf);
+	__qdf_invalidate_range(start, end);
 }
 
 /**
@@ -2771,12 +2405,6 @@ qdf_nbuf_expand(qdf_nbuf_t buf, uint32_t headroom, uint32_t tailroom)
 	return __qdf_nbuf_expand(buf, headroom, tailroom);
 }
 
-static inline int
-qdf_nbuf_linearize(qdf_nbuf_t buf)
-{
-	return __qdf_nbuf_linearize(buf);
-}
-
 static inline qdf_nbuf_t
 qdf_nbuf_unshare(qdf_nbuf_t buf)
 {
@@ -2889,11 +2517,6 @@ static inline void qdf_nbuf_set_priority(qdf_nbuf_t buf, uint32_t p)
 	__qdf_nbuf_set_priority(buf, p);
 }
 
-static inline void qdf_nbuf_record_rx_queue(qdf_nbuf_t buf, uint32_t queue_id)
-{
-	__qdf_nbuf_record_rx_queue(buf, queue_id);
-}
-
 static inline uint16_t
 qdf_nbuf_get_queue_mapping(qdf_nbuf_t buf)
 {
@@ -2943,116 +2566,36 @@ qdf_nbuf_reg_free_cb(qdf_nbuf_free_t cb_func_ptr)
 	 __qdf_nbuf_reg_free_cb(cb_func_ptr);
 }
 
+#ifdef CONFIG_MCL
 /**
- * qdf_nbuf_set_timestamp() - set the timestamp for frame
+ * qdf_nbuf_init_replenish_timer - Initialize the alloc replenish timer
  *
- * @buf: sk buff
+ * This function initializes the nbuf alloc fail replenish timer.
  *
  * Return: void
  */
 static inline void
-qdf_nbuf_set_timestamp(struct sk_buff *skb)
+qdf_nbuf_init_replenish_timer(void)
 {
-	__qdf_nbuf_set_timestamp(skb);
+	__qdf_nbuf_init_replenish_timer();
 }
 
 /**
- * qdf_nbuf_get_timedelta_ms() - get time difference in ms
+ * qdf_nbuf_deinit_replenish_timer - Deinitialize the alloc replenish timer
  *
- * @buf: sk buff
- *
- * Return: time difference ms
- */
-static inline uint64_t
-qdf_nbuf_get_timedelta_ms(struct sk_buff *skb)
-{
-	return __qdf_nbuf_get_timedelta_ms(skb);
-}
-
-/**
- * qdf_nbuf_get_timedelta_us() - get time difference in micro seconds
- *
- * @buf: sk buff
- *
- * Return: time difference in micro seconds
- */
-static inline uint64_t
-qdf_nbuf_get_timedelta_us(struct sk_buff *skb)
-{
-	return __qdf_nbuf_get_timedelta_us(skb);
-}
-
-/**
- * qdf_nbuf_count_get() - get global nbuf gauge
- *
- * Return: global nbuf gauge
- */
-static inline int qdf_nbuf_count_get(void)
-{
-	return __qdf_nbuf_count_get();
-}
-
-/**
- * qdf_nbuf_count_inc() - increment nbuf global count
- *
- * @buf: sk buff
+ * This function deinitializes the nbuf alloc fail replenish timer.
  *
  * Return: void
  */
-static inline void qdf_nbuf_count_inc(qdf_nbuf_t buf)
+static inline void
+qdf_nbuf_deinit_replenish_timer(void)
 {
-	return __qdf_nbuf_count_inc(buf);
+	__qdf_nbuf_deinit_replenish_timer();
 }
-
-/**
- * qdf_nbuf_count_dec() - decrement nbuf global count
- *
- * @buf: sk buff
- *
- * Return: void
- */
-static inline void qdf_nbuf_count_dec(qdf_nbuf_t buf)
-{
-	return __qdf_nbuf_count_dec(buf);
-}
-
-/**
- * qdf_nbuf_mod_init() - Intialization routine for qdf_nbuf
- *
- * Return void
- */
-static inline void qdf_nbuf_mod_init(void)
-{
-	return __qdf_nbuf_mod_init();
-}
-
-/**
- * qdf_nbuf_mod_init() - Unintialization routine for qdf_nbuf
- *
- * Return void
- */
-static inline void qdf_nbuf_mod_exit(void)
-{
-	return __qdf_nbuf_mod_exit();
-}
-
-/**
- * qdf_nbuf_orphan() - orphan a nbuf
- * @buf: Pointer to network buffer
- *
- * If a buffer currently has an owner then we call the
- * owner's destructor function
- *
- * Return: void
- */
-static inline void qdf_nbuf_orphan(qdf_nbuf_t buf)
-{
-	return __qdf_nbuf_orphan(buf);
-}
-
-#ifdef CONFIG_WIN
-#include <i_qdf_nbuf_api_w.h>
 #else
-#include <i_qdf_nbuf_api_m.h>
-#endif
+
+static inline void qdf_nbuf_init_replenish_timer(void) {}
+static inline void qdf_nbuf_deinit_replenish_timer(void) {}
+#endif /* CONFIG_MCL */
+
 #endif /* _QDF_NBUF_H */

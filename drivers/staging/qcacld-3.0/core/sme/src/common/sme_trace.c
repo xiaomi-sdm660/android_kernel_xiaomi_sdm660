@@ -89,6 +89,7 @@ static uint8_t *sme_trace_get_rx_msg_string(uint32_t code)
 		CASE_RETURN_STRING(TRACE_CODE_SME_RX_HDD_GET_RSSI);
 		CASE_RETURN_STRING(TRACE_CODE_SME_RX_HDD_GET_CNTRYCODE);
 		CASE_RETURN_STRING(TRACE_CODE_SME_RX_HDD_SET_CNTRYCODE);
+		CASE_RETURN_STRING(TRACE_CODE_SME_RX_HDD_CHANGE_CNTRYCODE);
 		CASE_RETURN_STRING(TRACE_CODE_SME_RX_HDD_SET_CFGPRIVACY);
 		CASE_RETURN_STRING(TRACE_CODE_SME_RX_HDD_NEIGHBOR_REPORTREQ);
 		CASE_RETURN_STRING(TRACE_CODE_SME_RX_HDD_DBG_READREG);
@@ -149,6 +150,10 @@ static uint8_t *sme_trace_get_rx_msg_string(uint32_t code)
 		CASE_RETURN_STRING(TRACE_CODE_SME_RX_HDD_TDLS_DEL_PEER_STA);
 #endif
 		CASE_RETURN_STRING(TRACE_CODE_SME_RX_HDD_PREF_NET_LIST);
+#ifdef FEATURE_WLAN_LPHB
+		CASE_RETURN_STRING(TRACE_CODE_SME_RX_HDD_LPHB_CONFIG_REQ);
+#endif /* FEATURE_WLAN_LPHB */
+
 	default:
 		return "UNKNOWN";
 	}
@@ -158,17 +163,41 @@ static uint8_t *sme_trace_get_command_string(uint32_t command)
 {
 	switch (command) {
 		CASE_RETURN_STRING(eSmeNoCommand);
+		CASE_RETURN_STRING(eSmeDropCommand);
 		CASE_RETURN_STRING(eSmeCsrCommandMask);
+		CASE_RETURN_STRING(eSmeCommandScan);
 		CASE_RETURN_STRING(eSmeCommandRoam);
 		CASE_RETURN_STRING(eSmeCommandWmStatusChange);
-		CASE_RETURN_STRING(e_sme_command_del_sta_session);
+		CASE_RETURN_STRING(eSmeCommandSetKey);
+		CASE_RETURN_STRING(eSmeCommandAddStaSession);
+		CASE_RETURN_STRING(eSmeCommandDelStaSession);
+#ifdef FEATURE_WLAN_TDLS
+		CASE_RETURN_STRING(eSmeCommandTdlsSendMgmt);
+		CASE_RETURN_STRING(eSmeCommandTdlsAddPeer);
+		CASE_RETURN_STRING(eSmeCommandTdlsDelPeer);
+		CASE_RETURN_STRING(eSmeCommandTdlsLinkEstablish);
+#endif
+		CASE_RETURN_STRING(eSmePmcCommandMask);
+		CASE_RETURN_STRING(eSmeCommandEnterBmps);
+		CASE_RETURN_STRING(eSmeCommandExitBmps);
+		CASE_RETURN_STRING(eSmeCommandEnterUapsd);
+		CASE_RETURN_STRING(eSmeCommandExitUapsd);
+		CASE_RETURN_STRING(eSmeCommandExitWowl);
+		CASE_RETURN_STRING(eSmeCommandEnterStandby);
 		CASE_RETURN_STRING(eSmeQosCommandMask);
 		CASE_RETURN_STRING(eSmeCommandAddTs);
 		CASE_RETURN_STRING(eSmeCommandDelTs);
+#ifdef FEATURE_OEM_DATA_SUPPORT
+		CASE_RETURN_STRING(eSmeCommandOemDataReq);
+#endif
+		CASE_RETURN_STRING(eSmeCommandRemainOnChannel);
 		CASE_RETURN_STRING(e_sme_command_set_hw_mode);
 		CASE_RETURN_STRING(e_sme_command_nss_update);
 		CASE_RETURN_STRING(e_sme_command_set_dual_mac_config);
 		CASE_RETURN_STRING(e_sme_command_set_antenna_mode);
+		CASE_RETURN_STRING(eSmeCommandNdpInitiatorRequest);
+		CASE_RETURN_STRING(eSmeCommandNdpResponderRequest);
+		CASE_RETURN_STRING(eSmeCommandNdpDataEndInitiatorRequest);
 	default:
 		return "UNKNOWN";
 	}

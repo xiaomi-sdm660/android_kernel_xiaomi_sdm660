@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014, 2017-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -26,10 +26,6 @@
  *
  */
 
-struct hdd_context;
-
-#define EXTSCAN_EVENT_BUF_SIZE 4096
-
 #ifdef FEATURE_WLAN_EXTSCAN
 
 #include "wlan_hdd_main.h"
@@ -41,6 +37,8 @@ struct hdd_context;
  * on the limit based on the data requirements.
  */
 
+#define EXTSCAN_EVENT_BUF_SIZE 4096
+
 int wlan_hdd_cfg80211_extscan_start(struct wiphy *wiphy,
 				    struct wireless_dev *wdev,
 				    const void *data, int data_len);
@@ -48,6 +46,11 @@ int wlan_hdd_cfg80211_extscan_start(struct wiphy *wiphy,
 int wlan_hdd_cfg80211_extscan_stop(struct wiphy *wiphy,
 				   struct wireless_dev *wdev,
 				   const void *data, int data_len);
+
+int wlan_hdd_cfg80211_extscan_get_valid_channels(struct wiphy *wiphy,
+						 struct wireless_dev
+						 *wdev, const void *data,
+						 int data_len);
 
 int wlan_hdd_cfg80211_extscan_get_capabilities(struct wiphy *wiphy,
 					       struct wireless_dev *wdev,
@@ -95,11 +98,23 @@ int wlan_hdd_cfg80211_reset_passpoint_list(struct wiphy *wiphy,
 						const void *data,
 						int data_len);
 
-void wlan_hdd_cfg80211_extscan_init(struct hdd_context *hdd_ctx);
+int
+wlan_hdd_cfg80211_extscan_set_ssid_hotlist(struct wiphy *wiphy,
+					   struct wireless_dev *wdev,
+					   const void *data,
+					   int data_len);
+
+int
+wlan_hdd_cfg80211_extscan_reset_ssid_hotlist(struct wiphy *wiphy,
+					     struct wireless_dev *wdev,
+					     const void *data,
+					     int data_len);
+
+void wlan_hdd_cfg80211_extscan_init(hdd_context_t *hdd_ctx);
 
 #else /* FEATURE_WLAN_EXTSCAN */
 
-static inline void wlan_hdd_cfg80211_extscan_init(struct hdd_context *hdd_ctx)
+static void wlan_hdd_cfg80211_extscan_init(hdd_context_t *hdd_ctx)
 {
 }
 

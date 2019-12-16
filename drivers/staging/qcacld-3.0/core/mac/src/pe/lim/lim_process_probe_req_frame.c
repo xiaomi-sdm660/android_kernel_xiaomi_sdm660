@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -39,7 +39,6 @@
 #include "parser_api.h"
 #include "lim_ft_defs.h"
 #include "lim_session.h"
-#include "wlan_utility.h"
 
 void
 
@@ -51,7 +50,7 @@ lim_send_sme_probe_req_ind(tpAniSirGlobal pMac,
 /**
  * lim_get_wpspbc_sessions() - to get wps pbs sessions
  * @mac_ctx: Pointer to Global MAC structure
- * @addr: probe request source MAC address
+ * @addr: probe request source MAC addresss
  * @uuid_e: A pointer to UUIDE element of WPS IE in WPS PBC probe request
  * @session: A pointer to station PE session
  *
@@ -72,7 +71,7 @@ void lim_get_wpspbc_sessions(tpAniSirGlobal mac_ctx, struct qdf_mac_addr addr,
 	cur_time = (uint32_t) (qdf_mc_timer_get_system_ticks() /
 						QDF_TICKS_PER_SECOND);
 	qdf_zero_macaddr(&addr);
-	qdf_mem_zero((uint8_t *) uuid_e, SIR_WPS_UUID_LEN);
+	qdf_mem_set((uint8_t *) uuid_e, SIR_WPS_UUID_LEN, 0);
 	for (pbc = session->pAPWPSPBCSession; pbc; pbc = pbc->next) {
 		if (cur_time > pbc->timestamp + SIR_WPS_PBC_WALK_TIME)
 			break;
@@ -174,7 +173,7 @@ void lim_remove_pbc_sessions(tpAniSirGlobal mac, struct qdf_mac_addr remove_mac,
  ***NOTE:
  *
  * @param  pMac   Pointer to Global MAC structure
- * @param  addr   A pointer to probe request source MAC address
+ * @param  addr   A pointer to probe request source MAC addresss
  * @param  uuid_e A pointer to UUIDE element of WPS IE
  * @param  psessionEntry   A pointer to station PE session
  *
@@ -347,7 +346,8 @@ lim_process_probe_req_frame(tpAniSirGlobal mac_ctx, uint8_t *rx_pkt_info,
 	 * come to idle state.
 	 */
 	if ((session->pePersona == QDF_P2P_GO_MODE) &&
-	    mac_ctx->lim.gpLimRemainOnChanReq) {
+		((mac_ctx->lim.gpLimRemainOnChanReq) ||
+		 (mac_ctx->lim.gLimHalScanState != eLIM_HAL_IDLE_SCAN_STATE))) {
 		pe_debug("GO is scanning, don't send probersp on diff chnl");
 		return;
 	}
@@ -367,7 +367,7 @@ lim_process_probe_req_frame(tpAniSirGlobal mac_ctx, uint8_t *rx_pkt_info,
 		if ((session->access_policy_vendor_ie) &&
 			(session->access_policy ==
 			LIM_ACCESS_POLICY_RESPOND_IF_IE_IS_PRESENT)) {
-			if (!wlan_get_vendor_ie_ptr_from_oui(
+			if (!cfg_get_vendor_ie_ptr_from_oui(mac_ctx,
 				&session->access_policy_vendor_ie[2],
 				3, body_ptr, frame_len)) {
 				pe_warn("Vendor IE is not present and access policy is: %x dropping probe request",
@@ -378,10 +378,11 @@ lim_process_probe_req_frame(tpAniSirGlobal mac_ctx, uint8_t *rx_pkt_info,
 
 		/* Parse Probe Request frame */
 		if (sir_convert_probe_req_frame2_struct(mac_ctx, body_ptr,
-				frame_len, &probe_req) == QDF_STATUS_E_FAILURE) {
+				frame_len, &probe_req) == eSIR_FAILURE) {
 			pe_err("Parse error ProbeReq, length: %d, SA is: "
 					MAC_ADDRESS_STR, frame_len,
 					MAC_ADDR_ARRAY(mac_hdr->sa));
+			mac_ctx->sys.probeError++;
 			return;
 		}
 		if (session->pePersona == QDF_P2P_GO_MODE) {
@@ -481,6 +482,7 @@ lim_process_probe_req_frame(tpAniSirGlobal mac_ctx, uint8_t *rx_pkt_info,
 				pe_debug("Ignore ProbeReq frm with unmatch SSID received from");
 					lim_print_mac_addr(mac_ctx, mac_hdr->sa,
 						LOGD);
+					mac_ctx->sys.probeBadSsid++;
 			}
 		} else {
 			/*
@@ -507,10 +509,12 @@ lim_process_probe_req_frame(tpAniSirGlobal mac_ctx, uint8_t *rx_pkt_info,
 multipleSSIDcheck:
 		pe_debug("Ignore ProbeReq frm with unmatch SSID rcved from");
 			lim_print_mac_addr(mac_ctx, mac_hdr->sa, LOGD);
+		mac_ctx->sys.probeBadSsid++;
 	} else {
 		/* Ignore received Probe Request frame */
 		pe_debug("Ignoring Probe Request frame received from");
 		lim_print_mac_addr(mac_ctx, mac_hdr->sa, LOGD);
+		mac_ctx->sys.probeIgnore++;
 	}
 	return;
 }
@@ -631,7 +635,7 @@ lim_send_sme_probe_req_ind(tpAniSirGlobal pMac,
 			   uint32_t ProbeReqIELen, tpPESession psessionEntry)
 {
 	tSirSmeProbeReqInd *pSirSmeProbeReqInd;
-	struct scheduler_msg msgQ = {0};
+	tSirMsgQ msgQ;
 
 	pSirSmeProbeReqInd = qdf_mem_malloc(sizeof(tSirSmeProbeReqInd));
 	if (NULL == pSirSmeProbeReqInd) {
@@ -667,7 +671,7 @@ lim_send_sme_probe_req_ind(tpAniSirGlobal pMac,
 	qdf_mem_copy(pSirSmeProbeReqInd->WPSPBCProbeReq.probeReqIE, pProbeReqIE,
 		     ProbeReqIELen);
 
-	if (lim_sys_process_mmh_msg_api(pMac, &msgQ, ePROT) != QDF_STATUS_SUCCESS)
+	if (lim_sys_process_mmh_msg_api(pMac, &msgQ, ePROT) != eSIR_SUCCESS)
 		pe_err("couldnt send the probe req to hdd");
 
 } /*** end lim_send_sme_probe_req_ind() ***/

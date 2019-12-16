@@ -193,8 +193,7 @@ static void lim_delete_sta_util(tpAniSirGlobal mac_ctx, tpDeleteStaContext msg,
  *
  * Return: none
  */
-void lim_delete_sta_context(tpAniSirGlobal mac_ctx,
-			    struct scheduler_msg *lim_msg)
+void lim_delete_sta_context(tpAniSirGlobal mac_ctx, tpSirMsgQ lim_msg)
 {
 	tpDeleteStaContext msg = (tpDeleteStaContext) lim_msg->bodyptr;
 	tpPESession session_entry;
@@ -374,7 +373,7 @@ lim_tear_down_link_with_ap(tpAniSirGlobal pMac, uint8_t sessionId,
 	 */
 	psessionEntry->pmmOffloadInfo.bcnmiss = false;
 
-	pe_info("No ProbeRsp from AP after HB failure. Tearing down link");
+	pe_debug("No ProbeRsp from AP after HB failure. Tearing down link");
 
 	/* Announce loss of link to Roaming algorithm */
 	/* and cleanup by sending SME_DISASSOC_REQ to SME */
@@ -399,13 +398,13 @@ lim_tear_down_link_with_ap(tpAniSirGlobal pMac, uint8_t sessionId,
 			     pStaDs->staAddr, sizeof(tSirMacAddr));
 
 	/*
-	* if send_deauth_before_con is enabled and reasoncode is
+	* if sendDeauthBeforeCon is enabled and reasoncode is
 	* Beacon Missed Store the MAC of AP in the flip flop
 	* buffer. This MAC will be used to send Deauth before
 	* connection, if we connect to same AP after HB failure.
 	*/
-	if (pMac->roam.configParam.send_deauth_before_con &&
-	    eSIR_BEACON_MISSED == reasonCode) {
+	if (pMac->roam.configParam.sendDeauthBeforeCon &&
+		eSIR_BEACON_MISSED == reasonCode) {
 		int apCount = pMac->lim.gLimHeartBeatApMacIndex;
 
 		if (pMac->lim.gLimHeartBeatApMacIndex)
@@ -476,16 +475,15 @@ void lim_handle_heart_beat_failure(tpAniSirGlobal mac_ctx,
 	    (session->limMlmState == eLIM_MLM_LINK_ESTABLISHED_STATE) &&
 	    (session->limSmeState != eLIM_SME_WT_DISASSOC_STATE) &&
 	    (session->limSmeState != eLIM_SME_WT_DEAUTH_STATE)) {
-		if (!mac_ctx->sys.gSysEnableLinkMonitorMode) {
-			goto hb_handler_fail;
-		}
+		if (!mac_ctx->sys.gSysEnableLinkMonitorMode)
+			return;
 
 		/* Ignore HB if channel switch is in progress */
 		if (session->gLimSpecMgmt.dot11hChanSwState ==
 		   eLIM_11H_CHANSW_RUNNING) {
 			pe_debug("Ignore Heartbeat failure as Channel switch is in progress");
 			session->pmmOffloadInfo.bcnmiss = false;
-			goto hb_handler_fail;
+			return;
 		}
 		/* Beacon frame not received within heartbeat timeout. */
 		pe_warn("Heartbeat Failure");
@@ -497,7 +495,7 @@ void lim_handle_heart_beat_failure(tpAniSirGlobal mac_ctx,
 		 * down the link
 		 */
 		curr_chan = session->currentOperChannel;
-		if (!lim_isconnected_on_dfs_channel(mac_ctx, curr_chan)) {
+		if (!lim_isconnected_on_dfs_channel(curr_chan)) {
 			/* Detected continuous Beacon Misses */
 			session->LimHBFailureStatus = true;
 
@@ -526,7 +524,13 @@ void lim_handle_heart_beat_failure(tpAniSirGlobal mac_ctx,
 					session->dot11mode, NULL, NULL);
 			}
 		} else {
-			pe_debug("HB missed from AP on DFS channel");
+			pe_debug("HB missed from AP on DFS chanel moving to passive");
+			if (curr_chan < SIR_MAX_24G_5G_CHANNEL_RANGE) {
+				lim_covert_channel_scan_type(mac_ctx, curr_chan,
+					false);
+				mac_ctx->lim.dfschannelList.
+					timeStamp[curr_chan] = 0;
+			}
 			/*
 			 * Connected on DFS channel so should not send the
 			 * probe request tear down the link directly
@@ -544,14 +548,7 @@ void lim_handle_heart_beat_failure(tpAniSirGlobal mac_ctx,
 		 */
 		pe_debug("received heartbeat timeout in state %X",
 			session->limMlmState);
-		lim_print_mlm_state(mac_ctx, LOG1, session->limMlmState);
+		lim_print_mlm_state(mac_ctx, LOGD, session->limMlmState);
 		mac_ctx->lim.gLimHBfailureCntInOtherStates++;
 	}
-
-hb_handler_fail:
-	if (mac_ctx->sme.tx_queue_cb)
-		mac_ctx->sme.tx_queue_cb(mac_ctx->hdd_handle,
-					 session->smeSessionId,
-					 WLAN_WAKE_ALL_NETIF_QUEUE,
-					 WLAN_CONTROL_PATH);
 }

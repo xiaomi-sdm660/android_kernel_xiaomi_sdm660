@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2017 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -45,15 +45,13 @@
  * Return: Success or Failure
  */
 
-QDF_STATUS wma_post_ctrl_msg(tpAniSirGlobal pMac, struct scheduler_msg *pMsg)
+tSirRetStatus wma_post_ctrl_msg(tpAniSirGlobal pMac, tSirMsgQ *pMsg)
 {
 	if (QDF_STATUS_SUCCESS !=
-	    scheduler_post_message(QDF_MODULE_ID_WMA,
-				   QDF_MODULE_ID_WMA,
-				   QDF_MODULE_ID_WMA, pMsg))
-		return QDF_STATUS_E_FAILURE;
+	    cds_mq_post_message(QDF_MODULE_ID_WMA, (cds_msg_t *) pMsg))
+		return eSIR_FAILURE;
 	else
-		return QDF_STATUS_SUCCESS;
+		return eSIR_SUCCESS;
 }
 
 /**
@@ -64,10 +62,9 @@ QDF_STATUS wma_post_ctrl_msg(tpAniSirGlobal pMac, struct scheduler_msg *pMsg)
  * Return: Success or Failure
  */
 
-static QDF_STATUS wma_post_cfg_msg(tpAniSirGlobal pMac,
-				   struct scheduler_msg *pMsg)
+static tSirRetStatus wma_post_cfg_msg(tpAniSirGlobal pMac, tSirMsgQ *pMsg)
 {
-	QDF_STATUS rc = QDF_STATUS_SUCCESS;
+	tSirRetStatus rc = eSIR_SUCCESS;
 
 	do {
 		/*
@@ -76,7 +73,7 @@ static QDF_STATUS wma_post_cfg_msg(tpAniSirGlobal pMac,
 		 */
 
 		cfg_process_mb_msg(pMac, (tSirMbMsg *) pMsg->bodyptr);
-		rc = QDF_STATUS_SUCCESS;
+		rc = eSIR_SUCCESS;
 	} while (0);
 
 	return rc;
@@ -99,10 +96,10 @@ static QDF_STATUS wma_post_cfg_msg(tpAniSirGlobal pMac,
  * Return: success/error code
  */
 
-QDF_STATUS u_mac_post_ctrl_msg(void *pSirGlobal, tSirMbMsg *pMb)
+tSirRetStatus u_mac_post_ctrl_msg(void *pSirGlobal, tSirMbMsg *pMb)
 {
-	struct scheduler_msg msg = {0};
-	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	tSirMsgQ msg;
+	tSirRetStatus status = eSIR_SUCCESS;
 	tpAniSirGlobal pMac = (tpAniSirGlobal) pSirGlobal;
 
 	msg.type = pMb->type;
@@ -126,28 +123,20 @@ QDF_STATUS u_mac_post_ctrl_msg(void *pSirGlobal, tSirMbMsg *pMb)
 		status = sme_post_pe_message(pMac, &msg);
 		break;
 
+	case SIR_PTT_MSG_TYPES_BEGIN:
+		qdf_mem_free(msg.bodyptr);
+		break;
+
 	default:
 		WMA_LOGD("Unknown message type = 0x%X\n", msg.type);
 		qdf_mem_free(msg.bodyptr);
-		return QDF_STATUS_E_FAILURE;
+		return eSIR_FAILURE;
 	}
 
-	if (status != QDF_STATUS_SUCCESS)
+	if (status != eSIR_SUCCESS)
 		qdf_mem_free(msg.bodyptr);
 
 	return status;
 
 } /* u_mac_post_ctrl_msg() */
 
-QDF_STATUS umac_send_mb_message_to_mac(void *msg)
-{
-	void *mac_handle = cds_get_context(QDF_MODULE_ID_SME);
-
-	if (!mac_handle) {
-		QDF_TRACE_ERROR(QDF_MODULE_ID_SYS, "Invalid MAC handle");
-		qdf_mem_free(msg);
-		return QDF_STATUS_E_FAILURE;
-	}
-
-	return u_mac_post_ctrl_msg(mac_handle, msg);
-}
