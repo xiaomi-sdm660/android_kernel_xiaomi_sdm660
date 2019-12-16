@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,6 +19,7 @@
 #define QSEECOM_KEY_ID_SIZE   32
 
 #define QSEOS_RESULT_FAIL_SEND_CMD_NO_THREAD  -19   /*0xFFFFFFED*/
+#define QSEOS_RESULT_FAIL_APP_ALREADY_LOADED  -38   /*0xFFFFFFDA*/
 #define QSEOS_RESULT_FAIL_UNSUPPORTED_CE_PIPE -63
 #define QSEOS_RESULT_FAIL_KS_OP               -64
 #define QSEOS_RESULT_FAIL_KEY_ID_EXISTS       -65
@@ -351,7 +352,8 @@ struct qseecom_continue_blocked_request_ireq {
 
 /*----------------------------------------------------------------------------
  * Owning Entity IDs (defined by ARM SMC doc)
- * -------------------------------------------------------------------------*/
+ * ---------------------------------------------------------------------------
+ */
 #define TZ_OWNER_ARM                     0     /** ARM Architecture call ID */
 #define TZ_OWNER_CPU                     1     /** CPU service call ID */
 #define TZ_OWNER_SIP                     2     /** SIP service call ID */
@@ -379,18 +381,18 @@ struct qseecom_continue_blocked_request_ireq {
 #define TZ_OWNER_OS_RESERVED_13          62
 #define TZ_OWNER_OS_RESERVED_14          63
 
-#define TZ_SVC_INFO                      6     /* Misc. information services */
+#define TZ_SVC_INFO                      6    /* Misc. information services */
 
 /** Trusted Application call groups */
-#define TZ_SVC_APP_ID_PLACEHOLDER        0     /* SVC bits will contain App ID */
+#define TZ_SVC_APP_ID_PLACEHOLDER        0    /* SVC bits will contain App ID */
 
 /** General helper macro to create a bitmask from bits low to high. */
 #define TZ_MASK_BITS(h, l)     ((0xffffffff >> (32 - ((h - l) + 1))) << l)
 
-/**
-   Macro used to define an SMC ID based on the owner ID,
-   service ID, and function number.
-*/
+/*
+ * Macro used to define an SMC ID based on the owner ID,
+ * service ID, and function number.
+ */
 #define TZ_SYSCALL_CREATE_SMC_ID(o, s, f) \
 	((uint32_t)((((o & 0x3f) << 24) | (s & 0xff) << 8) | (f & 0xff)))
 
@@ -411,8 +413,8 @@ struct qseecom_continue_blocked_request_ireq {
 	((p9&TZ_SYSCALL_PARAM_TYPE_MASK)<<20)+ \
 	((p10&TZ_SYSCALL_PARAM_TYPE_MASK)<<22))
 
-/**
-   Macros used to create the Parameter ID associated with the syscall
+/*
+ * Macros used to create the Parameter ID associated with the syscall
  */
 #define TZ_SYSCALL_CREATE_PARAM_ID_0 0
 #define TZ_SYSCALL_CREATE_PARAM_ID_1(p1) \
@@ -436,8 +438,8 @@ struct qseecom_continue_blocked_request_ireq {
 #define TZ_SYSCALL_CREATE_PARAM_ID_10(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10) \
 	TZ_SYSCALL_CREATE_PARAM_ID(10, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10)
 
-/**
-   Macro used to obtain the Parameter ID associated with the syscall
+/*
+ * Macro used to obtain the Parameter ID associated with the syscall
  */
 #define TZ_SYSCALL_GET_PARAM_ID(CMD_ID)        CMD_ID ## _PARAM_ID
 
