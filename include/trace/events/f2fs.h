@@ -45,6 +45,7 @@ TRACE_DEFINE_ENUM(CP_SYNC);
 TRACE_DEFINE_ENUM(CP_RECOVERY);
 TRACE_DEFINE_ENUM(CP_DISCARD);
 TRACE_DEFINE_ENUM(CP_TRIMMED);
+TRACE_DEFINE_ENUM(CP_PAUSE);
 
 #define show_block_type(type)						\
 	__print_symbolic(type,						\
@@ -121,11 +122,12 @@ TRACE_DEFINE_ENUM(CP_TRIMMED);
 
 #define show_cpreason(type)						\
 	__print_symbolic(type,						\
-		{ CP_UMOUNT,	"Umount" },				\
+		{ CP_UMOUNT,    "Umount" },                             \
 		{ CP_FASTBOOT,	"Fastboot" },				\
 		{ CP_SYNC,	"Sync" },				\
 		{ CP_RECOVERY,	"Recovery" },				\
 		{ CP_DISCARD,	"Discard" },				\
+		{ CP_PAUSE,	"Pause" },				\
 		{ CP_UMOUNT | CP_TRIMMED,	"Umount,Trimmed" })
 
 #define show_fsync_cpreason(type)					\
