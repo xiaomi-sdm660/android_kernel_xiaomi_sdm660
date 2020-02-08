@@ -144,6 +144,7 @@ int msm_camera_fill_vreg_params(struct camera_vreg_t *cam_vreg,
 					break;
 				}
 			}
+			break;
 
 		case CAM_V_CUSTOM2:
 			for (j = 0; j < num_vreg; j++) {
@@ -1752,4 +1753,3 @@ int msm_camera_power_down(struct msm_camera_power_ctrl_t *ctrl,
 	CDBG("%s exit\n", __func__);
 	return 0;
 }
-
