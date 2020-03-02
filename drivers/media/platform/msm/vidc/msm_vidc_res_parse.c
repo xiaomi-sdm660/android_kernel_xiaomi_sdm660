@@ -517,8 +517,7 @@ error:
 	return rc;
 }
 
-/* A comparator to compare loads (needed later on) */
-static int cmp_load_freq_table(const void *a, const void *b)
+static int cmp(const void *a, const void *b)
 {
 	/* want to sort in reverse so flip the comparison */
 	return ((struct load_freq_table *)b)->load -
