@@ -40,11 +40,6 @@
 
 #define XDATA_SECTOR_SIZE   256
 
-
-extern int32_t Init_BootLoader(void);
-extern int32_t Resume_PD(void);
-
-
 static uint8_t xdata_tmp[2048] = {0};
 static int32_t xdata[2048] = {0};
 static int32_t xdata_i[2048] = {0};
@@ -592,6 +587,110 @@ static const struct file_operations nvt_diff_fops = {
 	.llseek = seq_lseek,
 	.release = seq_release,
 };
+
+
+/*******************************************************
+Description:
+	Novatek touchscreen initial bootloader and flash
+	block function.
+
+return:
+	Executive outcomes. 0---succeed. negative---failed.
+*******************************************************/
+int32_t Init_BootLoader(void)
+{
+	uint8_t buf[64] = {0};
+	int32_t ret = 0;
+	int32_t retry = 0;
+
+
+	nvt_sw_reset_idle();
+
+
+	buf[0] = 0x00;
+	buf[1] = 0x00;
+	buf[2] = I2C_FW_Address;
+	ret = CTP_I2C_WRITE(ts->client, I2C_HW_Address, buf, 3);
+	if (ret < 0) {
+		NVT_ERR("Inittial Flash Block error!!(%d)\n", ret);
+		return ret;
+	}
+
+
+	retry = 0;
+	while(1) {
+		msleep(1);
+		buf[0] = 0x00;
+		buf[1] = 0x00;
+		ret = CTP_I2C_READ(ts->client, I2C_HW_Address, buf, 2);
+		if (ret < 0) {
+			NVT_ERR("Check 0xAA (Inittial Flash Block) error!!(%d)\n", ret);
+			return ret;
+		}
+		if (buf[1] == 0xAA) {
+			break;
+		}
+		retry++;
+		if (unlikely(retry > 20)) {
+			NVT_ERR("Check 0xAA (Inittial Flash Block) error!! status=0x%02X\n", buf[1]);
+			return -1;
+		}
+	}
+
+	NVT_LOG("Init OK \n");
+	msleep(20);
+
+	return 0;
+}
+
+/*******************************************************
+Description:
+	Novatek touchscreen resume from deep power down function.
+
+return:
+	Executive outcomes. 0---succeed. negative---failed.
+*******************************************************/
+int32_t Resume_PD(void)
+{
+	uint8_t buf[8] = {0};
+	int32_t ret = 0;
+	int32_t retry = 0;
+
+
+	buf[0] = 0x00;
+	buf[1] = 0xAB;
+	ret = CTP_I2C_WRITE(ts->client, I2C_HW_Address, buf, 2);
+	if (ret < 0) {
+		NVT_ERR("Write Enable error!!(%d)\n", ret);
+		return ret;
+	}
+
+
+	retry = 0;
+	while(1) {
+		msleep(1);
+		buf[0] = 0x00;
+		buf[1] = 0x00;
+		ret = CTP_I2C_READ(ts->client, I2C_HW_Address, buf, 2);
+		if (ret < 0) {
+			NVT_ERR("Check 0xAA (Resume Command) error!!(%d)\n", ret);
+			return ret;
+		}
+		if (buf[1] == 0xAA) {
+			break;
+		}
+		retry++;
+		if (unlikely(retry > 20)) {
+			NVT_ERR("Check 0xAA (Resume Command) error!! status=0x%02X\n", buf[1]);
+			return -1;
+		}
+	}
+	msleep(10);
+
+	NVT_LOG("Resume PD OK\n");
+	return 0;
+}
+
 static int32_t nvt_get_oem_data(uint8_t *data, uint32_t flash_address, int32_t size)
 {
 	uint8_t buf[64] = {0};
