@@ -36,7 +36,7 @@
 
 union power_supply_propval lct_therm_lvl_reserved;
 union power_supply_propval lct_therm_level;
-#if defined(CONFIG_MACH_XIAOMI_WAYNE) || defined(CONFIG_MACH_XIAOMI_WHYRED)
+#if defined(CONFIG_MACH_XIAOMI_LAVENDER) || defined(CONFIG_MACH_XIAOMI_WAYNE) || defined(CONFIG_MACH_XIAOMI_WHYRED)
 union power_supply_propval lct_therm_call_level = {4,};
 #elif defined(CONFIG_MACH_XIAOMI_TULIP)
 union power_supply_propval lct_therm_call_level = {5,};
@@ -2728,6 +2728,19 @@ static void thermal_fb_notifier_resume_work(struct work_struct *work)
 		smblib_set_prop_system_temp_level(chg,&lct_therm_call_level);
 	else
 		smblib_set_prop_system_temp_level(chg,&lct_therm_lvl_reserved);
+	LctThermal = 0;
+#elif defined(CONFIG_MACH_XIAOMI_LAVENDER)
+	if ((lct_backlight_off) && (LctIsInCall == 0))
+	{
+		if (lct_therm_lvl_reserved.intval >= 2)
+			smblib_set_prop_system_temp_level(chg, &lct_therm_globe_level);
+		else
+			smblib_set_prop_system_temp_level(chg, &lct_therm_lvl_reserved);
+	}
+	else if (LctIsInCall == 1)
+		smblib_set_prop_system_temp_level(chg, &lct_therm_call_level);
+	else
+		smblib_set_prop_system_temp_level(chg, &lct_therm_lvl_reserved);
 	LctThermal = 0;
 #else
 	if((lct_backlight_off) && (LctIsInCall == 0) && (hwc_check_india == 0))
