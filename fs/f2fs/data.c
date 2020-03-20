@@ -3015,7 +3015,8 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 			iter, offset,
 			rw == WRITE ? get_data_block_dio_write :
 			get_data_block_dio, NULL, f2fs_dio_submit_bio,
-			DIO_LOCKING | DIO_SKIP_HOLES);
+			rw == WRITE ? DIO_LOCKING | DIO_SKIP_HOLES :
+			DIO_SKIP_HOLES);
 
 	if (do_opu)
 		up_read(&fi->i_gc_rwsem[READ]);
