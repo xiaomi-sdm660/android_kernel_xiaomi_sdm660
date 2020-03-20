@@ -329,7 +329,7 @@ struct msm_vcm_id_info_t {
 	enum msm_cci_i2c_master_t cci_i2c_master;
 };
 
-#ifdef CONFIG_MACH_XIAOMI_LAVENDER
+#if defined CONFIG_MACH_XIAOMI_LAVENDER || defined CONFIG_MACH_XIAOMI_TULIP
 struct msm_lens_id_info_t {
     unsigned short eeprom_slave_addr;
     unsigned short lens_id_addr;
@@ -355,7 +355,7 @@ struct msm_camera_sensor_slave_info {
 #ifdef CONFIG_MACH_XIAOMI_SDM660
 	struct msm_vendor_id_info_t vendor_id_info;
 	struct msm_vcm_id_info_t vcm_id_info;
-#ifdef CONFIG_MACH_XIAOMI_LAVENDER
+#if defined CONFIG_MACH_XIAOMI_LAVENDER || defined CONFIG_MACH_XIAOMI_TULIP
     struct msm_lens_id_info_t lens_id_info;
 #endif
 #endif
