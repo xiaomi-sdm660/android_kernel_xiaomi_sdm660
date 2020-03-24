@@ -734,7 +734,7 @@ static int fg_get_battery_temp(struct fg_chip *chip, int *val)
        quiet_them = thermal_zone_get_zone_by_name("quiet_therm");
        if (quiet_them)
                rc = thermal_zone_get_temp(quiet_them, &temp);
-       temp = (temp - 3) * 10;
+       temp = temp * 10;
 #endif
 
 	*val = temp;
