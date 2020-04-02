@@ -48,19 +48,7 @@
 #include <linux/earlysuspend.h>
 #endif
 
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 38))
-#define KERNEL_ABOVE_2_6_38
-#endif
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
-#define KERNEL_ABOVE_3_6
-#endif
-
-#ifdef KERNEL_ABOVE_2_6_38
 #define sstrtoul(...) kstrtoul(__VA_ARGS__)
-#else
-#define sstrtoul(...) strict_strtoul(__VA_ARGS__)
-#endif
 /*
 #define F51_DISCRETE_FORCE
 #ifdef F51_DISCRETE_FORCE
