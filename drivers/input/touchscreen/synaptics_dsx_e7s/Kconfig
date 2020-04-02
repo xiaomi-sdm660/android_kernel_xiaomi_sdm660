@@ -84,15 +84,3 @@ config TOUCHSCREEN_SYNAPTICS_DSX_E7S_PROXIMITY
 
 		To compile this driver as a module, choose M here: the
 		module will be called synaptics_dsx_proximity.
-
-
-config TOUCHSCREEN_SYNAPTICS_DSX_E7S_TEST_REPORTING
-	tristate "Synaptics DSX touchscreen selftest module"
-	depends on TOUCHSCREEN_SYNAPTICS_DSX_E7S_CORE
-	help
-	  Say Y here to enable support for proximity functionalities.
-
-	  If unsure, say N.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called synaptics_dsx_test_reporting.
