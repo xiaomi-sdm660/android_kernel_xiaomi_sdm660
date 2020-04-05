@@ -40,7 +40,7 @@ struct msm_camera_sensor_slave_info32 {
 #ifdef CONFIG_MACH_XIAOMI_SDM660
 	struct msm_vendor_id_info_t vendor_id_info;
 	struct msm_vcm_id_info_t vcm_id_info;
-#if defined CONFIG_MACH_XIAOMI_LAVENDER || defined CONFIG_MACH_XIAOMI_TULIP
+#ifdef CONFIG_MACH_XIAOMI_NEW_CAMERA
     struct msm_lens_id_info_t lens_id_info;
 #endif
 #endif

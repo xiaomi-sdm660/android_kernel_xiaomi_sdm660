@@ -63,4 +63,10 @@ menu "Xiaomi board selection"
         help
           Support for XIaomi MI Pad 4 variant
 
+config MACH_XIAOMI_NEW_CAMERA
+	bool "Xiaomi new camera blobs"
+	depends on MACH_XIAOMI_SDM660
+	help
+	  Support for new camera blobs
+
 endmenu
