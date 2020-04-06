@@ -47,8 +47,6 @@ extern bool focal_gesture_mode;
 #elif defined(CONFIG_MACH_XIAOMI_WHYRED)
 extern bool synaptics_gesture_func_on;
 #endif
-
-bool ESD_TE_status = false;
 #endif
 
 DEFINE_LED_TRIGGER(bl_led_trigger);
@@ -1326,12 +1324,6 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 			goto end;
 	}
 
-#ifdef CONFIG_MACH_LONGCHEER
-	if (ESD_TE_status)
-		printk("%s: esd check skip lcd suspend \n", __func__);
-	else
-#endif
-
 	if (ctrl->off_cmds.cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, &ctrl->off_cmds, CMD_REQ_COMMIT);
 
@@ -2136,10 +2128,6 @@ static int mdss_dsi_gen_read_status(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 	if (!mdss_dsi_cmp_panel_reg_v2(ctrl_pdata)) {
 		pr_err("%s: Read back value from panel is incorrect\n",
 							__func__);
-#ifdef CONFIG_MACH_LONGCHEER
-	if ((strstr(g_lcd_id,"nt36672") != NULL)||(strstr(g_lcd_id,"nt36672a") != NULL)||(strstr(g_lcd_id,"td4320") != NULL))
-		ESD_TE_status = true;
-#endif
 		return -EINVAL;
 	} else {
 		return 1;
