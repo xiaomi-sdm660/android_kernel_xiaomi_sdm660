@@ -224,10 +224,6 @@ vreg_get_fail:
 } /* msm_dss_config_vreg */
 EXPORT_SYMBOL(msm_dss_config_vreg);
 
-#ifdef CONFIG_MACH_LONGCHEER
-extern bool ESD_TE_status;
-#endif
-
 int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg, int enable)
 {
 	int i = 0, rc = 0;
@@ -286,13 +282,6 @@ int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg, int enable)
 	} else {
 		for (i = num_vreg-1; i >= 0; i--) {
 #ifdef CONFIG_MACH_LONGCHEER
-			if(ESD_TE_status){
-				printk(KERN_ERR "panel esd check recovery \n");
-				if((strcmp(in_vreg[i].vreg_name,"wqhd-vddio")==0) ) {
-						printk(KERN_ERR "panel '%s' power continus supply\n",in_vreg[i].vreg_name);
-						continue;
-				}
-			}
 			/* vddio lab ibb continus supply */
 #ifdef CONFIG_MACH_XIAOMI_LAVENDER
 			if (enable_gesture_mode || synaptics_gesture_enable_flag) {
