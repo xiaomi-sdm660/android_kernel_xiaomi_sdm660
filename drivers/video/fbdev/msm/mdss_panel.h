@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,6 +19,9 @@
 #include <linux/stringify.h>
 #include <linux/types.h>
 #include <linux/debugfs.h>
+#include <linux/of_gpio.h>
+#include <linux/gpio.h>
+#include <linux/interrupt.h>
 
 /* panel id type */
 struct panel_id {
@@ -800,6 +803,8 @@ struct mdss_panel_info {
 	u32 rst_seq_len;
 	u32 vic; /* video identification code */
 	u32 deep_color;
+	bool is_ce_mode; /* CE video format */
+	u8 csc_type;
 	struct mdss_rect roi;
 	struct mdss_dsi_dual_pu_roi dual_roi;
 	int pwm_pmic_gpio;
@@ -990,6 +995,7 @@ struct mdss_panel_data {
 	 * and teardown.
 	 */
 	int (*event_handler) (struct mdss_panel_data *pdata, int e, void *arg);
+	enum mdss_mdp_csc_type (*get_csc_type)(struct mdss_panel_data *pdata);
 	struct device_node *(*get_fb_node)(struct platform_device *pdev);
 
 	struct list_head timings_list;
@@ -1007,6 +1013,7 @@ struct mdss_panel_data {
 	bool panel_disable_mode;
 
 	int panel_te_gpio;
+	bool is_te_irq_enabled;
 	struct completion te_done;
 };
 
@@ -1017,6 +1024,23 @@ struct mdss_panel_debugfs_info {
 	u32 override_flag;
 	struct mdss_panel_debugfs_info *next;
 };
+
+static inline void panel_update_te_irq(struct mdss_panel_data *pdata,
+					bool enable)
+{
+	if (!pdata) {
+		pr_err("Invalid Params\n");
+		return;
+	}
+
+	if (enable && !pdata->is_te_irq_enabled) {
+		enable_irq(gpio_to_irq(pdata->panel_te_gpio));
+		pdata->is_te_irq_enabled = true;
+	} else if (!enable && pdata->is_te_irq_enabled) {
+		disable_irq(gpio_to_irq(pdata->panel_te_gpio));
+		pdata->is_te_irq_enabled = false;
+	}
+}
 
 /**
  * mdss_get_panel_framerate() - get panel frame rate based on panel information
