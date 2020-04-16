@@ -1,0 +1,10 @@
+#include "dsi-panel-nt51021-boe-10wu-video.dtsi"
+#include "dsi-panel-nt51021-boe-video.dtsi"
+#include "clover-overlay.dtsi"
+
+/{
+	mtp_batterydata: qcom,battery-data {
+		#include "batterydata-zql5018-6000mah.dtsi"
+		#include "batterydata-zql6019-8600mah.dtsi"
+	};
+};
