@@ -31,4 +31,43 @@
     qcom,msm-mbhc-moist-cfg = <0>, <0>, <3>;
 };
 
+&tlmm {
+	hall_int_active:hall_int_active {
+		mux {
+		          pins = "gpio75";
+		          function = "gpio";
+		};
+		config{
+		          pins = "gpio75";
+	                  drive-strength = <6>;
+	                  bias-pull-up;
+	            };
+        };
+	hall_int_suspend: hall_int_suspend {
+		mux {
+		          pins = "gpio75";
+		          function = "gpio";
+		};
+		config{
+		          pins = "gpio75";
+		          drive-strength = <6>;
+		          bias-pull-up;
+		};
+        };
+};
+&soc {
+	hall_switch {
+
+	    compatible = "hall-switch,och175";
+	    pinctrl-names = "hall_active","hall_suspend";
+	    pinctrl-0 = <&hall_int_active>;
+	    pinctrl-1 = <&hall_int_suspend>;
+	    //interrupt-parent = <&msm_gpio>;
+	    //interrupts = <0 107 3>;
+	    vdd-io-supply= <&pm660_l8>;
+	    interrupt-names = "hall_irq";
+	    hall,irq-gpio = <&tlmm 75 0x0>;
+	};
+};
+
 #include "xiaomi/clover.dtsi"
