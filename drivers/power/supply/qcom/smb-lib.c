@@ -60,7 +60,7 @@ struct g_nvt_data {
 };
 extern struct g_nvt_data g_nvt;
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 extern struct smb_charger *smbchg_dev;
 enum temp_state_enum {
 	TEMP_POS_ERROR = 0,
@@ -958,7 +958,7 @@ static void smblib_uusb_removal(struct smb_charger *chg)
 
 	cancel_delayed_work_sync(&chg->hvdcp_detect_work);
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	cancel_delayed_work_sync(&chg->update_current_work);
 #endif
 	if (chg->wa_flags & QC_AUTH_INTERRUPT_WA_BIT) {
@@ -1428,7 +1428,7 @@ static int smblib_hvdcp_enable_vote_callback(struct votable *votable,
 	 * This ensures only qc 2.0 detection runs but no vbus
 	 * negotiation happens.
 	 */
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	val = 0;
 #else
 	if (!hvdcp_enable)
@@ -1988,7 +1988,7 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 #ifdef CONFIG_MACH_LONGCHEER
 	int batt_health;
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	static int batt_temp;
 	batt_temp = get_prop_batt_temp(smbchg_dev);
 #endif
@@ -2034,7 +2034,7 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 			break;
 		default:
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 			if (get_prop_usb_present(smbchg_dev) && batt_temp > 450 && batt_temp <= 600) {
 				val->intval = POWER_SUPPLY_STATUS_CHARGING;
 			} else {
@@ -2081,7 +2081,7 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 			val->intval = POWER_SUPPLY_STATUS_CHARGING;
 		else
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 		if (get_prop_usb_present(smbchg_dev) && batt_temp > 450 && batt_temp <= 600) {
 			val->intval = POWER_SUPPLY_STATUS_CHARGING;
 			set_prop_charging_enable(smbchg_dev,false);
@@ -2096,7 +2096,7 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 		break;
 #endif
 	case DISABLE_CHARGE:
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 		if (get_prop_usb_present(smbchg_dev) && batt_temp > 450 && batt_temp <= 600) {
 			val->intval = POWER_SUPPLY_STATUS_CHARGING;
 			break;
@@ -2147,7 +2147,7 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 	qnovo_en = (bool)(pt_en_cmd & QNOVO_PT_ENABLE_CMD_BIT);
 
 	/* ignore stat7 when qnovo is enabled */
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	if (!qnovo_en && !stat) {
 		if (get_prop_usb_present(smbchg_dev) && batt_temp > 450 && batt_temp <= 600)
 			val->intval = POWER_SUPPLY_STATUS_CHARGING;
@@ -2168,7 +2168,7 @@ int smblib_get_prop_batt_charge_type(struct smb_charger *chg,
 	int rc;
 	u8 stat;
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	static int batt_temp;
 	static int batt_vol;
 	batt_temp = get_prop_batt_temp(smbchg_dev);
@@ -2197,7 +2197,7 @@ int smblib_get_prop_batt_charge_type(struct smb_charger *chg,
 		val->intval = POWER_SUPPLY_CHARGE_TYPE_NONE;
 	}
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	if (get_prop_usb_present(smbchg_dev) && (batt_chg_type_flag == 1)){
 	val->intval = POWER_SUPPLY_CHARGE_TYPE_NONE;
 	}
@@ -2213,7 +2213,7 @@ int smblib_get_prop_batt_health(struct smb_charger *chg,
 	int rc;
 	int effective_fv_uv;
 	u8 stat;
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	static int batt_temp;
 	batt_temp = get_prop_batt_temp(smbchg_dev);
 #endif
@@ -2256,7 +2256,7 @@ int smblib_get_prop_batt_health(struct smb_charger *chg,
 	else
 		val->intval = POWER_SUPPLY_HEALTH_GOOD;
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	if (batt_temp <= 0)
 	val->intval = POWER_SUPPLY_HEALTH_COLD;
 	else if (batt_temp > 0 && batt_temp <= 150)
@@ -2300,7 +2300,7 @@ int smblib_get_prop_input_current_limited(struct smb_charger *chg,
 	return 0;
 }
 
-#if defined(CONFIG_MACH_MI) || defined(CONFIG_XIAOMI_CLOVER)
+#if defined(CONFIG_MACH_MI) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 int smblib_get_prop_batt_voltage_now(struct smb_charger *chg,
 				     union power_supply_propval *val)
 {
@@ -3210,7 +3210,7 @@ int smblib_get_prop_typec_cc_orientation(struct smb_charger *chg,
 		val->intval =
 			(bool)(chg->typec_status[3] & CC_ORIENTATION_BIT) + 1;
 	else
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 		val->intval = 0;
 	if (!get_prop_usb_present(smbchg_dev))
 #endif
@@ -3409,7 +3409,7 @@ int smblib_get_prop_die_health(struct smb_charger *chg,
 }
 
 #define SDP_CURRENT_UA			500000
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 #define CDP_CURRENT_UA			2000000
 #else
 #define CDP_CURRENT_UA			1500000
@@ -3428,7 +3428,7 @@ int smblib_get_prop_die_health(struct smb_charger *chg,
 #define HVDCP_CURRENT_UA		2750000
 #define HVDCP2_CURRENT_UA		1500000
 #else
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 #define DCP_CURRENT_UA			2000000
 #else
 #define DCP_CURRENT_UA			1500000
@@ -3502,7 +3502,7 @@ static int smblib_handle_usb_current(struct smb_charger *chg,
 					int usb_current)
 {
 	int rc = 0, rp_ua, typec_mode;
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	u8 stat;
 	bool legacy;
 #endif
@@ -3524,7 +3524,7 @@ static int smblib_handle_usb_current(struct smb_charger *chg,
 #else
 			rp_ua = get_rp_based_dcp_current(chg, typec_mode);
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 			rc = smblib_read(chg, TYPE_C_STATUS_5_REG, &stat);
 			if (rc < 0) {
 				smblib_err(chg, "Couldn't read typec stat5 rc = %d\n", rc);
@@ -4786,7 +4786,7 @@ static void monitor_boost_charge_work(struct work_struct *work)
 }
 #endif
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 int set_prop_charging_enable(struct smb_charger *chg,bool charger_limit_enbale)
 {
 	int rc;
@@ -5023,7 +5023,7 @@ void smblib_usb_plugin_hard_reset_locked(struct smb_charger *chg)
 #endif
 }
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 static void typec_disable_cmd_work(struct work_struct *work)
 {
 	int rc = 0;
@@ -5097,7 +5097,7 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 		smlib_set_parallel_charger_suspend(chg, false);
 #endif
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 		/* Schedule work to avoid BC 1.2 detection issue. */
 		schedule_delayed_work(&chg->typec_disable_cmd_work, msecs_to_jiffies(1500));
 #endif
@@ -5522,7 +5522,7 @@ static void smblib_force_legacy_icl(struct smb_charger *chg, int pst)
 			vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 1000000);
 		else
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 1000000);
 #else
 		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 100000);
@@ -5973,7 +5973,7 @@ static void typec_sink_removal(struct smb_charger *chg)
 	chg->boost_current_ua = 0;
 }
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 int smblib_get_chg_otg_present(struct smb_charger *chg,union power_supply_propval *val)
 {
 	val->intval = chg->otg_en;
@@ -6098,7 +6098,7 @@ static void smblib_handle_typec_removal(struct smb_charger *chg)
 #endif
 #endif
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	if (err_bat_temp_state == 1) {
 		bat_temp_state = TEMP_POS_ERROR;
 		last_bat_temp_state = TEMP_POS_ERROR;
@@ -6274,7 +6274,7 @@ static void smblib_handle_typec_insertion(struct smb_charger *chg)
 			smblib_err(chg, "Couldn't to enable DPDM rc=%d\n", rc);
 		typec_sink_removal(chg);
 	}
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	schedule_delayed_work(&smbchg_dev->update_current_work,msecs_to_jiffies(1000));
 #endif
 }
@@ -6325,7 +6325,7 @@ static void smblib_handle_typec_cc_state_change(struct smb_charger *chg)
 	if (chg->pr_swap_in_progress)
 		return;
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	cancel_delayed_work(&chg->typec_disable_cmd_work);
 #endif
 	typec_mode = smblib_get_prop_typec_mode(chg);
@@ -7290,7 +7290,7 @@ int smblib_init(struct smb_charger *chg)
 			smblib_check_vbus_work);
 	INIT_DELAYED_WORK(&chg->charger_type_recheck, smblib_charger_type_recheck);
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	INIT_DELAYED_WORK(&chg->typec_disable_cmd_work, typec_disable_cmd_work);
 	INIT_DELAYED_WORK(&chg->update_current_work, update_charge_current);
 #endif

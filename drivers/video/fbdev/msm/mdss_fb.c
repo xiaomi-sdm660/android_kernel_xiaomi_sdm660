@@ -55,7 +55,7 @@
 #include <linux/wakelock.h>
 #endif
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 #include <linux/mdss_io_util.h>
 #include <linux/wakelock.h>
 #endif
@@ -66,7 +66,7 @@
 #include "mdss_debug.h"
 #include "mdss_smmu.h"
 #include "mdss_mdp.h"
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 #include "mdss_dsi.h"
 extern struct mdss_dsi_ctrl_pdata *change_par_ctrl ;
 extern int change_par_buf;
@@ -145,7 +145,7 @@ static int mdss_fb_send_panel_event(struct msm_fb_data_type *mfd,
 static void mdss_fb_set_mdp_sync_pt_threshold(struct msm_fb_data_type *mfd,
 		int type);
 
-#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_XIAOMI_CLOVER)
+#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 #define WAIT_RESUME_TIMEOUT 200
 static struct fb_info *prim_fbi;
 static struct delayed_work prim_panel_work;
@@ -825,7 +825,7 @@ static int mdss_fb_blanking_mode_switch(struct msm_fb_data_type *mfd, int mode)
 	return 0;
 }
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 static ssize_t mdss_fb_change_dispparam(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t len)
 {
@@ -1125,7 +1125,7 @@ static DEVICE_ATTR(measured_fps, S_IRUGO | S_IWUSR | S_IWGRP,
 static DEVICE_ATTR(msm_fb_persist_mode, S_IRUGO | S_IWUSR,
 	mdss_fb_get_persist_mode, mdss_fb_change_persist_mode);
 static DEVICE_ATTR(idle_power_collapse, S_IRUGO, mdss_fb_idle_pc_notify, NULL);
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 static DEVICE_ATTR(msm_fb_dispparam, S_IRUGO | S_IWUSR,
 	mdss_fb_get_dispparam, mdss_fb_change_dispparam);
 #endif
@@ -1144,7 +1144,7 @@ static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_measured_fps.attr,
 	&dev_attr_msm_fb_persist_mode.attr,
 	&dev_attr_idle_power_collapse.attr,
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	&dev_attr_msm_fb_dispparam.attr,
 #endif
 	NULL,
@@ -1477,7 +1477,7 @@ void mdss_fb_prim_panel_recover(void)
 }
 #endif
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 static int ffbm_first_close_bl;
 #endif
 static int mdss_fb_probe(struct platform_device *pdev)
@@ -1562,7 +1562,7 @@ static int mdss_fb_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, mfd);
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	if (strnstr(saved_command_line, "androidboot.mode=ffbm-01",
 			strlen(saved_command_line))) {
 		ffbm_first_close_bl = true;
@@ -1698,7 +1698,7 @@ static int mdss_fb_remove(struct platform_device *pdev)
 	if (!mfd)
 		return -ENODEV;
 
-#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_XIAOMI_CLOVER)
+#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 	if (mfd->panel_info && mfd->panel_info->is_prim_panel) {
 		atomic_set(&prim_panel_is_on, false);
 		cancel_delayed_work_sync(&prim_panel_work);
@@ -1880,7 +1880,7 @@ static int mdss_fb_resume(struct platform_device *pdev)
 #endif
 
 #ifdef CONFIG_PM_SLEEP
-#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_XIAOMI_CLOVER)
+#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 static int mdss_fb_pm_prepare(struct device *dev)
 {
 	struct msm_fb_data_type *mfd = dev_get_drvdata(dev);
@@ -1960,7 +1960,7 @@ static int mdss_fb_pm_resume(struct device *dev)
 #endif
 
 static const struct dev_pm_ops mdss_fb_pm_ops = {
-#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_XIAOMI_CLOVER)
+#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 	.prepare = mdss_fb_pm_prepare,
 	.complete = mdss_fb_pm_complete,
 #endif
@@ -2049,7 +2049,7 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 		 */
 		if (mfd->bl_level_scaled == temp) {
 			mfd->bl_level = bkl_lvl;
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 			if ((0 == temp) && (ffbm_first_close_bl == true)) {
 				pdata->set_backlight(pdata, temp);
 				ffbm_first_close_bl = false;
@@ -2406,7 +2406,7 @@ static int mdss_fb_blank(int blank_mode, struct fb_info *info)
 	struct mdss_panel_data *pdata;
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 
-#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_XIAOMI_CLOVER)
+#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 	if ((info == prim_fbi) && (blank_mode == FB_BLANK_UNBLANK) &&
 		atomic_read(&prim_panel_is_on)) {
 		atomic_set(&prim_panel_is_on, false);
@@ -3052,7 +3052,7 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 	atomic_set(&mfd->commits_pending, 0);
 	atomic_set(&mfd->ioctl_ref_cnt, 0);
 	atomic_set(&mfd->kickoff_pending, 0);
-#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_XIAOMI_CLOVER)
+#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 	atomic_set(&mfd->resume_pending, 0);
 #endif
 
@@ -3070,7 +3070,7 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 	init_waitqueue_head(&mfd->idle_wait_q);
 	init_waitqueue_head(&mfd->ioctl_q);
 	init_waitqueue_head(&mfd->kickoff_wait_q);
-#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_XIAOMI_CLOVER)
+#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 	init_waitqueue_head(&mfd->resume_wait_q);
 #endif
 
@@ -3099,7 +3099,7 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 	}
 #endif
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	if (panel_info->is_prim_panel) {
 		prim_fbi = fbi;
 		atomic_set(&prim_panel_is_on, false);
@@ -5649,7 +5649,7 @@ void mdss_fb_report_panel_dead(struct msm_fb_data_type *mfd)
 	pr_err("Panel has gone bad, sending uevent - %s\n", envp[0]);
 }
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 /*
  * mdss_prim_panel_fb_unblank() - Unblank primary panel FB
  * @timeout : >0 blank primary panel FB after timeout (ms)

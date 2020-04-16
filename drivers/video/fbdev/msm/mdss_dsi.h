@@ -101,7 +101,7 @@ enum dsi_panel_bl_ctrl {
 	BL_PWM,
 	BL_WLED,
 	BL_DCS_CMD,
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	BL_I2C_CMD,
 #endif
 	UNKNOWN_CTRL,
@@ -497,7 +497,7 @@ struct mdss_dsi_ctrl_pdata {
 	struct mdss_intf_recovery *mdp_callback;
 	struct mdss_intf_ulp_clamp *clamp_handler;
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	struct dsi_panel_cmds CABC_on_cmds;
 	struct dsi_panel_cmds CABC_off_cmds;
 	struct dsi_panel_cmds CE_on_cmds;
@@ -773,7 +773,7 @@ static inline const char *__mdss_dsi_pm_supply_node_name(
 	}
 }
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 			struct dsi_panel_cmds *pcmds, u32 flags);
 #endif
