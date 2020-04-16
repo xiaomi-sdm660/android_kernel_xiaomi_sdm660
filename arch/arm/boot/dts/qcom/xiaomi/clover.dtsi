@@ -1,0 +1,2 @@
+#include "mi/clover/clover-base.dtsi"
+#include "xiaomi-sdm660-common.dtsi"
