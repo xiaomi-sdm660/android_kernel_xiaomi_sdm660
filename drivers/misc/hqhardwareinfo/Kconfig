@@ -1,5 +1,5 @@
 config HQ_HARDWARE_INFO
 	bool CONFIG_HQ_HARDWARE_INFO
-	default y
+	default n
 	help
 	  CONFIG_HQ_HARDWARE_INFO
