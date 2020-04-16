@@ -311,7 +311,7 @@ static struct wled_vref_setting vref_setting_pmi8998 = {
 	60000, 397500, 22500, 127500,
 };
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 static int first_set_prev_state;
 #endif
 
@@ -1102,7 +1102,7 @@ static void qpnp_wled_work(struct work_struct *work)
 		}
 	}
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	if (1 == first_set_prev_state) {
 		wled->prev_state = true;
 		first_set_prev_state = 0;
@@ -2596,7 +2596,7 @@ static int qpnp_wled_parse_dt(struct qpnp_wled *wled)
 			"qcom,en-9b-dim-res");
 	wled->en_phase_stag = of_property_read_bool(pdev->dev.of_node,
 			"qcom,en-phase-stag");
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	wled->en_cabc = of_property_read_bool(pdev->dev.of_node,
 			"qcom,en-cabc");
 #else
@@ -2719,7 +2719,7 @@ static int qpnp_wled_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	if (strnstr(saved_command_line, "androidboot.mode=ffbm-01",
 		    strlen(saved_command_line))) {
 		first_set_prev_state = 1;

@@ -67,7 +67,7 @@
 #define QPNP_POFF_REASON1(pon) \
 	((pon)->base + PON_OFFSET((pon)->subtype, 0xC, 0xC5))
 #define QPNP_PON_WARM_RESET_REASON2(pon)	((pon)->base + 0xB)
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 #define QPNP_POFF_REASON2(pon)                 ((pon)->base + 0xD)
 #endif
 #define QPNP_PON_OFF_REASON(pon)		((pon)->base + 0xC7)
@@ -634,7 +634,7 @@ int qpnp_pon_is_warm_reset(void)
 }
 EXPORT_SYMBOL(qpnp_pon_is_warm_reset);
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 int qpnp_pon_is_ps_hold_reset(void)
 {
 	struct qpnp_pon *pon = sys_reset_dev;

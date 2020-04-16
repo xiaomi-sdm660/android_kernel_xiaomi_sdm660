@@ -154,7 +154,7 @@ static struct jeita_fcc_cfg jeita_fcc_config = {
 		{101,		150,		1000000},
 		{151,		450,		3300000},
 		{451,		580,		1700000},
-#elif defined(CONFIG_XIAOMI_CLOVER)
+#elif defined(CONFIG_MACH_XIAOMI_CLOVER)
 		{0,		50,		600000},
 		{51,		150,		900000},
 		{151,		450,		2000000},
@@ -190,7 +190,7 @@ static struct jeita_fv_cfg jeita_fv_config = {
 		{101,		150,		4400000},
 		{151,		450,		4400000},
 		{451,		580,		4100000},
-#elif defined(CONFIG_XIAOMI_CLOVER)
+#elif defined(CONFIG_MACH_XIAOMI_CLOVER)
 		{0,		100,		4400000},
 		{101,		450,		4400000},
 		{451,		600,		4100000},

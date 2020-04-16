@@ -1310,7 +1310,7 @@ static void *def_msm_int_wcd_mbhc_cal(void)
 		return NULL;
 
 #define S(X, Y) ((WCD_MBHC_CAL_PLUG_TYPE_PTR(msm_int_wcd_cal)->X) = (Y))
-#if defined(CONFIG_MACH_LONGCHEER) || defined(CONFIG_XIAOMI_CLOVER)
+#if defined(CONFIG_MACH_LONGCHEER) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 	S(v_hs_max, 1600);
 #elif defined (CONFIG_MACH_MI)
 	S(v_hs_max, 1700);
@@ -1361,7 +1361,7 @@ static void *def_msm_int_wcd_mbhc_cal(void)
 	btn_high[3] = 480;
 	btn_low[4] = 480;
 	btn_high[4] = 480;
-#elif defined(CONFIG_XIAOMI_CLOVER)
+#elif defined(CONFIG_MACH_XIAOMI_CLOVER)
 	btn_low[0] = 75;
 	btn_high[0] = 75;
 	btn_low[1] = 246;
@@ -2801,7 +2801,7 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links[] = {
 #elif defined(CONFIG_SND_SOC_MAX98937)
 		.codec_name = "max98927",
 		.codec_dai_name = "max98927-aif1",
-#elif defined(CONFIG_XIAOMI_CLOVER)
+#elif defined(CONFIG_MACH_XIAOMI_CLOVER)
 		.codec_name     = "tas2557s.6-004c",
 		.codec_dai_name = "tas2557 Stereo ASI1",
 #else
@@ -2827,7 +2827,7 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links[] = {
 #elif defined(CONFIG_SND_SOC_MAX98937)
 		.codec_name = "max98927",
 		.codec_dai_name = "max98927-aif1",
-#elif defined(CONFIG_XIAOMI_CLOVER)
+#elif defined(CONFIG_MACH_XIAOMI_CLOVER)
 		.codec_name     = "tas2557s.6-004c",
 		.codec_dai_name = "tas2557 Stereo ASI1",
 #else
