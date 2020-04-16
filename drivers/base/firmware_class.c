@@ -312,7 +312,7 @@ static const char * const fw_path[] = {
 	"/lib/firmware/updates",
 	"/lib/firmware/" UTS_RELEASE,
 	"/lib/firmware",
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	"/vendor/etc",
 #endif
 	"/lib64/firmware"

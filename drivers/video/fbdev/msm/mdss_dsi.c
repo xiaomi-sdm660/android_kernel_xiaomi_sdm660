@@ -4542,7 +4542,7 @@ static int mdss_dsi_parse_gpio_params(struct platform_device *ctrl_pdev,
 						__func__, __LINE__);
 	pdata->panel_te_gpio = ctrl_pdata->disp_te_gpio;
 
-#ifndef CONFIG_XIAOMI_CLOVER
+#ifndef CONFIG_MACH_XIAOMI_CLOVER
 	ctrl_pdata->bklt_en_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
 		"qcom,platform-bklight-en-gpio", 0);
 	if (!gpio_is_valid(ctrl_pdata->bklt_en_gpio))

@@ -331,7 +331,7 @@ struct smb_charger {
 
 	/* votables */
 	struct votable		*dc_suspend_votable;
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	struct votable		*usb_suspend_votable;
 #endif
 	struct votable		*fcc_votable;
@@ -373,7 +373,7 @@ struct smb_charger {
 	struct delayed_work     charger_type_recheck;
 	struct delayed_work	check_vbus_work;
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	struct delayed_work	update_current_work;
 	struct delayed_work	typec_disable_cmd_work;
 #endif
@@ -565,7 +565,7 @@ int smblib_get_prop_system_temp_level(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_get_prop_input_current_limited(struct smb_charger *chg,
 				union power_supply_propval *val);
-#if defined(CONFIG_MACH_MI) || defined(CONFIG_XIAOMI_CLOVER)
+#if defined(CONFIG_MACH_MI) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 int smblib_get_prop_batt_voltage_now(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_get_prop_batt_current_now(struct smb_charger *chg,
@@ -575,7 +575,7 @@ int smblib_get_prop_batt_temp(struct smb_charger *chg,
 int smblib_get_prop_batt_charge_counter(struct smb_charger *chg,
 				union power_supply_propval *val);
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 int smblib_get_prop_batt_charge_full_design(struct smb_charger *chg,
 				     union power_supply_propval *val);
 #endif
@@ -688,7 +688,7 @@ int smblib_get_prop_batt_charge_full(struct smb_charger *chg,
 int smblib_set_prop_rerun_apsd(struct smb_charger *chg,
 				const union power_supply_propval *val);
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 int smblib_get_prop_batt_resistance_id(struct smb_charger *chg,
 				     union power_supply_propval *val);
 #endif
@@ -699,7 +699,7 @@ int smblib_deinit(struct smb_charger *chg);
 /* this function is used for rapid plug in/out charger to notify policy engine to update typec mode */
 extern void notify_typec_mode_changed_for_pd(void);
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 int smblib_get_chg_otg_present(struct smb_charger *chg,union power_supply_propval *val);
 #endif
 #endif /* __SMB2_CHARGER_H */

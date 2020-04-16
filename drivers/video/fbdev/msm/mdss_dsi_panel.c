@@ -22,7 +22,7 @@
 #include <linux/qpnp/pwm.h>
 #include <linux/err.h>
 #include <linux/string.h>
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 #include <linux/platform_data/lp855x.h>
 #endif
 
@@ -30,7 +30,7 @@
 #include "mdss_dba_utils.h"
 #include "mdss_debug.h"
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 #include <linux/hardware_info.h>
 #endif
 
@@ -55,7 +55,7 @@ extern bool focal_gesture_mode;
 extern bool synaptics_gesture_func_on;
 #endif
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 struct mdss_dsi_ctrl_pdata *change_par_ctrl ;
 int change_par_buf;
 int LCM_effect[4] = {0x2,0xf0,0xf00,0xf000};
@@ -335,7 +335,7 @@ static void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 static char led_pwm1[2] = {0x9F, 0x7F};	/* DTYPE_DCS_WRITE1 */
 #else
 static char led_pwm1[2] = {0x51, 0x0};	/* DTYPE_DCS_WRITE1 */
@@ -430,7 +430,7 @@ int mdss_dsi_bl_gpio_ctrl(struct mdss_panel_data *pdata, int enable)
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	int rc = 0, val = 0;
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	static bool bklt_en_gpio_once_disabled;
 #endif
 
@@ -476,7 +476,7 @@ int mdss_dsi_bl_gpio_ctrl(struct mdss_panel_data *pdata, int enable)
 		}
 		ctrl_pdata->bklt_en_gpio_state = true;
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 		if (ctrl_pdata->bklt_ctrl == BL_I2C_CMD) {
 			if (bklt_en_gpio_once_disabled){
 				usleep_range(1000, 2000);
@@ -503,7 +503,7 @@ int mdss_dsi_bl_gpio_ctrl(struct mdss_panel_data *pdata, int enable)
 			pr_err("%s: unable to set dir for bklt gpio val %d\n",
 						__func__, val);
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 		bklt_en_gpio_once_disabled = true;
 #endif
 		goto free;
@@ -599,7 +599,7 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 					goto exit;
 				}
 			}
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 			mdelay(5);
 #endif
 
@@ -1180,7 +1180,7 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 				mdss_dsi_panel_bklt_dcs(sctrl, bl_level);
 		}
 		break;
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	case BL_I2C_CMD:
 		if (ctrl_pdata->bklt_en_gpio_state)
 			lp855x_brightness_ctrl(bl_level);
@@ -1238,7 +1238,7 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 	struct mdss_panel_info *pinfo;
 	struct dsi_panel_cmds *on_cmds;
 	int ret = 0;
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	struct dsi_panel_cmds *CABC_on_cmds_point;
 	struct dsi_panel_cmds *CABC_off_cmds_point;
 	struct dsi_panel_cmds *CE_on_cmds_point;
@@ -1303,7 +1303,7 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 	if (!pinfo->panel_on_dimming_delay)
 		mdss_panel_disparam_set(ctrl, PANEL_DIMMING_ON_CMD);
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	CABC_on_cmds_point = &change_par_ctrl->CABC_on_cmds;
 	CABC_off_cmds_point = &change_par_ctrl->CABC_off_cmds;
 	CE_on_cmds_point = &change_par_ctrl->CE_on_cmds;
@@ -1436,7 +1436,7 @@ static int mdss_dsi_post_panel_on(struct mdss_panel_data *pdata)
 	ctrl = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	change_par_ctrl = ctrl;
 #endif
 
@@ -2711,7 +2711,7 @@ static int mdss_dsi_parse_panel_features(struct device_node *np,
 		pinfo->esd_check_enabled = false;
 	}
 
-#ifndef CONFIG_XIAOMI_CLOVER
+#ifndef CONFIG_MACH_XIAOMI_CLOVER
 	if (ctrl->disp_en_gpio <= 0) {
 		ctrl->disp_en_gpio = of_get_named_gpio(
 			np,
@@ -2955,7 +2955,7 @@ int mdss_panel_parse_bl_settings(struct device_node *np,
 
 			pr_debug("%s: Configured DCS_CMD bklt ctrl\n",
 								__func__);
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 		} else if (!strcmp(data, "bl_ctrl_i2c")) {
 			ctrl_pdata->bklt_ctrl = BL_I2C_CMD;
 			pr_debug("%s: Configured I2C_CMD bklt ctrl\n",
@@ -3425,7 +3425,7 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		pinfo->mode_sel_state = MODE_SEL_DUAL_PORT;
 	}
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	ctrl_pdata->bklt_en_gpio = of_get_named_gpio(np,
 		"qcom,platform-bklight-en-gpio", 0);
 	if (!gpio_is_valid(ctrl_pdata->bklt_en_gpio))
@@ -3458,7 +3458,7 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	mdss_dsi_parse_reset_seq(np, pinfo->rst_seq, &(pinfo->rst_seq_len),
 		"qcom,mdss-dsi-reset-sequence");
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->CABC_on_cmds,
 		"qcom,mdss-dsi-CABC_on-command", "qcom,mdss-dsi-CABC_on-command-state");
 
@@ -3665,7 +3665,7 @@ int mdss_dsi_panel_init(struct device_node *node,
 		pr_info("%s: Panel Name = %s\n", __func__, panel_name);
 		strlcpy(&pinfo->panel_name[0], panel_name, MDSS_MAX_PANEL_LEN);
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 		get_hardware_info_data(HWID_LCM, &pinfo->panel_name[0]);
 #endif
 	}

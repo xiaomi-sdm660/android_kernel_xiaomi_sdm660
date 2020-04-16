@@ -1131,7 +1131,7 @@ static int _gpiod_direction_output_raw(struct gpio_desc *desc, int value)
 	int			status = -EINVAL;
 
 	/* GPIOs used for IRQs shall not be set as output */
-#ifndef CONFIG_XIAOMI_CLOVER
+#ifndef CONFIG_MACH_XIAOMI_CLOVER
 	if (test_bit(FLAG_USED_AS_IRQ, &desc->flags)) {
 		gpiod_err(desc,
 			  "%s: tried to set a GPIO tied to an IRQ as output\n",

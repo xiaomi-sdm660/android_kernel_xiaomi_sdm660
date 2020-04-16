@@ -63,7 +63,7 @@ extern bool is_poweroff_charge;
 #endif
 #endif
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 #include <linux/proc_fs.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
@@ -248,7 +248,7 @@ static int __debug_mask = PR_MISC | PR_PARALLEL | PR_OTG;
 #else
 static int __debug_mask;
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 struct smb_charger *smbchg_dev;
 #endif
 
@@ -614,7 +614,7 @@ static enum power_supply_property smb2_usb_props[] = {
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_TYPE,
 	POWER_SUPPLY_PROP_TYPEC_MODE,
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	POWER_SUPPLY_PROP_USB_OTG,
 #endif
 	POWER_SUPPLY_PROP_TYPEC_POWER_ROLE,
@@ -684,7 +684,7 @@ static int smb2_usb_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		rc = smblib_get_prop_usb_voltage_now(chg, val);
 		break;
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	case POWER_SUPPLY_PROP_USB_OTG:
 		rc = smblib_get_chg_otg_present(chg, val);
 		break;
@@ -1245,7 +1245,7 @@ static enum power_supply_property smb2_batt_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 	POWER_SUPPLY_PROP_VOLTAGE_QNOVO,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	POWER_SUPPLY_PROP_RESISTANCE_ID,
 	POWER_SUPPLY_PROP_CHARGING_ENABLED,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
@@ -1344,7 +1344,7 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 		val->intval = get_client_vote_locked(chg->fv_votable,
 				QNOVO_VOTER);
 		break;
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
 		val->intval = get_effective_result(chg->usb_icl_votable);
 		if (val->intval < 0) /* no votes */
@@ -1368,7 +1368,7 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 					      BATT_PROFILE_VOTER);
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
-#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_XIAOMI_CLOVER)
+#if defined(CONFIG_MACH_XIAOMI_SDM660) || defined(CONFIG_MACH_XIAOMI_CLOVER)
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LIPO;
 #else
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
@@ -1512,7 +1512,7 @@ static int smb2_batt_set_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_RERUN_AICL:
 		rc = smblib_rerun_aicl(chg);
 		break;
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
 		rc = vote(chg->usb_icl_votable,DEFAULT_VOTER, !val->intval, 0);
 		break;
@@ -1939,7 +1939,7 @@ static int smb2_init_hw(struct smb2 *chip)
 	vote(chg->pd_disallowed_votable_indirect, HVDCP_TIMEOUT_VOTER,
 			true, 0);
 	vote(chg->pd_disallowed_votable_indirect, MICRO_USB_VOTER,
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 			true, 0);
 #else
 			chg->micro_usb_mode, 0);
@@ -2860,7 +2860,7 @@ static int lct_unregister_powermanager(struct smb_charger *chg)
 }
 #endif
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 struct smb_charger *chip_b;
 
 static ssize_t chg_read_proc_enable(struct file *file, char __user *page, size_t size, loff_t *ppos)
@@ -2944,7 +2944,7 @@ static int smb2_probe(struct platform_device *pdev)
 	chg->irq_info = smb2_irqs;
 	chg->name = "PMI";
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	smbchg_dev = chg;
 #endif
 	chg->regmap = dev_get_regmap(chg->dev->parent, NULL);
@@ -3123,7 +3123,7 @@ static int smb2_probe(struct platform_device *pdev)
 	chg->charging_enabled = true;
 #endif
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	chip_b = chg;
 	proc_create_chg_enable();
 #endif
@@ -3179,7 +3179,7 @@ static int smb2_remove(struct platform_device *pdev)
 	regulator_unregister(chg->vconn_vreg->rdev);
 	regulator_unregister(chg->vbus_vreg->rdev);
 
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	proc_remove(proc_chg);
 #endif
 	platform_set_drvdata(pdev, NULL);

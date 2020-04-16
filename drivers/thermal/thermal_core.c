@@ -2816,7 +2816,7 @@ static int screen_state_for_thermal_callback(struct notifier_block *nb, unsigned
 }
 #endif
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 unsigned int sconfig;
 
 static ssize_t sconfig_show(struct device *dev,struct device_attribute *attr, char *buf)
@@ -2906,7 +2906,7 @@ static int __init thermal_init(void)
 	}
 #endif
 #endif
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	thermalsconfig_init();
 #endif
 

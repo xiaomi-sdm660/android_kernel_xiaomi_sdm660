@@ -52,14 +52,14 @@ static int msm_sensor_wait_for_probe_done(struct msm_sensor_init_t *s_init)
 		(s_init->module_init_status == 1));
 #else
 	int rc;
-#ifndef CONFIG_XIAOMI_CLOVER
+#ifndef CONFIG_MACH_XIAOMI_CLOVER
 	int tm = 20000;
 #endif
 	if (s_init->module_init_status == 1) {
 		CDBG("msm_cam_get_module_init_status -2\n");
 		return 0;
 	}
-#ifdef CONFIG_XIAOMI_CLOVER
+#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	wait_event(s_init->state_wait,
 		(s_init->module_init_status == 1));
 #else
