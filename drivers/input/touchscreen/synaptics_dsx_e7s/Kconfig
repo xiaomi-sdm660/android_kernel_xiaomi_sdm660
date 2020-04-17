@@ -3,7 +3,7 @@
 #
 config TOUCHSCREEN_SYNAPTICS_DSX_E7S
 	bool "Synaptics DSX touchscreen"
-	default y
+	default n
 	help
 	  Say Y here if you have a Synaptics DSX touchscreen connected
 	  to your system.
