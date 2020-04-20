@@ -88,7 +88,7 @@
 #define QPNP_HAP_WF_SOURCE_SHIFT	4
 #define QPNP_HAP_VMAX_OVD_BIT		BIT(6)
 #define QPNP_HAP_VMAX_MASK		GENMASK(5, 1)
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 #define QPNP_HAP_VMAX_OVERDRIVE_MASK		GENMASK(6, 6)
 #endif
 #define QPNP_HAP_VMAX_SHIFT		1
@@ -180,7 +180,7 @@ u32 adjusted_lra_play_rate_code[ADJUSTED_LRA_PLAY_RATE_CODE_ARRSIZE];
 
 /* haptic debug register set */
 static u8 qpnp_hap_dbg_regs[] = {
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 	0x0a, 0x0b, 0x0c, 0x46, 0x48, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x51, 0x52, 0x53,
 #else
 	0x0a, 0x0b, 0x0c, 0x46, 0x48, 0x4c, 0x4d, 0x4e, 0x4f, 0x51, 0x52, 0x53,
@@ -396,7 +396,7 @@ struct qpnp_hap {
 	u8				act_type;
 	u8				wave_shape;
 	u8				wave_samp[QPNP_HAP_WAV_SAMP_LEN];
-#ifdef CONFIG_MACH_LONGCHEER
+#if defined(CONFIG_MACH_LONGCHEER) && defined(CONFIG_MI_HAPTICS)
 	u8				wave_samp_two[QPNP_HAP_WAV_SAMP_LEN];
 	u8				wave_samp_three[QPNP_HAP_WAV_SAMP_LEN];
 #endif
@@ -421,7 +421,7 @@ struct qpnp_hap {
 	bool				override_auto_mode_config;
 	bool				play_irq_en;
 	int				td_time_ms;
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 	u32				overdrive;
 	u32				vmax_overbrake_mv;
 	u32				vmax_overdrive_mv;
@@ -891,7 +891,7 @@ static int qpnp_hap_lra_auto_res_config(struct qpnp_hap *hap,
 	return rc;
 }
 
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 #define QPNP_HAP_WAV_SHAPE_REG(b)	(b + 0x4D)
 static int qpnp_hap_waveshape_config(struct qpnp_hap *hap, u8 waveshape)
 {
@@ -1125,7 +1125,7 @@ static int qpnp_hap_parse_buffer_dt(struct qpnp_hap *hap)
 		memcpy(hap->wave_samp, prop->value, QPNP_HAP_WAV_SAMP_LEN);
 	}
 
-#ifdef CONFIG_MACH_LONGCHEER
+#if defined(CONFIG_MACH_LONGCHEER) && defined(CONFIG_MI_HAPTICS)
 	prop = of_find_property(pdev->dev.of_node,
 		"qcom,wave-samples-two", &temp);
 	if (!prop || temp != QPNP_HAP_WAV_SAMP_LEN) {
@@ -2021,7 +2021,7 @@ static int qpnp_hap_auto_res_enable(struct qpnp_hap *hap, int enable)
 	else
 		auto_res_mode_qwd = (hap->ares_cfg.auto_res_mode ==
 							QPNP_HAP_AUTO_RES_QWD);
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 	hap->auto_res_mode_qwd = auto_res_mode_qwd;
 #endif
 
@@ -2034,7 +2034,7 @@ static int qpnp_hap_auto_res_enable(struct qpnp_hap *hap, int enable)
 		return 0;
 	}
 
-#ifndef CONFIG_MACH_MI
+#ifndef CONFIG_MI_HAPTICS
 	if (!hap->correct_lra_drive_freq && !auto_res_mode_qwd) {
 		pr_debug("correct_lra_drive_freq: %d auto_res_mode_qwd: %d\n",
 			hap->correct_lra_drive_freq, auto_res_mode_qwd);
@@ -2053,14 +2053,14 @@ static int qpnp_hap_auto_res_enable(struct qpnp_hap *hap, int enable)
 	 * 'time_required_to_generate_back_emf_us' is completed.
 	 */
 	if (enable)
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 	{
 		if (hap->play_time_ms < 20 && !hap->force_back_emf_delay)
 			return 0;
 
 #endif
 		usleep_range(back_emf_delay_us, back_emf_delay_us + 1);
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 		/*
 		 * overdrive  in the first 20 ms.
 		 * */
@@ -2160,7 +2160,7 @@ static void update_lra_frequency(struct qpnp_hap *hap)
 	}
 }
 
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 static void update_lra_frequency_conservatism(struct qpnp_hap *hap)
 {
 	u8 lra_auto_res[2], val;
@@ -2256,7 +2256,7 @@ static bool is_sw_lra_auto_resonance_control(struct qpnp_hap *hap)
 	return true;
 }
 
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 /*change brake pattern.*/
 static void change_brake_pattern(struct qpnp_hap *hap)
 {
@@ -2311,7 +2311,7 @@ static int qpnp_hap_set(struct qpnp_hap *hap, bool on)
 			if (rc < 0)
 				return rc;
 
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 			if (hap->vmax_overdrive_mv)
 				qpnp_hap_vmax_config(hap, hap->vmax_overdrive_mv, false);
 #endif
@@ -2346,7 +2346,7 @@ static int qpnp_hap_set(struct qpnp_hap *hap, bool on)
 				mutex_unlock(&hap->lock);
 			}
 		} else {
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 			if (hap->vmax_overbrake_mv && (hap->play_time_ms >= 20 || hap->force_back_emf_delay)) {
 				if (hap->square_drive)
 					qpnp_hap_waveshape_config(hap, QPNP_HAP_WAV_SQUARE);
@@ -2370,7 +2370,7 @@ static int qpnp_hap_set(struct qpnp_hap *hap, bool on)
 				(hap->status_flags & AUTO_RESONANCE_ENABLED))
 				update_lra_frequency(hap);
 
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 			/*
 			 *update the fixed frequency when auto_res is succeed
 			 *Motor will vibrate 20ms before auto_res,and another 4 period to
@@ -2527,7 +2527,7 @@ static void qpnp_timed_enable_worker(struct work_struct *work)
 	struct qpnp_hap *hap = container_of(work, struct qpnp_hap,
 					 td_work);
 	bool state;
-#ifdef CONFIG_MACH_LONGCHEER
+#if defined(CONFIG_MACH_LONGCHEER) && defined(CONFIG_MI_HAPTICS)
 	int vmax_mv;
 #else
 	ktime_t rem;
@@ -2548,7 +2548,7 @@ static void qpnp_timed_enable_worker(struct work_struct *work)
 
 	mutex_lock(&hap->lock);
 
-#ifdef CONFIG_MACH_LONGCHEER
+#if defined(CONFIG_MACH_LONGCHEER) && defined(CONFIG_MI_HAPTICS)
 	if (time_ms == 0) {
 		/* disable haptics */
 		hrtimer_cancel(&hap->hap_timer);
@@ -2574,7 +2574,7 @@ static void qpnp_timed_enable_worker(struct work_struct *work)
 		return;
 	}
 
-#ifdef CONFIG_MACH_LONGCHEER
+#if defined(CONFIG_MACH_LONGCHEER) && defined(CONFIG_MI_HAPTICS)
 	if (time_ms < 10)
 		time_ms = 10;
 
@@ -2639,7 +2639,7 @@ static void qpnp_timed_enable_worker(struct work_struct *work)
 		time_ms = (time_ms > hap->timeout_ms ?
 				 hap->timeout_ms : time_ms);
 		hap->play_time_ms = time_ms;
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 		/*PM660 have this issue.*/
 		qpnp_hap_play(hap, 0);
 		qpnp_hap_mod_enable(hap, 0);
@@ -2855,7 +2855,7 @@ static int qpnp_hap_config(struct qpnp_hap *hap)
 		return rc;
 
 	/* Configure the VMAX register */
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 	if (hap->vmax_overbrake_mv)
 		rc = qpnp_hap_vmax_config(hap, hap->vmax_overbrake_mv, false);
 	else
@@ -2897,7 +2897,7 @@ static int qpnp_hap_config(struct qpnp_hap *hap)
 
 	hap->init_drive_period_code =
 			 hap->wave_play_rate_us / QPNP_HAP_RATE_CFG_STEP_US;
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 	hap->wave_play_rate_frequency = 1000000 / hap->wave_play_rate_us;
 #endif
 
@@ -3196,7 +3196,7 @@ static int qpnp_hap_parse_dt(struct qpnp_hap *hap)
 			hap->drive_period_code_min_limit_percent_variation =
 								(u8) temp;
 
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 		if (hap->pmic_subtype == PM660_SUBTYPE ||
 				hap->ares_cfg.auto_res_mode == QPNP_HAP_AUTO_RES_QWD) {
 #else
@@ -3213,7 +3213,7 @@ static int qpnp_hap_parse_dt(struct qpnp_hap *hap)
 		} else {
 			hap->time_required_to_generate_back_emf_us = 0;
 		}
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 		hap->force_back_emf_delay = !(of_property_read_bool(pdev->dev.of_node,
 						   "qcom,disable_force_back_emf_delay"));
 		hap->square_drive = (of_property_read_bool(pdev->dev.of_node,
@@ -3276,7 +3276,7 @@ static int qpnp_hap_parse_dt(struct qpnp_hap *hap)
 
 	hap->vtg_default = hap->vmax_mv;
 
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 	hap->overdrive = of_property_read_bool(pdev->dev.of_node,
 			"qcom,ovd_2x");
 
@@ -3381,7 +3381,7 @@ static int qpnp_hap_parse_dt(struct qpnp_hap *hap)
 			memcpy(hap->brake_pat, prop->value,
 					QPNP_HAP_BRAKE_PAT_LEN);
 		}
-#ifdef CONFIG_MACH_MI
+#ifdef CONFIG_MI_HAPTICS
 		/*
 		 * brake_pat_index = -1 to make sure brake_pat will be changed in the first time.
 		 * brake_pat_max = 0 to make sure disable changing brake_pattern.
