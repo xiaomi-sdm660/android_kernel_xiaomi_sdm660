@@ -604,6 +604,7 @@ static s8 gtp_enter_sleep(struct goodix_ts_data *ts)
 static int gtp_wakeup_sleep(struct goodix_ts_data *ts)
 {
 	gtp_int_output(ts, 1);
+	gtp_reset_guitar(ts->client, 20);
 
 	return 0;
 }
