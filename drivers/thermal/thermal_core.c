@@ -2825,7 +2825,7 @@ static int screen_state_for_thermal_callback(struct notifier_block *nb, unsigned
 }
 #endif
 #endif
-#ifdef CONFIG_MACH_XIAOMI_CLOVER
+
 unsigned int sconfig;
 
 static ssize_t sconfig_show(struct device *dev,struct device_attribute *attr, char *buf)
@@ -2875,7 +2875,6 @@ void thermalsconfig_init(void)
 		printk(KERN_ALERT"Failed to create attribute file.");
 	}
 }
-#endif
 
 static int __init thermal_init(void)
 {
@@ -2924,9 +2923,7 @@ static int __init thermal_init(void)
 	}
 #endif
 #endif
-#ifdef CONFIG_MACH_XIAOMI_CLOVER
 	thermalsconfig_init();
-#endif
 
 	return 0;
 
