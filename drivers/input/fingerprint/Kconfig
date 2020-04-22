@@ -2,6 +2,13 @@
 # Fingerprint driver configuration
 #
 
+config FINGERPRINT_KEY_FILTER
+	bool "Fingerprint Key Filter interface"
+	default n
+	help
+
+	  If unsure, say N.
+
 menuconfig INPUT_FINGERPRINT
 	bool "Fingerprints"
 	help

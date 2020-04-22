@@ -40,7 +40,7 @@
 #include <linux/fb.h>
 #include <linux/mdss_io_util.h>
 
-#ifdef CONFIG_TOUCHSCREEN_COMMON
+#ifdef CONFIG_FINGERPRINT_KEY_FILTER
 #include <linux/input.h>
 #include <linux/input/tp_common.h>
 #endif
@@ -107,7 +107,7 @@ struct fpc1020_data {
 	bool wait_finger_down;
 	struct work_struct work;
 	bool proximity_state; /* 0:far 1:near */
-#ifdef CONFIG_TOUCHSCREEN_COMMON
+#ifdef CONFIG_FINGERPRINT_KEY_FILTER
 	struct input_handler input_handler;
 #endif
 };
@@ -743,7 +743,7 @@ static const struct file_operations proc_file_fpc_ops = {
 };
 #endif
 
-#ifdef CONFIG_TOUCHSCREEN_COMMON
+#ifdef CONFIG_FINGERPRINT_KEY_FILTER
 static int input_connect(struct input_handler *handler,
 		struct input_dev *dev, const struct input_device_id *id) {
 	int rc;
@@ -879,7 +879,7 @@ static int fpc1020_probe(struct platform_device *pdev)
 
 	wake_lock_init(&fpc1020->ttw_wl, WAKE_LOCK_SUSPEND, "fpc_ttw_wl");
 
-#ifdef CONFIG_TOUCHSCREEN_COMMON
+#ifdef CONFIG_FINGERPRINT_KEY_FILTER
 	fpc1020->input_handler.filter = input_filter;
 	fpc1020->input_handler.connect = input_connect;
 	fpc1020->input_handler.disconnect = input_disconnect;
