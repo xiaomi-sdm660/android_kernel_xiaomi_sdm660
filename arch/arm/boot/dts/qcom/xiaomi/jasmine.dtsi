@@ -22,3 +22,16 @@
 		};
 	};
 };
+
+&dsi_nt36672_tianma_fhd_video {
+  qcom,mdss-brightness-max-level = <255>;
+};
+&dsi_nt36672_jdi_fhd_video {
+	qcom,mdss-brightness-max-level = <255>;
+};
+&dsi_nt36672a_tianma_fhdplus_video {
+	qcom,mdss-brightness-max-level = <255>;
+};
+&dsi_td4320_boe_fhdplus_video {
+	qcom,mdss-brightness-max-level = <255>;
+};
