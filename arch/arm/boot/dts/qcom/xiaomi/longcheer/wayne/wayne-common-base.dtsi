@@ -47,25 +47,26 @@
 
 &pm660_haptics {
 	qcom,play-mode = "direct";
-	qcom,vmax-mv = <3200>;
+	qcom,vmax-mv = <2784>;
 	qcom,ilim-ma = <800>;
 	qcom,wave-shape = "sine";
-	qcom,wave-play-rate-us = <5000>;
-	qcom,int-pwm-freq-khz = <505>;
+	qcom,wave-play-rate-us = <5100>;
+	qcom,int-pwm-freq-khz = <253>;
 	qcom,sc-deb-cycles = <8>;
 	qcom,en-brake;
-	qcom,brake-pattern = [03 02 00 00];
-	qcom,disable_force_back_emf_delay;
-	qcom,vmax-overbrake-mv = <3596>;
-	qcom,brake-pattern-count = <4>;
-	qcom,brake-pattern-arry = [01 01 00 00
-	02 01 01 00
-	02 01 01 00
-	02 02 02 00];
-	qcom,lra-high-z = "opt0";
-	qcom,lra-auto-res-mode = "qwd";
+	qcom,brake-pattern = [02 02 01 00];
+/*	qcom,disable_force_back_emf_delay;
+	qcom,vmax-overbrake-mv = <3596>; */
+	qcom,brake-pattern = [02 02 01 00];
+	qcom,wave-samples = [3e 3e 3e 00 00 00 00 00];
+	qcom,wave-samples-two = [3e 3e 3e 3e 00 00 00 00];
+	qcom,wave-samples-three = [3e 3e 3e 3e 3e 00 00 00];
+	qcom,wave-rep-cnt = <1>;
+	qcom,wave-samp-rep-cnt = <1>;
+	qcom,lra-high-z = "opt1";
+	qcom,lra-auto-res-mode = "none";
 	qcom,lra-calibrate-at-eop = <0>;
-	qcom,correct-lra-drive-freq;
+	qcom,lra-hw-auto-resonance;
 };
 
 
