@@ -566,24 +566,6 @@ struct param_info {
 	int q_val;
 };
 
-
-
-
-
-#define SPEAKER_RDC_MIN  (217650370)
-#define SPEAKER_RDC_MAX  (330506117)
-#define SPEAKER_RDC_DEFAULT (274078243)
-
-
-
-
-
-#define EAR_RDC_DEFAULT (274078243)
-
-#define EAR_RDC_MIN  (201528120)
-#define EAR_RDC_MAX  (362750616)
-
-
 /*
 // Receiver DC resistance is 29, range from 25 to 34
 #define EAR_RDC_MIN  (1007640600) //25 / 3.33 * (1<<27)
@@ -591,6 +573,15 @@ struct param_info {
 #define EAR_RDC_DEFAULT (1168863097)  // 29 / 3.33 * 134217728
 */
 #endif
+
+#define SPEAKER_RDC_MIN  (217650370)
+#define SPEAKER_RDC_MAX  (330506117)
+#define SPEAKER_RDC_DEFAULT (274078243)
+
+#define EAR_RDC_DEFAULT (274078243)
+
+#define EAR_RDC_MIN  (201528120)
+#define EAR_RDC_MAX  (362750616)
 
 static struct {
 	bool l_calib_stat;
