@@ -41,7 +41,7 @@
 #include <linux/jiffies.h>
 #endif /* #if NVT_TOUCH_ESD_PROTECT */
 /* add tp vendor information by yangjiangzhu  2018/3/19 start */
-extern char g_lcd_id[128];  
+extern char g_lcd_id[128];
 /* add tp vendor information by yangjiangzhu  2018/3/19 end */
 
 #if NVT_TOUCH_ESD_PROTECT
@@ -903,7 +903,7 @@ static void nvt_ts_work_func(void)
 #if NVT_TOUCH_ESD_PROTECT
 	if (nvt_fw_recovery(point_data)) {
 		nvt_esd_check_enable(true);
-		goto XFER_ERROR;
+		return;
 	}
 #endif /* #if NVT_TOUCH_ESD_PROTECT */
 
@@ -1212,7 +1212,7 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 
 
 	msleep(10);
-	
+
     ts->vcc_i2c = regulator_get(&client->dev, "vcc_i2c-supply");
     if (IS_ERR(ts->vcc_i2c))
     {
