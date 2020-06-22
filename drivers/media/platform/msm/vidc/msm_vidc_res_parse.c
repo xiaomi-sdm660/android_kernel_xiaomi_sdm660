@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -54,7 +54,7 @@ fail_read:
 	return 0;
 }
 
-static inline bool is_compatible(char *compat)
+static bool is_compatible(char *compat)
 {
 	return !!of_find_compatible_node(NULL, NULL, compat);
 }
@@ -517,8 +517,7 @@ error:
 	return rc;
 }
 
-/* A comparator to compare loads (needed later on) */
-static int cmp_load_freq_table(const void *a, const void *b)
+static int cmp(const void *a, const void *b)
 {
 	/* want to sort in reverse so flip the comparison */
 	return ((struct load_freq_table *)b)->load -
