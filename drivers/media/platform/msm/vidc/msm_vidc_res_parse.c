@@ -569,7 +569,7 @@ static int msm_vidc_load_freq_table(struct msm_vidc_platform_resources *res)
 	 * logic to work, just sort it ourselves
 	 */
 	sort(res->load_freq_tbl, res->load_freq_tbl_size,
-			sizeof(*res->load_freq_tbl), cmp_load_freq_table, NULL);
+			sizeof(*res->load_freq_tbl), cmp, NULL);
 	return rc;
 }
 
