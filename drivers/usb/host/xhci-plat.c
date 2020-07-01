@@ -276,7 +276,7 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (ret)
 		dev_err(&pdev->dev, "%s: unable to create imod sysfs entry\n",
 					__func__);
-	
+
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_put_autosuspend(&pdev->dev);
 
@@ -425,15 +425,15 @@ static int xhci_plat_runtime_resume(struct device *dev)
 	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
 	int ret;
 
-	if (!xhci)
+	ret = xhci_resume(xhci, 0);
+		if (ret)
+			return ret;
+
+		pm_runtime_disable(dev);
+		pm_runtime_set_active(dev);
+		pm_runtime_enable(dev);
+
 		return 0;
-
-	dev_dbg(dev, "xhci-plat runtime resume\n");
-
-	ret = xhci_resume(xhci, false);
-	pm_runtime_mark_last_busy(dev);
-
-	return ret;
 }
 
 static const struct dev_pm_ops xhci_plat_pm_ops = {
