@@ -6546,9 +6546,6 @@ static int start_cpu(bool boosted)
 {
 	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
 
-	if(!sched_feat(STUNE_BOOST_BIAS_BIG))
-		return rd->min_cap_orig_cpu;
-
 	return boosted ? rd->max_cap_orig_cpu : rd->min_cap_orig_cpu;
 }
 
@@ -6560,7 +6557,6 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	unsigned long min_wake_util = ULONG_MAX;
 	unsigned long target_max_spare_cap = 0;
 	unsigned long best_active_util = ULONG_MAX;
-	unsigned long target_idle_max_spare_cap = 0;
 	int best_idle_cstate = INT_MAX;
 	struct sched_domain *sd;
 	struct sched_group *sg;
@@ -6632,15 +6628,6 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 			 * than the one required to boost the task.
 			 */
 			new_util = max(min_util, new_util);
-
-			/*
-			 * Include minimum capacity constraint:
-			 * new_util contains the required utilization including
-			 * boost. min_capped_util also takes into account a
-			 * minimum capacity cap imposed on the CPU by external
-			 * actors.
-			 */
-			min_capped_util = max(new_util, capacity_min_of(i));
 
 			if (new_util > capacity_orig)
 				continue;
