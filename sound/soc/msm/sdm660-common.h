@@ -17,8 +17,8 @@
 #include <sound/q6afe-v2.h>
 #include "../codecs/wcd-mbhc-v2.h"
 
-#define DEFAULT_MCLK_RATE 11289600
-#define NATIVE_MCLK_RATE 11289600
+#define DEFAULT_MCLK_RATE 24576000
+#define NATIVE_MCLK_RATE 22579200
 
 #define SAMPLING_RATE_8KHZ      8000
 #define SAMPLING_RATE_11P025KHZ 11025

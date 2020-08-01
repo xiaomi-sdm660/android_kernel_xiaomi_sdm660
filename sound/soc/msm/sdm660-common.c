@@ -34,7 +34,7 @@
 #define PMIC_INT_ANALOG_CODEC "analog-codec"
 
 #define DEV_NAME_STR_LEN  32
-#define DEFAULT_MCLK_RATE 11289600
+#define DEFAULT_MCLK_RATE 24576000
 #define MSM_LL_QOS_VALUE 300 /* time in us to ensure LPM doesn't go in C3/C4 */
 
 struct dev_config {
@@ -3132,7 +3132,7 @@ static const struct of_device_id sdm660_asoc_machine_of_match[]  = {
 		/* data */
 	};
 	struct pri_i2s_gpioset pri_i2s_pininfo;
-	
+
 static int pri_i2s_gpio_init(struct device *dev)
 {
 	pr_info("%s:enter.\n", __func__);
@@ -3174,7 +3174,7 @@ static int pri_i2s_gpio_enable(bool enable)
 			return -ENOENT;
 		}
 	}
-	
+
 	return 0;
 }
 #endif
