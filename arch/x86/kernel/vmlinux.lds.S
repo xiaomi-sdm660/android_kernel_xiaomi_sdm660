@@ -41,8 +41,7 @@ ENTRY(phys_startup_64)
 
 jiffies = jiffies_64;
 
-#if defined(CONFIG_X86_64) && defined(CONFIG_DEBUG_RODATA)
-
+#if defined(CONFIG_X86_64)
 /*
  * On 64-bit, align RODATA to 2MB so we retain large page mappings for
  * boundaries spanning kernel text, rodata and data sections.
@@ -387,4 +386,3 @@ INIT_PER_CPU(irq_stack_union);
 . = ASSERT(kexec_control_code_size <= KEXEC_CONTROL_CODE_MAX_SIZE,
            "kexec control code size is too big");
 #endif
-
