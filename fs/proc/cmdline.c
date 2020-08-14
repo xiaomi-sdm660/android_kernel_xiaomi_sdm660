@@ -24,30 +24,39 @@ static const struct file_operations cmdline_proc_fops = {
 	.release	= single_release,
 };
 
+static void patch_flag(char *cmd, const char *flag, const char *val)
+{
+	size_t flag_len, val_len;
+	char *start, *end;
+
+	start = strstr(cmd, flag);
+	if (!start)
+		    return;
+
+	flag_len = strlen(flag);
+	val_len = strlen(val);
+	end = start + flag_len + strcspn(start + flag_len, " ");
+	memmove(start + flag_len + val_len, end, strlen(end) + 1);
+	memcpy(start + flag_len, val, val_len);
+}
+
+static void patch_safetynet_flags(char *cmd)
+{
+	patch_flag(cmd, "androidboot.flash.locked=", "1");
+	patch_flag(cmd, "androidboot.verifiedbootstate=", "green");
+	patch_flag(cmd, "androidboot.veritymode=", "enforcing");
+	patch_flag(cmd, "androidboot.vbmeta.device_state=", "locked");
+}
+
 static int __init proc_cmdline_init(void)
 {
-	char *offset_addr;
-	char *a1, *a2; // anupritaisno1: edit original patch to fix warning
+	strcpy(proc_cmdline, saved_command_line);
 
-	offset_addr = strstr(saved_command_line, "androidboot.mode=reboot");
-	if (offset_addr != NULL)
-		strncpy(offset_addr + 17, "normal", 6);
-
-	/* SafetyNet bypass: show androidboot.verifiedbootstate=green */
-
-	a1 = strstr(saved_command_line, "androidboot.verifiedbootstate=");
-	if (a1) {
-		a1 = strchr(a1, '=');
-		a2 = strchr(a1, ' ');
-		if (!a2) /* last argument on the cmdline */
-			a2 = "";
-
-		scnprintf(proc_cmdline, COMMAND_LINE_SIZE, "%.*sgreen%s",
-			  (int)(a1 - saved_command_line + 1),
-			  saved_command_line, a2);
-	} else {
-		strncpy(proc_cmdline, saved_command_line, COMMAND_LINE_SIZE);
-	}
+	/*
+	 * Patch various flags from command line seen by userspace in order to
+	 * pass SafetyNet CTS check.
+	 */
+	patch_safetynet_flags(proc_cmdline);
 
 	proc_create("cmdline", 0, NULL, &cmdline_proc_fops);
 	return 0;
