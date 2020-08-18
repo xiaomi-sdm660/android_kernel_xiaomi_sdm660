@@ -1170,16 +1170,16 @@ static int fg_get_batt_profile(struct fg_chip *chip)
 		chip->bp.fastchg_curr_ma = -EINVAL;
 	}
 #ifdef CONFIG_MACH_LONGCHEER
-        if (hwc_check_global)
-                chip->bp.fastchg_curr_ma = 2300;
+	if (hwc_check_global)
+		chip->bp.fastchg_curr_ma = 2900;
 #ifdef CONFIG_MACH_XIAOMI_TULIP
-        else
-                if (is_poweroff_charge) {
-                        if (hwc_check_india)
-                                chip->bp.fastchg_curr_ma = 2200;
-                        else
-                                chip->bp.fastchg_curr_ma = 2300;
-                }
+	else
+		if (is_poweroff_charge) {
+			if (hwc_check_india)
+				chip->bp.fastchg_curr_ma = 2300;
+			else
+				chip->bp.fastchg_curr_ma = 2300;
+		}
 #endif
 #endif
 	rc = of_property_read_u32(profile_node, "qcom,fg-cc-cv-threshold-mv",
