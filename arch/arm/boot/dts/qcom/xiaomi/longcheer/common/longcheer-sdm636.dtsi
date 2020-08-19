@@ -93,8 +93,25 @@
 };
 
 &pm660_haptics {
+	/delete-property/ qcom,correct-lra-drive-freq;
 	qcom,actuator-type = "erm";
+	qcom,play-mode = "direct";
 	qcom,vmax-mv = <3000>;
+	qcom,ilim-ma = <800>;
+	qcom,wave-shape = "square";
+	qcom,wave-play-rate-us = <6667>;
+	qcom,int-pwm-freq-khz = <505>;
+	qcom,sc-deb-cycles = <8>;
+	qcom,en-brake;
+	qcom,brake-pattern = [02 02 01 00];
+	qcom,wave-samples = [3e 3e 3e 00 00 00 00 00];
+	qcom,wave-samples-two = [3e 3e 3e 3e 00 00 00 00];
+	qcom,wave-samples-three = [3e 3e 3e 3e 3e 00 00 00];
+	qcom,wave-rep-cnt = <1>;
+	qcom,wave-samp-rep-cnt = <1>;
+	qcom,lra-high-z = "opt1";
+	qcom,lra-auto-res-mode = "none";
+	qcom,lra-hw-auto-resonance;
 };
 
 /* sdm636-mtp.dtsi diff */
