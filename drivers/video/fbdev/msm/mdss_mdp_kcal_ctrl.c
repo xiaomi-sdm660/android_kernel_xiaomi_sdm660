@@ -35,7 +35,7 @@
 
 #define DEF_PCC 0x100
 #define DEF_PA 0xff
-#define DEF_SAT 270
+#define DEF_SAT 258
 #define PCC_ADJ 0x80
 
 struct kcal_lut_data {
