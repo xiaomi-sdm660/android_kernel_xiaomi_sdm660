@@ -571,26 +571,22 @@ extern struct ratelimit_state dm_ratelimit_state;
 #define DM_MAPIO_REMAPPED	1
 #define DM_MAPIO_REQUEUE	DM_ENDIO_REQUEUE
 
-#define dm_sector_div64(x, y)( \
-{ \
+#define dm_sector_div64(x, y)({ \
 	u64 _res; \
 	(x) = div64_u64_rem(x, y, &_res); \
 	_res; \
-} \
-)
+})
 
 /*
  * Ceiling(n / sz)
  */
 #define dm_div_up(n, sz) (((n) + (sz) - 1) / (sz))
 
-#define dm_sector_div_up(n, sz) ( \
-{ \
+#define dm_sector_div_up(n, sz) ({ \
 	sector_t _r = ((n) + (sz) - 1); \
 	sector_div(_r, (sz)); \
 	_r; \
-} \
-)
+})
 
 /*
  * ceiling(n / size) * size
