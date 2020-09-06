@@ -237,6 +237,7 @@ const uint16_t gesture_key_array[] = {
 	KEY_WAKEUP,
 	KEY_WAKEUP,
 	KEY_WAKEUP,
+	KEY_DOUBLE_TAP,
 };
 
 bool enable_gesture_mode = false;
