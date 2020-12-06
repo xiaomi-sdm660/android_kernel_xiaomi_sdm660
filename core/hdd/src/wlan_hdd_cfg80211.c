@@ -152,6 +152,7 @@
 #include "wlan_hdd_cfr.h"
 #include <qdf_hang_event_notifier.h>
 #include "hif.h"
+#include "wlan_hdd_ioctl.h"
 
 #define g_mode_rates_size (12)
 #define a_mode_rates_size (8)
@@ -5046,6 +5047,16 @@ hdd_roam_control_config_buf_size(struct hdd_context *hdd_ctx,
 	if (tb[QCA_ATTR_ROAM_CONTROL_FULL_SCAN_PERIOD])
 		skb_len += NLA_HDRLEN + sizeof(uint32_t);
 
+	if (tb[QCA_ATTR_ROAM_CONTROL_FREQ_LIST_SCHEME])
+		/*
+		 * Response has 3 nests, 1 atrribure value and a
+		 * attribute list of frequencies.
+		 */
+		skb_len += 3 * nla_total_size(0) +
+			nla_total_size(sizeof(uint32_t)) +
+			(nla_total_size(sizeof(uint32_t)) *
+			NUM_CHANNELS);
+
 	return skb_len;
 }
 
@@ -5067,8 +5078,11 @@ hdd_roam_control_config_fill_data(struct hdd_context *hdd_ctx, uint8_t vdev_id,
 {
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	uint8_t roam_control;
-	struct nlattr *config;
+	struct nlattr *config, *get_freq_scheme, *get_freq;
 	uint32_t full_roam_scan_period;
+	uint8_t num_channels = 0;
+	uint32_t i = 0, freq_list[NUM_CHANNELS] = { 0 };
+	struct hdd_adapter *hdd_adapter = NULL;
 
 	config = nla_nest_start(skb, PARAM_ROAM_CONTROL_CONFIG);
 	if (!config) {
@@ -5106,7 +5120,54 @@ hdd_roam_control_config_fill_data(struct hdd_context *hdd_ctx, uint8_t vdev_id,
 		}
 	}
 
+	if (tb[QCA_ATTR_ROAM_CONTROL_FREQ_LIST_SCHEME]) {
+		hdd_adapter = hdd_get_adapter_by_vdev(hdd_ctx, vdev_id);
+		if (!hdd_adapter) {
+			hdd_info("HDD adapter is NULL");
+			return -EINVAL;
+		}
+
+		hdd_debug("Get roam scan frequencies req received");
+		status = hdd_get_roam_scan_freq(hdd_adapter,
+						hdd_ctx->mac_handle,
+						freq_list, &num_channels);
+		if (QDF_IS_STATUS_ERROR(status)) {
+			hdd_info("failed to get roam scan freq");
+			goto out;
+		}
+
+		hdd_debug("num_channels %d", num_channels);
+		get_freq_scheme = nla_nest_start(
+				skb, QCA_ATTR_ROAM_CONTROL_FREQ_LIST_SCHEME);
+		if (!get_freq_scheme) {
+			hdd_info("failed to nest start for roam scan freq");
+			return -EINVAL;
+		}
+
+		if (nla_put_u32(skb, PARAM_SCAN_FREQ_LIST_TYPE, 0)) {
+			hdd_info("failed to put list type");
+			return -EINVAL;
+		}
+
+		get_freq = nla_nest_start(
+				skb, QCA_ATTR_ROAM_CONTROL_SCAN_FREQ_LIST);
+		if (!get_freq) {
+			hdd_info("failed to nest start for roam scan freq");
+			return -EINVAL;
+		}
+
+		for (i = 0; i < num_channels; i++) {
+			if (nla_put_u32(skb, PARAM_SCAN_FREQ_LIST,
+					freq_list[i])) {
+				hdd_info("failed to put freq at index %d", i);
+				return -EINVAL;
+			}
+		}
+		nla_nest_end(skb, get_freq);
+		nla_nest_end(skb, get_freq_scheme);
+	}
 	nla_nest_end(skb, config);
+
 out:
 	return qdf_status_to_os_return(status);
 }
@@ -11571,6 +11632,26 @@ static int wlan_hdd_cfg80211_get_bus_size(struct wiphy *wiphy,
 	return errno;
 }
 
+const struct nla_policy setband_policy[QCA_WLAN_VENDOR_ATTR_MAX + 1] = {
+	[QCA_WLAN_VENDOR_ATTR_SETBAND_VALUE] = {.type = NLA_U32},
+	[QCA_WLAN_VENDOR_ATTR_SETBAND_MASK] = {.type = NLA_U32},
+};
+
+static uint32_t
+wlan_vendor_bitmap_to_reg_wifi_band_bitmap(uint32_t vendor_bitmap)
+{
+	uint32_t reg_bitmap = 0;
+
+	if (vendor_bitmap & QCA_SETBAND_2G)
+		reg_bitmap |= BIT(REG_BAND_2G);
+	if (vendor_bitmap & QCA_SETBAND_5G)
+		reg_bitmap |= BIT(REG_BAND_5G);
+	if (vendor_bitmap & QCA_SETBAND_6G)
+		reg_bitmap |= BIT(REG_BAND_6G);
+
+	return reg_bitmap;
+}
+
 /**
  *__wlan_hdd_cfg80211_setband() - set band
  * @wiphy: Pointer to wireless phy
@@ -11588,8 +11669,7 @@ static int __wlan_hdd_cfg80211_setband(struct wiphy *wiphy,
 	struct net_device *dev = wdev->netdev;
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_MAX + 1];
 	int ret;
-	static const struct nla_policy policy[QCA_WLAN_VENDOR_ATTR_MAX + 1]
-		= {[QCA_WLAN_VENDOR_ATTR_SETBAND_VALUE] = { .type = NLA_U32 } };
+	uint32_t reg_wifi_band_bitmap = 0, band_val, band_mask;
 
 	hdd_enter();
 
@@ -11598,18 +11678,28 @@ static int __wlan_hdd_cfg80211_setband(struct wiphy *wiphy,
 		return ret;
 
 	if (wlan_cfg80211_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_MAX,
-				    data, data_len, policy)) {
+				    data, data_len, setband_policy)) {
 		hdd_err("Invalid ATTR");
 		return -EINVAL;
 	}
 
-	if (!tb[QCA_WLAN_VENDOR_ATTR_SETBAND_VALUE]) {
+	if (tb[QCA_WLAN_VENDOR_ATTR_SETBAND_MASK]) {
+		band_mask = nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_SETBAND_MASK]);
+		reg_wifi_band_bitmap =
+			wlan_vendor_bitmap_to_reg_wifi_band_bitmap(band_mask);
+	} else if (tb[QCA_WLAN_VENDOR_ATTR_SETBAND_VALUE]) {
+		band_val = nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_SETBAND_VALUE]);
+		reg_wifi_band_bitmap =
+			hdd_reg_legacy_setband_to_reg_wifi_band_bitmap(
+								      band_val);
+	}
+
+	if (!reg_wifi_band_bitmap) {
 		hdd_err("attr SETBAND_VALUE failed");
 		return -EINVAL;
 	}
 
-	ret = hdd_reg_set_band(dev,
-		nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_SETBAND_VALUE]));
+	ret = hdd_reg_set_band(dev, reg_wifi_band_bitmap);
 
 	hdd_exit();
 	return ret;
@@ -12239,6 +12329,108 @@ static int wlan_hdd_cfg80211_setband(struct wiphy *wiphy,
 	return errno;
 }
 
+static uint32_t
+wlan_reg_wifi_band_bitmap_to_vendor_bitmap(uint32_t reg_wifi_band_bitmap)
+{
+	uint32_t vendor_mask = 0;
+
+	if (reg_wifi_band_bitmap & BIT(REG_BAND_2G))
+		vendor_mask |= QCA_SETBAND_2G;
+	if (reg_wifi_band_bitmap & BIT(REG_BAND_5G))
+		vendor_mask |= QCA_SETBAND_5G;
+	if (reg_wifi_band_bitmap & BIT(REG_BAND_6G))
+		vendor_mask |= QCA_SETBAND_6G;
+
+	return vendor_mask;
+}
+
+/**
+ *__wlan_hdd_cfg80211_getband() - get band
+ * @wiphy: Pointer to wireless phy
+ * @wdev: Pointer to wireless device
+ * @data: Pointer to data
+ * @data_len: Length of @data
+ *
+ * Return: 0 on success, negative errno on failure
+ */
+static int __wlan_hdd_cfg80211_getband(struct wiphy *wiphy,
+				       struct wireless_dev *wdev,
+				       const void *data, int data_len)
+{
+	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
+	struct sk_buff *skb;
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	int ret;
+	uint32_t reg_wifi_band_bitmap, vendor_band_mask;
+
+	hdd_enter();
+
+	ret = wlan_hdd_validate_context(hdd_ctx);
+	if (ret)
+		return ret;
+
+	skb = cfg80211_vendor_cmd_alloc_reply_skb(hdd_ctx->wiphy,
+						  sizeof(uint32_t) +
+						  NLA_HDRLEN);
+
+	if (!skb) {
+		hdd_err("cfg80211_vendor_event_alloc failed");
+		return -ENOMEM;
+	}
+
+	status = ucfg_reg_get_band(hdd_ctx->pdev, &reg_wifi_band_bitmap);
+	if (!QDF_IS_STATUS_SUCCESS(status)) {
+		hdd_err("failed to get band");
+		goto failure;
+	}
+
+	vendor_band_mask = wlan_reg_wifi_band_bitmap_to_vendor_bitmap(
+							reg_wifi_band_bitmap);
+
+	if (nla_put_u32(skb, QCA_WLAN_VENDOR_ATTR_SETBAND_MASK,
+			vendor_band_mask)) {
+		hdd_err("nla put failure");
+		goto failure;
+	}
+
+	cfg80211_vendor_cmd_reply(skb);
+
+	hdd_exit();
+
+	return 0;
+
+failure:
+	kfree_skb(skb);
+	return -EINVAL;
+}
+
+/**
+ * wlan_hdd_cfg80211_getband() - Wrapper to getband
+ * @wiphy:    wiphy structure pointer
+ * @wdev:     Wireless device structure pointer
+ * @data:     Pointer to the data received
+ * @data_len: Length of @data
+ *
+ * Return: 0 on success; errno on failure
+ */
+static int wlan_hdd_cfg80211_getband(struct wiphy *wiphy,
+				     struct wireless_dev *wdev,
+				     const void *data, int data_len)
+{
+	int errno;
+	struct osif_vdev_sync *vdev_sync;
+
+	errno = osif_vdev_sync_op_start(wdev->netdev, &vdev_sync);
+	if (errno)
+		return errno;
+
+	errno = __wlan_hdd_cfg80211_getband(wiphy, wdev, data, data_len);
+
+	osif_vdev_sync_op_stop(vdev_sync);
+
+	return errno;
+}
+
 /**
  * wlan_hdd_cfg80211_sar_convert_limit_set() - Convert limit set value
  * @nl80211_value:    Vendor command attribute value
@@ -12249,6 +12441,7 @@ static int wlan_hdd_cfg80211_setband(struct wiphy *wiphy,
  */
 static int wlan_hdd_cfg80211_sar_convert_limit_set(u32 nl80211_value,
 						   u32 *wmi_value)
+
 {
 	int ret = 0;
 
@@ -15198,6 +15391,14 @@ const struct wiphy_vendor_command hdd_wiphy_vendor_commands[] = {
 	},
 	{
 		.info.vendor_id = QCA_NL80211_VENDOR_ID,
+		.info.subcmd = QCA_NL80211_VENDOR_SUBCMD_GETBAND,
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
+			 WIPHY_VENDOR_CMD_NEED_NETDEV |
+			 WIPHY_VENDOR_CMD_NEED_RUNNING,
+		.doit = wlan_hdd_cfg80211_getband,
+	},
+	{
+		.info.vendor_id = QCA_NL80211_VENDOR_ID,
 		.info.subcmd = QCA_NL80211_VENDOR_SUBCMD_ROAMING,
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			WIPHY_VENDOR_CMD_NEED_NETDEV |
@@ -15500,6 +15701,7 @@ static void wlan_hdd_copy_dsrc_ch(char *ch_ptr, int ch_arr_len)
 		return;
 	qdf_mem_copy(ch_ptr, &hdd_channels_dot11p[0], ch_arr_len);
 }
+
 
 static void wlan_hdd_get_num_srd_ch_and_len(struct hdd_config *hdd_cfg,
 					    int *num_ch, int *ch_len)
@@ -15995,7 +16197,7 @@ static void wlan_hdd_update_ht_cap(struct hdd_context *hdd_ctx)
 static void wlan_hdd_update_band_cap_in_wiphy(struct hdd_context *hdd_ctx)
 {
 	int i, j;
-	uint8_t band_capability;
+	uint32_t band_capability;
 	QDF_STATUS status;
 	struct ieee80211_supported_band *band;
 
@@ -16013,7 +16215,7 @@ static void wlan_hdd_update_band_cap_in_wiphy(struct hdd_context *hdd_ctx)
 			band = hdd_ctx->wiphy->bands[i];
 
 			if (HDD_NL80211_BAND_2GHZ == i &&
-			    BAND_5G == band_capability) {
+			    BIT(REG_BAND_5G) == band_capability) {
 				/* 5G only */
 #ifdef WLAN_ENABLE_SOCIAL_CHANNELS_5G_ONLY
 				/* Enable social channels for P2P */
@@ -16027,7 +16229,7 @@ static void wlan_hdd_update_band_cap_in_wiphy(struct hdd_context *hdd_ctx)
 					IEEE80211_CHAN_DISABLED;
 				continue;
 			} else if (HDD_NL80211_BAND_5GHZ == i &&
-				   BAND_2G == band_capability) {
+				   BIT(REG_BAND_2G) == band_capability) {
 				/* 2G only */
 				band->channels[j].flags |=
 					IEEE80211_CHAN_DISABLED;
@@ -23596,7 +23798,8 @@ static void hdd_update_chan_info(struct hdd_context *hdd_ctx,
 #endif
 
 #if defined(WLAN_FEATURE_FILS_SK) &&\
-	defined(CFG80211_FILS_SK_OFFLOAD_SUPPORT) &&\
+	(defined(CFG80211_FILS_SK_OFFLOAD_SUPPORT) ||\
+		(LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0))) &&\
 	(defined(CFG80211_UPDATE_CONNECT_PARAMS) ||\
 		(LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)))
 

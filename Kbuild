@@ -24,10 +24,17 @@ CONFIG_QCA_CLD_WLAN_PROFILE ?= $(WLAN_PROFILE)
 
 ifeq ($(KERNEL_BUILD), n)
 ifneq ($(ANDROID_BUILD_TOP),)
-#      ANDROID_BUILD_TOP_REL := $(shell python -c "import os.path; print(os.path.relpath('$(ANDROID_BUILD_TOP)'))")
+      KERNEL_PATH_4.4 :=  $(shell python -c "import os.path; print(os.path.exists('$(ANDROID_BUILD_TOP)/kernel/msm-4.4'))")
+ifeq ($(KERNEL_PATH_4.4), True)
       override WLAN_ROOT := $(ANDROID_BUILD_TOP)/$(WLAN_ROOT)
       override WLAN_COMMON_INC := $(ANDROID_BUILD_TOP)/$(WLAN_COMMON_INC)
       override WLAN_FW_API := $(ANDROID_BUILD_TOP)/$(WLAN_FW_API)
+else
+      ANDROID_BUILD_TOP_REL := $(shell python -c "import os.path; print(os.path.relpath('$(ANDROID_BUILD_TOP)'))")
+      override WLAN_ROOT := $(ANDROID_BUILD_TOP_REL)/$(WLAN_ROOT)
+      override WLAN_COMMON_INC := $(ANDROID_BUILD_TOP_REL)/$(WLAN_COMMON_INC)
+      override WLAN_FW_API := $(ANDROID_BUILD_TOP_REL)/$(WLAN_FW_API)
+endif
 endif
 endif
 
@@ -2892,6 +2899,7 @@ cppflags-y += -DHAL_DISABLE_NON_BA_2K_JUMP_ERROR
 cppflags-y += -DENABLE_HAL_SOC_STATS
 cppflags-y += -DENABLE_HAL_REG_WR_HISTORY
 cppflags-y += -DDP_RX_DESC_COOKIE_INVALIDATE
+cppflags-y += -DPCI_LINK_STATUS_SANITY
 endif
 
 cppflags-$(CONFIG_WLAN_CLD_PM_QOS) += -DCLD_PM_QOS
