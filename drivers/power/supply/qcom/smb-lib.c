@@ -4949,7 +4949,7 @@ static void update_charge_current(struct work_struct *work)
 				pr_debug("err_bat_temp_state6=%d,bat_temp_state=%d,last_bat_temp_state=%d\n",err_bat_temp_state,bat_temp_state,last_bat_temp_state);
 			}
 		}
-		if ((bat_temp_state == TEMP_POS_45_TO_POS_55)) {
+		if (bat_temp_state == TEMP_POS_45_TO_POS_55) {
 			last_bat_temp_state = TEMP_POS_45_TO_POS_55;
 			jeita_status_regs_write(SMBCHG_FAST_CHG_CURRENT_VALUE_1000MA);
 			pr_debug("err_bat_temp_state5=%d,bat_temp_state=%d,last_bat_temp_state=%d\n",err_bat_temp_state,bat_temp_state,last_bat_temp_state);
