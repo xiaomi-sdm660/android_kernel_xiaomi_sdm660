@@ -11,7 +11,11 @@
  * GNU General Public License for more details.
  */
 
+#ifdef CONFIG_MACH_LONGCHEER
+#define pr_fmt(fmt) "lct QCOM-BATT: %s: " fmt, __func__
+#else
 #define pr_fmt(fmt) "QCOM-BATT: %s: " fmt, __func__
+#endif
 
 #include <linux/device.h>
 #include <linux/delay.h>
