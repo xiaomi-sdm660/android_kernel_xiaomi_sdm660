@@ -6260,6 +6260,15 @@ static int msm8998_tdm_snd_hw_params(struct snd_pcm_substream *substream,
 				slot_width, slots, tdm_interface);
 	pr_debug("%s: slot_mask :%x\n", __func__, slot_mask);
 
+	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+		/* over write slot-mask if configured for full slots */
+		if ((slots == 32) && (slot_width == 16))
+			slot_mask = 0xffffffff;
+		else if ((slots == 16) && (slot_width == 32))
+			slot_mask = 0xffff;
+		pr_debug("%s:slot_mask :%x slots %d slot_width %d\n", __func__,
+					slot_mask, slots, slot_width);
+	}
 	if (!slot_mask) {
 		pr_err("%s: invalid slot_mask 0x%x\n",
 			__func__, slot_mask);
@@ -7505,6 +7514,33 @@ static struct snd_soc_dai_link msm_common_be_dai_links[] = {
 		.dpcm_playback = 1,
 		.be_id = MSM_BACKEND_DAI_VOICE2_PLAYBACK_TX,
 		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.ignore_suspend = 1,
+	},
+	/* Proxy Tx BACK END DAI Link */
+	{
+		.name = LPASS_BE_PROXY_TX,
+		.stream_name = "Proxy Capture",
+		.cpu_dai_name = "msm-dai-q6-dev.8195",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-tx",
+		.no_pcm = 1,
+		.dpcm_capture = 1,
+		.be_id = MSM_BACKEND_DAI_PROXY_TX,
+		.ignore_suspend = 1,
+	},
+	/* Proxy Rx BACK END DAI Link */
+	{
+		.name = LPASS_BE_PROXY_RX,
+		.stream_name = "Proxy Playback",
+		.cpu_dai_name = "msm-dai-q6-dev.8194",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-rx",
+		.no_pcm = 1,
+		.dpcm_playback = 1,
+		.be_id = MSM_BACKEND_DAI_PROXY_RX,
+		.ignore_pmdown_time = 1,
 		.ignore_suspend = 1,
 	},
 	{
