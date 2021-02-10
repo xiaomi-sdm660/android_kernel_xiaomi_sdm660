@@ -5596,11 +5596,11 @@ wlan_hdd_set_no_dfs_flag_config_policy[QCA_WLAN_VENDOR_ATTR_SET_NO_DFS_FLAG_MAX
 static bool wlan_hdd_check_dfs_channel_for_adapter(struct hdd_context *hdd_ctx,
 				enum QDF_OPMODE device_mode)
 {
-	struct hdd_adapter *adapter;
+	struct hdd_adapter *adapter, *next_adapter = NULL;
 	struct hdd_ap_ctx *ap_ctx;
 	struct hdd_station_ctx *sta_ctx;
 
-	hdd_for_each_adapter(hdd_ctx, adapter) {
+	hdd_for_each_adapter_dev_held_safe(hdd_ctx, adapter, next_adapter) {
 		if ((device_mode == adapter->device_mode) &&
 		    (device_mode == QDF_SAP_MODE)) {
 			ap_ctx =
@@ -5617,6 +5617,9 @@ static bool wlan_hdd_check_dfs_channel_for_adapter(struct hdd_context *hdd_ctx,
 				hdd_ctx->pdev,
 				ap_ctx->operating_chan_freq)) {
 				hdd_err("SAP running on DFS channel");
+				dev_put(adapter->dev);
+				if (next_adapter)
+					dev_put(next_adapter->dev);
 				return true;
 			}
 		}
@@ -5635,9 +5638,13 @@ static bool wlan_hdd_check_dfs_channel_for_adapter(struct hdd_context *hdd_ctx,
 				hdd_ctx->pdev,
 				sta_ctx->conn_info.chan_freq))) {
 				hdd_err("client connected on DFS channel");
+				dev_put(adapter->dev);
+				if (next_adapter)
+					dev_put(next_adapter->dev);
 				return true;
 			}
 		}
+		dev_put(adapter->dev);
 	}
 
 	return false;
@@ -8821,6 +8828,31 @@ static void hdd_disable_runtime_pm_for_user(struct hdd_context *hdd_ctx)
 }
 
 /**
+ * hdd_twt_setup_req_type_to_cmd() - Converts twt setup request type to twt
+ * cmd
+ * @req_type: twt setup request type
+ * @twt_cmd: pointer to store twt command
+ *
+ * Return: QDF_STATUS_SUCCESS on success, else other qdf error values
+ */
+static QDF_STATUS
+hdd_twt_setup_req_type_to_cmd(u8 req_type, enum WMI_HOST_TWT_COMMAND *twt_cmd)
+{
+	if (req_type == QCA_WLAN_VENDOR_TWT_SETUP_REQUEST) {
+		*twt_cmd = WMI_HOST_TWT_COMMAND_REQUEST_TWT;
+	} else if (req_type == QCA_WLAN_VENDOR_TWT_SETUP_SUGGEST) {
+		*twt_cmd = WMI_HOST_TWT_COMMAND_SUGGEST_TWT;
+	} else if (req_type == QCA_WLAN_VENDOR_TWT_SETUP_DEMAND) {
+		*twt_cmd = WMI_HOST_TWT_COMMAND_DEMAND_TWT;
+	} else {
+		hdd_err_rl("Invalid TWT_SETUP_REQ_TYPE %d", req_type);
+		return QDF_STATUS_E_INVAL;
+	}
+
+	return QDF_STATUS_SUCCESS;
+}
+
+/**
  * __wlan_hdd_cfg80211_set_wifi_test_config() - Wifi test configuration
  * vendor command
  *
@@ -9355,7 +9387,14 @@ __wlan_hdd_cfg80211_set_wifi_test_config(struct wiphy *wiphy,
 				hdd_err_rl("TWT_SETUP_REQ_TYPE is must");
 				goto send_err;
 			}
-			params.twt_cmd = nla_get_u8(tb2[cmd_id]);
+
+			status = hdd_twt_setup_req_type_to_cmd(
+					nla_get_u8(tb2[cmd_id]),
+					&params.twt_cmd);
+			if (QDF_IS_STATUS_ERROR(status)) {
+				hdd_err_rl("TWT cmd type is invalid");
+				goto send_err;
+			}
 
 			cmd_id = QCA_WLAN_VENDOR_ATTR_TWT_SETUP_TRIGGER;
 			if (tb2[cmd_id])
@@ -11075,13 +11114,15 @@ static enum sta_roam_policy_dfs_mode wlan_hdd_get_sta_roam_dfs_mode(
  */
 uint8_t hdd_get_sap_operating_band(struct hdd_context *hdd_ctx)
 {
-	struct hdd_adapter *adapter;
+	struct hdd_adapter *adapter, *next_adapter = NULL;
 	uint32_t  operating_chan_freq;
 	uint8_t sap_operating_band = 0;
 
-	hdd_for_each_adapter(hdd_ctx, adapter) {
-		if (adapter->device_mode != QDF_SAP_MODE)
+	hdd_for_each_adapter_dev_held_safe(hdd_ctx, adapter, next_adapter) {
+		if (adapter->device_mode != QDF_SAP_MODE) {
+			dev_put(adapter->dev);
 			continue;
+		}
 
 		operating_chan_freq = adapter->session.ap.operating_chan_freq;
 		if (WLAN_REG_IS_24GHZ_CH_FREQ(operating_chan_freq))
@@ -11091,6 +11132,8 @@ uint8_t hdd_get_sap_operating_band(struct hdd_context *hdd_ctx)
 			sap_operating_band = BAND_5G;
 		else
 			sap_operating_band = BAND_ALL;
+
+		dev_put(adapter->dev);
 	}
 
 	return sap_operating_band;
