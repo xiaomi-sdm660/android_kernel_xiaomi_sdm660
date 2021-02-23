@@ -354,7 +354,7 @@ static noinline void corrupt_stack(void)
 	char data[8];
 	__lkdtm_CORRUPT_STACK(&data);
 
-	pr_info("Corrupted stack with '%16s'...\n", data);
+	memset((void *)data, 0, sizeof(char)*8);
 }
 
 static void execute_location(void *dst)
