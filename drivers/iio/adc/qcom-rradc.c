@@ -246,6 +246,7 @@ struct rradc_chip {
 	struct notifier_block		nb;
 	bool				conv_cbk;
 	struct work_struct	psy_notify_work;
+#endif
 };
 
 struct rradc_channels {
@@ -698,6 +699,20 @@ if (!chip->batt_psy)
 	if (!chip->batt_psy)
 		return false;
 
+	return true;
+}
+
+static bool rradc_is_bms_psy_available(struct rradc_chip *chip)
+{
+	if (!chip->bms_psy)
+		chip->bms_psy = power_supply_get_by_name("bms");
+
+	if (!chip->bms_psy)
+		return false;
+
+	return true;
+}
+#endif
 static int rradc_enable_continuous_mode(struct rradc_chip *chip)
 {
 	int rc = 0;
@@ -824,11 +839,11 @@ static int rradc_check_status_ready_with_retry(struct rradc_chip *chip,
 		if (retry_cnt >= FG_RR_CONV_MAX_RETRY_CNT)
 			rc = -ENODATA;
 	}
-	#else
-		if (retry_cnt >= FG_RR_CONV_MAX_RETRY_CNT)
-			rc = -ENODATA;
-	#endif
-		return rc;
+#else
+	if (retry_cnt >= FG_RR_CONV_MAX_RETRY_CNT)
+		rc = -ENODATA;
+#endif
+	return rc;
 }
 
 static int rradc_read_channel_with_continuous_mode(struct rradc_chip *chip,
@@ -1119,6 +1134,59 @@ static void psy_notify_work(struct work_struct *work)
 	struct rradc_chip *chip = container_of(work,
 			struct rradc_chip, psy_notify_work);
 
+	struct rradc_chan_prop *prop;
+	union power_supply_propval pval = {0, };
+	u16 adc_code;
+	int rc = 0;
+
+	if (rradc_is_batt_psy_available(chip)) {
+			rc = power_supply_get_property(chip->batt_psy,
+				POWER_SUPPLY_PROP_STATUS, &pval);
+			if (rc < 0) {
+				pr_err("Error obtaining battery status, rc=%d\n", rc);
+			}
+
+			if (pval.intval == POWER_SUPPLY_STATUS_CHARGING) {
+				chip->conv_cbk = true;
+				prop = &chip->chan_props[RR_ADC_USBIN_V];
+				rc = rradc_do_conversion(chip, prop, &adc_code);
+				if (rc == -ENODATA) {
+					pr_err("rradc is hung, Proceed to recovery\n");
+					rradc_die = 1;
+					if (rradc_is_bms_psy_available(chip)) {
+						rc = power_supply_set_property
+							(chip->bms_psy,
+							POWER_SUPPLY_PROP_FG_RESET_CLOCK,
+							&pval);
+						if (rc < 0) {
+							pr_err("Couldn't reset FG clock rc=%d\n", rc);
+						}
+					} else {
+						pr_err("Error obtaining bms power supply");
+					}
+				}
+			}
+		} else {
+			pr_err("Error obtaining battery power supply");
+		}
+	chip->conv_cbk = false;
+	pm_relax(chip->dev);
+}
+
+static int rradc_psy_notifier_cb(struct notifier_block *nb,
+		unsigned long event, void *data)
+{
+	struct power_supply *psy = data;
+	struct rradc_chip *chip = container_of(nb, struct rradc_chip, nb);
+
+	if (strcmp(psy->desc->name, "battery") == 0) {
+		pm_stay_awake(chip->dev);
+		schedule_work(&chip->psy_notify_work);
+	}
+
+	return NOTIFY_OK;
+}
+#endif
 static const struct iio_info rradc_info = {
 	.read_raw	= &rradc_read_raw,
 	.driver_module	= THIS_MODULE,
