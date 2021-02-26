@@ -6098,7 +6098,7 @@ enum nl80211_band ieee80211_channel_band(const struct ieee80211_channel *chan)
 static inline
 enum nl80211_band ieee80211_channel_band(const struct ieee80211_channel *chan)
 {
-    enum ieee80211_band band = chan->band;
+    enum nl80211_band band = chan->band;
     return (enum nl80211_band)band;
 }
 #endif
