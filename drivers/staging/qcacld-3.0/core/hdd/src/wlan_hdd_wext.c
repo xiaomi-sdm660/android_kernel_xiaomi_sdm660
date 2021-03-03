@@ -3159,7 +3159,9 @@ static int wlan_hdd_write_suspend_resume_stats(struct hdd_context *hdd_ctx,
 					       char *buffer, uint16_t max_len)
 {
 	int ret;
+#if defined(CONFIG_CP_STATS)
 	QDF_STATUS status;
+#endif
 	struct suspend_resume_stats *sr_stats;
 
 	sr_stats = &hdd_ctx->suspend_resume_stats;
@@ -3182,6 +3184,7 @@ static int wlan_hdd_write_suspend_resume_stats(struct hdd_context *hdd_ctx,
 			sr_stats->suspend_fail[SUSPEND_FAIL_SCAN],
 			sr_stats->suspend_fail[SUSPEND_FAIL_INITIAL_WAKEUP]);
 
+#if defined(CONFIG_CP_STATS)
 	status = ucfg_mc_cp_stats_write_wow_stats(hdd_ctx->psoc,
 						  &buffer[ret], max_len - ret,
 						  &ret);
@@ -3189,6 +3192,7 @@ static int wlan_hdd_write_suspend_resume_stats(struct hdd_context *hdd_ctx,
 		hdd_err("Failed to get WoW stats");
 		return qdf_status_to_os_return(status);
 	}
+#endif
 
 	return ret;
 }
