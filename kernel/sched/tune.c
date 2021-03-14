@@ -832,6 +832,10 @@ schedtune_boostgroup_init(struct schedtune *st, int idx)
 		bg->group[idx].valid = true;
 	}
 
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	boost_slots_init(st);
+#endif // CONFIG_DYNAMIC_STUNE_BOOST
+
 	/* Keep track of allocated boost groups */
 	allocated_group[idx] = st;
 	st->idx = idx;
@@ -887,6 +891,11 @@ schedtune_boostgroup_release(struct schedtune *st)
 		bg->group[st->idx].valid = false;
 		bg->group[st->idx].boost = 0;
 	}
+
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	/* Free dynamic boost slots */
+	boost_slots_release(st);
+#endif // CONFIG_DYNAMIC_STUNE_BOOST
 
 	/* Keep track of allocated boost groups */
 	allocated_group[st->idx] = NULL;
