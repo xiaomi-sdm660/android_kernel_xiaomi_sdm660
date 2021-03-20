@@ -416,10 +416,6 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 
 		/* EXT_CSD value is in units of 10ms, but we store in ms */
 		card->ext_csd.part_time = 10 * ext_csd[EXT_CSD_PART_SWITCH_TIME];
-		/* Some eMMC set the value too low so set a minimum */
-		if (card->ext_csd.part_time &&
-		    card->ext_csd.part_time < MMC_MIN_PART_SWITCH_TIME)
-			card->ext_csd.part_time = MMC_MIN_PART_SWITCH_TIME;
 
 		/* Sleep / awake timeout in 100ns units */
 		if (sa_shift > 0 && sa_shift <= 0x17)
@@ -633,45 +629,16 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		card->ext_csd.data_sector_size = 512;
 	}
 
-	if (card->ext_csd.rev >= 7) {
-		/* Enhance Strobe is supported since v5.1 which rev should be
-		 * 8 but some eMMC devices can support it with rev 7. So handle
-		 * Enhance Strobe here.
-		 */
-		card->ext_csd.strobe_support = ext_csd[EXT_CSD_STROBE_SUPPORT];
-		card->ext_csd.cmdq_support = ext_csd[EXT_CSD_CMDQ_SUPPORT];
-		card->ext_csd.fw_version = ext_csd[EXT_CSD_FIRMWARE_VERSION];
-		pr_info("%s: eMMC FW version: 0x%02x\n",
-			mmc_hostname(card->host),
-			card->ext_csd.fw_version);
-		if (card->ext_csd.cmdq_support) {
-			/*
-			 * Queue Depth = N + 1,
-			 * see JEDEC JESD84-B51 section 7.4.19
-			 */
-			card->ext_csd.cmdq_depth =
-				ext_csd[EXT_CSD_CMDQ_DEPTH] + 1;
-			pr_info("%s: CMDQ supported: depth: %d\n",
-				mmc_hostname(card->host),
-				card->ext_csd.cmdq_depth);
-		}
-		card->ext_csd.barrier_support =
-			ext_csd[EXT_CSD_BARRIER_SUPPORT];
-		card->ext_csd.cache_flush_policy =
-			ext_csd[EXT_CSD_CACHE_FLUSH_POLICY];
-		pr_info("%s: cache barrier support %d flush policy %d\n",
-				mmc_hostname(card->host),
-				card->ext_csd.barrier_support,
-				card->ext_csd.cache_flush_policy);
-		card->ext_csd.enhanced_rpmb_supported =
-			(card->ext_csd.rel_param &
-			 EXT_CSD_WR_REL_PARAM_EN_RPMB_REL_WR);
-	} else {
-		card->ext_csd.cmdq_support = 0;
-		card->ext_csd.cmdq_depth = 0;
-		card->ext_csd.barrier_support = 0;
-		card->ext_csd.cache_flush_policy = 0;
-	}
+	/*
+	 * GENERIC_CMD6_TIME is to be used "unless a specific timeout is defined
+	 * when accessing a specific field", so use it here if there is no
+	 * PARTITION_SWITCH_TIME.
+	 */
+	if (!card->ext_csd.part_time)
+		card->ext_csd.part_time = card->ext_csd.generic_cmd6_time;
+	/* Some eMMC set the value too low so set a minimum */
+	if (card->ext_csd.part_time < MMC_MIN_PART_SWITCH_TIME)
+		card->ext_csd.part_time = MMC_MIN_PART_SWITCH_TIME;
 
 	/* eMMC v5 or later */
 	if (card->ext_csd.rev >= 7) {
