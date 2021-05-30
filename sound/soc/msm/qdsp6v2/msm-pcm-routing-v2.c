@@ -16449,10 +16449,10 @@ static int msm_routing_put_lsm_app_type_cfg_control(
 	int i = 0, j;
 	int num_app_types;
 
-	if (ucontrol->value.integer.value[0] > MAX_APP_TYPES ||
-		ucontrol->value.integer.value[0] > MAX_APP_TYPES) {
+	if (ucontrol->value.integer.value[0] < 0 ||
+			ucontrol->value.integer.value[0] > MAX_APP_TYPES) {
 		pr_err("%s: number of app types %ld is invalid\n",
-			__func__, ucontrol->value.integer.value[0]);
+			 __func__, ucontrol->value.integer.value[0]);
 		return -EINVAL;
 	}
 
